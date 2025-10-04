@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/CMakeFiles/bootloader"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/CMakeFiles/bootloader.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/CMakeFiles/bootloader-complete.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule"
+		},
+		{
+			"file" : "C:/Projekte/Github/OpenDoorstation/kiro-doorstation/firmware/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"bootloader"
+		],
+		"name" : "bootloader"
+	}
+}

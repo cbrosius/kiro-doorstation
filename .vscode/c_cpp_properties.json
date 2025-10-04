@@ -1,22 +1,22 @@
 {
-    "configurations": [
-        {
-            "name": "ESP-IDF",
-            "compilerPath": "/opt/esp/tools/xtensa-esp32-elf/esp-12.2.0_20230208/xtensa-esp32-elf/bin/xtensa-esp32-elf-gcc",
-            "cStandard": "c11",
-            "cppStandard": "c++17",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "/opt/esp/idf/components/**"
-            ],
-            "browse": {
-                "path": [
-                    "${workspaceFolder}",
-                    "/opt/esp/idf/components"
-                ],
-                "limitSymbolsToIncludedHeaders": false
-            }
-        }
-    ],
-    "version": 4
+  "configurations": [
+    {
+      "name": "ESP-IDF",
+      "compilerPath": "${config:idf.toolsPathWin}\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "/opt/esp/idf/components/**"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}",
+          "/opt/esp/idf/components"
+        ],
+        "limitSymbolsToIncludedHeaders": false
+      }
+    }
+  ],
+  "version": 4
 }
