@@ -3,7 +3,7 @@
 ## Benötigte Komponenten
 
 ### Hauptkomponenten
-- ESP32 DevKit C (oder ähnlich)
+- ESP32S3 DevKit C (oder ähnlich)
 - I2S Audio Codec (z.B. MAX98357A für Ausgabe)
 - I2S Mikrofon (z.B. INMP441 für Eingabe)
 - 2x Taster (für Klingeln)
@@ -19,12 +19,12 @@
 ### Schaltplan
 
 ```
-ESP32 DevKit C Pin-Belegung:
+ESP32S3 DevKit C Pin-Belegung:
 
 GPIO 21 -----> Klingel 1 (Pullup, Active Low)
-GPIO 22 -----> Klingel 2 (Pullup, Active Low)
-GPIO 25 -----> Türöffner Relais
-GPIO 26 -----> Licht Relais
+GPIO 4  -----> Klingel 2 (Pullup, Active Low)
+GPIO 5  -----> Türöffner Relais
+GPIO 6  -----> Licht Relais
 
 I2S Audio:
 GPIO 14 -----> I2S SCK (Serial Clock)

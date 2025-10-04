@@ -8,7 +8,7 @@ idf_component_register(
         "wifi_manager.c"
         "web_server.c"
     INCLUDE_DIRS "."
-    REQUIRES 
+    REQUIRES
         esp_wifi
         esp_http_server
         esp_netif
@@ -16,4 +16,5 @@ idf_component_register(
         driver
         esp_timer
         esp_adc
+        json
 )

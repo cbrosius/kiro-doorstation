@@ -27,3 +27,7 @@ CONFIG_NVS_ENCRYPTION=n
 
 # Partition Table
 CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# Disable LCD components since not used in door station
+CONFIG_ESP_LCD_RGB_PANEL=n
+CONFIG_ESP_LCD_I80_PANEL=n

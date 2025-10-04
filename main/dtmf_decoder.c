@@ -8,10 +8,6 @@
 static const char *TAG = "DTMF";
 static dtmf_callback_t dtmf_callback = NULL;
 
-// DTMF Frequenzen
-static const float dtmf_freqs_low[] = {697, 770, 852, 941};
-static const float dtmf_freqs_high[] = {1209, 1336, 1477, 1633};
-
 // DTMF Zeichen-Matrix
 static const char dtmf_chars[4][4] = {
     {'1', '2', '3', 'A'},

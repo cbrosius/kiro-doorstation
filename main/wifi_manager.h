@@ -11,13 +11,13 @@ typedef struct {
     char ssid[WIFI_SSID_MAX_LEN];
     char password[WIFI_PASSWORD_MAX_LEN];
     bool configured;
-} wifi_config_t;
+} wifi_manager_config_t;
 
 void wifi_manager_init(void);
 bool wifi_is_connected(void);
 void wifi_start_ap_mode(void);
 void wifi_connect_sta(const char* ssid, const char* password);
 void wifi_save_config(const char* ssid, const char* password);
-wifi_config_t wifi_load_config(void);
+wifi_manager_config_t wifi_load_config(void);
 
 #endif

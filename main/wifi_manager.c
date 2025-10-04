@@ -48,7 +48,7 @@ void wifi_manager_init(void)
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
     
     // Gespeicherte WiFi-Konfiguration laden
-    wifi_config_t saved_config = wifi_load_config();
+    wifi_manager_config_t saved_config = wifi_load_config();
     
     if (saved_config.configured) {
         ESP_LOGI(TAG, "Gespeicherte WiFi-Konfiguration gefunden, verbinde mit %s", saved_config.ssid);
@@ -118,9 +118,9 @@ void wifi_save_config(const char* ssid, const char* password)
     }
 }
 
-wifi_config_t wifi_load_config(void)
+wifi_manager_config_t wifi_load_config(void)
 {
-    wifi_config_t config = {0};
+    wifi_manager_config_t config = {0};
     
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open("wifi_config", NVS_READONLY, &nvs_handle);
