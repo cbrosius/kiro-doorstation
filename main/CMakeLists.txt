@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS 
+        "main.c"
+        "sip_client.c"
+        "audio_handler.c"
+        "dtmf_decoder.c"
+        "gpio_handler.c"
+        "wifi_manager.c"
+        "web_server.c"
+    INCLUDE_DIRS "."
+    REQUIRES 
+        esp_wifi
+        esp_http_server
+        esp_netif
+        nvs_flash
+        driver
+        esp_timer
+        esp_adc
+)
