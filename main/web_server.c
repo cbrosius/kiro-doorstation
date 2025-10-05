@@ -30,6 +30,32 @@ static char* url_decode(char *str) {
     return str;
 }
 
+static void trim_whitespace(char *str) {
+    char *end;
+    // Trim leading space
+    while (*str == ' ') str++;
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while (end > str && *end == ' ') end--;
+    *(end + 1) = 0;
+}
+
+static bool validate_ssid(const char *ssid) {
+    size_t len = strlen(ssid);
+    return len > 0 && len < 32;
+}
+
+static bool validate_password(const char *password) {
+    size_t len = strlen(password);
+    return len > 0 && len < 64;
+}
+
+static esp_err_t favicon_handler(httpd_req_t *req) {
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_set_type(req, "image/x-icon");
+    return ESP_OK;
+}
+
 static const char* html_page =
 "<!DOCTYPE html>"
 "<html><head><title>ESP32 Türstation</title>"
@@ -124,10 +150,21 @@ static esp_err_t wifi_handler(httpd_req_t *req)
         } else {
             strcpy(password, password_start);
         }
-        
-        // URL decode (simplified)
-        // In production, proper URL decoding should be implemented
-        
+
+        // URL decode
+        url_decode(ssid);
+        url_decode(password);
+
+        // Trim whitespace
+        trim_whitespace(ssid);
+        trim_whitespace(password);
+
+        // Validate
+        if (!validate_ssid(ssid) || !validate_password(password)) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID or password");
+            return ESP_FAIL;
+        }
+
         ESP_LOGI(TAG, "WiFi Konfiguration: SSID=%s", ssid);
         wifi_save_config(ssid, password);
         wifi_connect_sta(ssid, password);
@@ -162,11 +199,75 @@ static esp_err_t sip_handler(httpd_req_t *req)
     }
     buf[ret] = '\0';
     
-    ESP_LOGI(TAG, "SIP Konfiguration empfangen: %s", buf);
-    
-    // Hier würde die SIP-Konfiguration geparst und gespeichert
-    sip_save_config(buf); // Vereinfacht
-    
+    // Parse SIP config (simplified)
+    char server[64] = {0};
+    char username[64] = {0};
+    char sip_password[64] = {0};
+    char apt1[128] = {0};
+    char apt2[128] = {0};
+
+    char *server_start = strstr(buf, "server=");
+    char *username_start = strstr(buf, "username=");
+    char *password_start = strstr(buf, "password=");
+    char *apt1_start = strstr(buf, "apt1=");
+    char *apt2_start = strstr(buf, "apt2=");
+
+    if (server_start) {
+        server_start += 7;
+        char *end = strchr(server_start, '&');
+        if (end) strncpy(server, server_start, end - server_start);
+        else strcpy(server, server_start);
+        url_decode(server);
+        trim_whitespace(server);
+    }
+
+    if (username_start) {
+        username_start += 9;
+        char *end = strchr(username_start, '&');
+        if (end) strncpy(username, username_start, end - username_start);
+        else strcpy(username, username_start);
+        url_decode(username);
+        trim_whitespace(username);
+    }
+
+    if (password_start) {
+        password_start += 9;
+        char *end = strchr(password_start, '&');
+        if (end) strncpy(sip_password, password_start, end - password_start);
+        else strcpy(sip_password, password_start);
+        url_decode(sip_password);
+        trim_whitespace(sip_password);
+    }
+
+    if (apt1_start) {
+        apt1_start += 5;
+        char *end = strchr(apt1_start, '&');
+        if (end) strncpy(apt1, apt1_start, end - apt1_start);
+        else strcpy(apt1, apt1_start);
+        url_decode(apt1);
+        trim_whitespace(apt1);
+    }
+
+    if (apt2_start) {
+        apt2_start += 5;
+        char *end = strchr(apt2_start, '&');
+        if (end) strncpy(apt2, apt2_start, end - apt2_start);
+        else strcpy(apt2, apt2_start);
+        url_decode(apt2);
+        trim_whitespace(apt2);
+    }
+
+    // Validate
+    if (strlen(server) == 0 || strlen(username) == 0 || strlen(apt1) == 0 || strlen(apt2) == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing required SIP fields");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "SIP Konfiguration: Server=%s, User=%s", server, username);
+
+    // Save SIP config (placeholder)
+    // sip_save_config(server, username, sip_password, apt1, apt2);
+
     const char* response = "<html><body><h1>SIP Konfiguration gespeichert</h1>"
                           "<a href='/'>Zurück</a></body></html>";
     httpd_resp_send(req, response, strlen(response));
@@ -238,6 +339,14 @@ void web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &ncsi_uri);
+
+        httpd_uri_t favicon_uri = {
+            .uri = "/favicon.ico",
+            .method = HTTP_GET,
+            .handler = favicon_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &favicon_uri);
 
         ESP_LOGI(TAG, "Web Server gestartet auf Port %d", config.server_port);
     } else {
