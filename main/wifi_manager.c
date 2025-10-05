@@ -164,16 +164,9 @@ char* wifi_scan_networks(void) {
     }
 
     // If no results available, return empty array immediately
-    // Background scan will populate results for next request
     if (!scan_results_valid || scan_results_count == 0) {
         ESP_LOGI(TAG, "No scan results available yet, returning empty array");
         strcpy(json, "[]");
-
-        // Trigger background scan for next time, but don't wait
-        if (!is_scanning) {
-            ESP_LOGI(TAG, "Triggering background scan for future requests");
-            wifi_start_background_scan();
-        }
     } else {
         // Build JSON from stored results (ESPHome pattern)
         strcpy(json, "[");

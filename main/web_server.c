@@ -83,7 +83,7 @@ static const char* get_html_page(bool is_connected) {
         "<button onclick='triggerNewScan()' style='margin-bottom:10px;' id='new-scan-button'>Scan for Networks</button>"
         "<p id='scan-status' style='margin-bottom:10px;'></p>"
         "<form action='/wifi' method='post'>"
-        "<div class='form-group'><label>WiFi SSID:</label><select name='ssid' id='ssid-select'><option value=''>Scan networks or enter SSID manually</option></select><br><input type='text' name='ssid_manual' placeholder='Or enter manually' required style='margin-top:5px;width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px;'></div>"
+        "<div class='form-group'><label>WiFi SSID:</label><select name='ssid' id='ssid-select' onchange='document.getElementById(\"ssid_manual\").value = this.value;'><option value=''>Scan networks or enter SSID manually</option></select><br><input type='text' id='ssid_manual' name='ssid_manual' placeholder='Or enter manually' required style='margin-top:5px;width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px;'></div>"
         "<div class='form-group'><label>WiFi Password:</label><input type='password' name='password' required></div>"
         "<button type='submit'>Connect to WiFi</button>"
         "</form>"
@@ -110,7 +110,7 @@ static const char* get_html_page(bool is_connected) {
         "    })"
         "    .then(function(data) {"
         "      console.log('Scan data:', data);"
-        "      while (select.children.length > 1) {"
+        "      while (select.children.length > 0) {"
         "        select.removeChild(select.lastChild);"
         "      }"
         "      if (data && data.length > 0) {"
@@ -400,12 +400,10 @@ static esp_err_t scan_handler(httpd_req_t *req)
     // Check for new scan parameter
     char buf[32];
     int ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
-    bool is_new_scan = false;
 
     if (ret == ESP_OK) {
         char param[32];
         if (httpd_query_key_value(buf, "new", param, sizeof(param)) == ESP_OK) {
-            is_new_scan = true;
             ESP_LOGI(TAG, "New scan requested, clearing results");
             wifi_clear_scan_results();
             wifi_start_background_scan();
