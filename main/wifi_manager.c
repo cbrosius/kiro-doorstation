@@ -13,29 +13,74 @@ static bool is_connected = false;
 static int retry_count = 0;
 static const int MAX_RETRIES = 10;
 
+static const char* wifi_reason_to_string(uint8_t reason) {
+    switch (reason) {
+        case WIFI_REASON_UNSPECIFIED: return "Unspecified";
+        case WIFI_REASON_AUTH_EXPIRE: return "Auth expire";
+        case WIFI_REASON_AUTH_LEAVE: return "Auth leave";
+        case WIFI_REASON_ASSOC_EXPIRE: return "Assoc expire";
+        case WIFI_REASON_ASSOC_TOOMANY: return "Assoc too many";
+        case WIFI_REASON_NOT_AUTHED: return "Not authed";
+        case WIFI_REASON_NOT_ASSOCED: return "Not assoced";
+        case WIFI_REASON_ASSOC_LEAVE: return "Assoc leave";
+        case WIFI_REASON_ASSOC_NOT_AUTHED: return "Assoc not authed";
+        case WIFI_REASON_DISASSOC_PWRCAP_BAD: return "Disassoc pwrcap bad";
+        case WIFI_REASON_DISASSOC_SUPCHAN_BAD: return "Disassoc supchan bad";
+        case WIFI_REASON_IE_INVALID: return "IE invalid";
+        case WIFI_REASON_MIC_FAILURE: return "MIC failure";
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "4-way handshake timeout";
+        case WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT: return "Group key update timeout";
+        case WIFI_REASON_IE_IN_4WAY_DIFFERS: return "IE in 4way differs";
+        case WIFI_REASON_GROUP_CIPHER_INVALID: return "Group cipher invalid";
+        case WIFI_REASON_PAIRWISE_CIPHER_INVALID: return "Pairwise cipher invalid";
+        case WIFI_REASON_AKMP_INVALID: return "AKMP invalid";
+        case WIFI_REASON_UNSUPP_RSN_IE_VERSION: return "Unsupp RSN IE version";
+        case WIFI_REASON_INVALID_RSN_IE_CAP: return "Invalid RSN IE cap";
+        case WIFI_REASON_802_1X_AUTH_FAILED: return "802.1X auth failed";
+        case WIFI_REASON_CIPHER_SUITE_REJECTED: return "Cipher suite rejected";
+        case WIFI_REASON_INVALID_PMKID: return "Invalid PMKID";
+        case WIFI_REASON_BEACON_TIMEOUT: return "Beacon timeout";
+        case WIFI_REASON_NO_AP_FOUND: return "No AP found";
+        case WIFI_REASON_AUTH_FAIL: return "Auth fail";
+        case WIFI_REASON_ASSOC_FAIL: return "Assoc fail";
+        case WIFI_REASON_HANDSHAKE_TIMEOUT: return "Handshake timeout";
+        case WIFI_REASON_CONNECTION_FAIL: return "Connection fail";
+        case WIFI_REASON_AP_TSF_RESET: return "AP TSF reset";
+        case WIFI_REASON_ROAMING: return "Roaming";
+        default: return "Unknown";
+    }
+}
+
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                              int32_t event_id, void* event_data)
+                               int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(TAG, "WiFi STA started, attempting to connect");
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
         retry_count++;
-        ESP_LOGI(TAG, "WiFi Verbindung getrennt, Retry %d/%d", retry_count, MAX_RETRIES);
+        ESP_LOGW(TAG, "WiFi disconnected (reason: %d - %s), retry %d/%d", disconnected->reason, wifi_reason_to_string(disconnected->reason), retry_count, MAX_RETRIES);
         is_connected = false;
         if (retry_count >= MAX_RETRIES) {
             ESP_LOGW(TAG, "Max retries reached, falling back to AP mode");
             wifi_start_ap_mode();
             retry_count = 0; // Reset for future attempts
         } else {
+            ESP_LOGI(TAG, "Retrying WiFi connection...");
             esp_wifi_connect();
         }
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        ESP_LOGI(TAG, "WiFi connected to AP, waiting for IP");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "IP erhalten:" IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "IP obtained: " IPSTR ", WiFi fully connected", IP2STR(&event->ip_info.ip));
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
+        ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
     }
 }
 
@@ -55,7 +100,7 @@ void wifi_manager_init(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     
     // Gespeicherte WiFi-Konfiguration laden
     wifi_manager_config_t saved_config = wifi_load_config();

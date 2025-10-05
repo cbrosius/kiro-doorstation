@@ -7,7 +7,30 @@
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
-static const char* html_page = 
+static char* url_decode(char *str) {
+    char *p = str;
+    char *q = str;
+    while (*p) {
+        if (*p == '%') {
+            if (p[1] && p[2]) {
+                char hex[3] = {p[1], p[2], 0};
+                *q++ = (char)strtol(hex, NULL, 16);
+                p += 3;
+            } else {
+                *q++ = *p++;
+            }
+        } else if (*p == '+') {
+            *q++ = ' ';
+            p++;
+        } else {
+            *q++ = *p++;
+        }
+    }
+    *q = 0;
+    return str;
+}
+
+static const char* html_page =
 "<!DOCTYPE html>"
 "<html><head><title>ESP32 Türstation</title>"
 "<meta charset='UTF-8'>"
