@@ -1,6 +1,6 @@
 # ESP32 SIP Türstation
 
-Ein ESP32-basiertes SIP-Türstation-Projekt mit folgenden Features:
+Ein ESP32-S3 basiertes SIP-Türstation-Projekt mit folgenden Features:
 
 - 2 Klingelknöpfe für verschiedene Wohnungen/Bereiche
 - SIP-Telefonie für Gegensprechen
@@ -10,7 +10,7 @@ Ein ESP32-basiertes SIP-Türstation-Projekt mit folgenden Features:
 
 ## Hardware-Anforderungen
 
-- ESP32 DevKit
+- ESP32-S3 devkit
 - I2S Audio Codec (z.B. MAX98357A für Ausgabe)
 - I2S Mikrofon (z.B. INMP441)
 - 2x Taster für Klingeln
@@ -55,4 +55,7 @@ idf.py flash monitor
 ## Konfiguration
 
 Nach dem ersten Start öffnet sich ein WiFi-Hotspot "ESP32-Doorbell". 
-Webinterface unter http://192.168.4.1 für SIP-Konfiguration.
+
+Initialkennwort: doorstation123
+
+Webinterface unter http://192.168.4.1 für Wifi-Konfiguration.
