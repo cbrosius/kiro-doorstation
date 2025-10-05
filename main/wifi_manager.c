@@ -12,6 +12,12 @@ static const int WIFI_CONNECTED_BIT = BIT0;
 static bool is_connected = false;
 static int retry_count = 0;
 static const int MAX_RETRIES = 10;
+static bool is_scanning = false;
+
+// ESPHome-style scan results storage
+static wifi_scan_result_t scan_results[MAX_SCAN_RESULTS];
+static int scan_results_count = 0;
+static bool scan_results_valid = false;
 
 static const char* wifi_reason_to_string(uint8_t reason) {
     switch (reason) {
@@ -55,8 +61,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        ESP_LOGI(TAG, "WiFi STA started, attempting to connect");
-        esp_wifi_connect();
+        if (!is_scanning) {
+            ESP_LOGI(TAG, "WiFi STA started, attempting to connect");
+            esp_wifi_connect();
+        } else {
+            ESP_LOGI(TAG, "WiFi STA started during scan, skipping auto-connect");
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
         retry_count++;
@@ -81,85 +91,117 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
+        ESP_LOGI(TAG, "WiFi scan completed, processing results...");
+
+        uint16_t ap_count = 0;
+        esp_err_t err = esp_wifi_scan_get_ap_num(&ap_count);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to get AP count: %s", esp_err_to_name(err));
+            is_scanning = false;
+            return;
+        }
+
+        ESP_LOGI(TAG, "Scan found %d APs", ap_count);
+
+        if (ap_count > 0) {
+            wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_count);
+            if (ap_list != NULL) {
+                err = esp_wifi_scan_get_ap_records(&ap_count, ap_list);
+                if (err == ESP_OK) {
+                    // Store results in global array
+                    scan_results_count = 0;
+                    for (int i = 0; i < ap_count && scan_results_count < MAX_SCAN_RESULTS; i++) {
+                        // Skip hidden networks and duplicates
+                        if (ap_list[i].ssid[0] == '\0') continue;
+
+                        // Check for duplicates
+                        bool is_duplicate = false;
+                        for (int j = 0; j < scan_results_count; j++) {
+                            if (strcmp((char*)ap_list[i].ssid, scan_results[j].ssid) == 0) {
+                                is_duplicate = true;
+                                break;
+                            }
+                        }
+                        if (is_duplicate) continue;
+
+                        // Store result
+                        strncpy(scan_results[scan_results_count].ssid, (char*)ap_list[i].ssid, WIFI_SSID_MAX_LEN - 1);
+                        scan_results[scan_results_count].ssid[WIFI_SSID_MAX_LEN - 1] = '\0';
+                        scan_results[scan_results_count].rssi = ap_list[i].rssi;
+                        scan_results[scan_results_count].locked = (ap_list[i].authmode != WIFI_AUTH_OPEN);
+                        scan_results_count++;
+
+                        ESP_LOGI(TAG, "Stored network: %s (RSSI: %d, Locked: %s)",
+                                scan_results[scan_results_count - 1].ssid,
+                                scan_results[scan_results_count - 1].rssi,
+                                scan_results[scan_results_count - 1].locked ? "yes" : "no");
+                    }
+                    scan_results_valid = true;
+                    ESP_LOGI(TAG, "Stored %d unique scan results", scan_results_count);
+                }
+                free(ap_list);
+            }
+        }
+
+        is_scanning = false;
+
+        // ESPHome approach: Keep STA interface active for future scans
+        ESP_LOGI(TAG, "ESPHome approach: Scan completed, STA interface ready for future scans");
     }
 }
 
 char* wifi_scan_networks(void) {
-    ESP_LOGI(TAG, "Scanning for WiFi networks - using APSTA mode");
+    ESP_LOGI(TAG, "ESPHome-style: Checking for stored scan results");
 
-    // Switch to APSTA mode to allow scanning while keeping AP active
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    // ESPHome approach: Serve existing results immediately, no waiting
+    // Background scanning happens independently
 
-    // Reconfigure AP in APSTA mode
-    wifi_config_t ap_config = {
-        .ap = {
-            .ssid = "ESP32-Doorbell",
-            .ssid_len = strlen("ESP32-Doorbell"),
-            .password = "doorbell123",
-            .max_connection = 4,
-            .authmode = WIFI_AUTH_WPA_WPA2_PSK
-        },
-    };
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
-
-    wifi_scan_config_t scan_config = {0};
-    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Scan start failed: %s", esp_err_to_name(err));
-        // Switch back to AP only
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    char *json = malloc(4096);
+    if (json == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for JSON");
         return strdup("[]");
     }
 
-    vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for scan to complete
+    // If no results available, return empty array immediately
+    // Background scan will populate results for next request
+    if (!scan_results_valid || scan_results_count == 0) {
+        ESP_LOGI(TAG, "No scan results available yet, returning empty array");
+        strcpy(json, "[]");
 
-    uint16_t ap_count = 0;
-    esp_wifi_scan_get_ap_num(&ap_count);
-    ESP_LOGI(TAG, "Scan completed, found %d APs", ap_count);
-
-    char *json = NULL;
-    if (ap_count > 0) {
-        wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_count);
-        if (ap_list != NULL) {
-            ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
-
-            // Build JSON array
-            json = malloc(4096); // Should be enough
-            if (json != NULL) {
-                strcpy(json, "[");
-                for (int i = 0; i < ap_count; i++) {
-                    char ssid_escaped[33];
-                    // Simple escape for JSON
-                    char *p = ssid_escaped;
-                    for (int j = 0; j < 32 && ap_list[i].ssid[j]; j++) {
-                        if (ap_list[i].ssid[j] == '"' || ap_list[i].ssid[j] == '\\') {
-                            *p++ = '\\';
-                        }
-                        *p++ = ap_list[i].ssid[j];
-                    }
-                    *p = 0;
-
-                    char entry[128];
-                    snprintf(entry, sizeof(entry), "\"%s\"", ssid_escaped);
-                    strcat(json, entry);
-                    if (i < ap_count - 1) {
-                        strcat(json, ",");
-                    }
-                }
-                strcat(json, "]");
-            }
-            free(ap_list);
+        // Trigger background scan for next time, but don't wait
+        if (!is_scanning) {
+            ESP_LOGI(TAG, "Triggering background scan for future requests");
+            wifi_start_background_scan();
         }
+    } else {
+        // Build JSON from stored results (ESPHome pattern)
+        strcpy(json, "[");
+        for (int i = 0; i < scan_results_count; i++) {
+            if (i > 0) {
+                strcat(json, ",");
+            }
+
+            // Escape SSID for JSON
+            char ssid_escaped[66];
+            char *p = ssid_escaped;
+            for (int j = 0; j < 32 && scan_results[i].ssid[j]; j++) {
+                if (scan_results[i].ssid[j] == '"' || scan_results[i].ssid[j] == '\\') {
+                    *p++ = '\\';
+                }
+                *p++ = scan_results[i].ssid[j];
+            }
+            *p = 0;
+
+            strcat(json, "\"");
+            strcat(json, ssid_escaped);
+            strcat(json, "\"");
+        }
+        strcat(json, "]");
+
+        ESP_LOGI(TAG, "ESPHome-style: Serving %d stored scan results", scan_results_count);
     }
 
-    if (json == NULL) {
-        json = strdup("[]");
-    }
-
-    // Switch back to AP only mode
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-
-    ESP_LOGI(TAG, "Switched back to AP mode");
     return json;
 }
 
@@ -180,10 +222,10 @@ void wifi_manager_init(void)
     
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
-    
+
     // Gespeicherte WiFi-Konfiguration laden
     wifi_manager_config_t saved_config = wifi_load_config();
-    
+
     if (saved_config.configured) {
         ESP_LOGI(TAG, "Gespeicherte WiFi-Konfiguration gefunden, verbinde mit %s", saved_config.ssid);
         wifi_connect_sta(saved_config.ssid, saved_config.password);
@@ -203,7 +245,10 @@ bool wifi_is_connected(void)
 void wifi_start_ap_mode(void)
 {
     ESP_LOGI(TAG, "Starte AP-Modus");
-    
+
+    // ESPHome approach: Start in APSTA mode to allow STA configuration
+    ESP_LOGI(TAG, "ESPHome approach: Starting in APSTA mode for dual-interface support");
+
     wifi_config_t wifi_config = {
         .ap = {
             .ssid = "ESP32-Doorbell",
@@ -213,11 +258,17 @@ void wifi_start_ap_mode(void)
             .authmode = WIFI_AUTH_WPA_WPA2_PSK
         },
     };
-    
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
+    // Start in APSTA mode (ESPHome pattern)
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+
+    // Configure STA with empty config (ESPHome's wifi_sta_pre_setup_())
+    wifi_config_t sta_config = {0};
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
+
     ESP_ERROR_CHECK(esp_wifi_start());
-    
+
     ESP_LOGI(TAG, "AP gestartet. SSID: %s", wifi_config.ap.ssid);
 }
 
@@ -296,4 +347,66 @@ void wifi_clear_config(void)
     } else {
         ESP_LOGE(TAG, "Failed to open NVS for clearing config: %s", esp_err_to_name(err));
     }
+}
+
+// ESPHome-style background scanning
+void wifi_start_background_scan(void)
+{
+    ESP_LOGI(TAG, "Starting background WiFi scan...");
+
+    // Clear previous results
+    wifi_clear_scan_results();
+
+    // Set scanning flag to prevent auto-connect
+    is_scanning = true;
+
+    // Check current WiFi mode
+    wifi_mode_t current_mode;
+    esp_err_t err = esp_wifi_get_mode(&current_mode);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get WiFi mode: %s", esp_err_to_name(err));
+        is_scanning = false;
+        return;
+    }
+
+    ESP_LOGI(TAG, "Current WiFi mode: %d", current_mode);
+
+    // Use ESPHome-style scan configuration - simple and effective
+    wifi_scan_config_t scan_config = {0};
+
+    // ESPHome approach: STA interface already configured, start scanning
+    ESP_LOGI(TAG, "ESPHome approach: Starting scan with pre-configured STA interface...");
+
+    // Start scan using STA interface (ESPHome's method)
+    err = esp_wifi_scan_start(&scan_config, false);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "STA scan failed: %s", esp_err_to_name(err));
+        is_scanning = false;
+        return;
+    }
+
+    ESP_LOGI(TAG, "ESPHome-style scan started successfully");
+
+    ESP_LOGI(TAG, "Background scan started successfully");
+    // Note: Results will be processed in the scan done callback
+}
+
+void wifi_clear_scan_results(void)
+{
+    scan_results_count = 0;
+    scan_results_valid = false;
+    ESP_LOGI(TAG, "Scan results cleared");
+}
+
+int wifi_get_scan_results(wifi_scan_result_t* results, int max_results)
+{
+    if (!scan_results_valid) {
+        ESP_LOGW(TAG, "Scan results not valid");
+        return 0;
+    }
+
+    int count = (scan_results_count < max_results) ? scan_results_count : max_results;
+    memcpy(results, scan_results, count * sizeof(wifi_scan_result_t));
+    ESP_LOGI(TAG, "Returning %d scan results", count);
+    return count;
 }

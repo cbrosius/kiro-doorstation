@@ -80,7 +80,7 @@ static const char* get_html_page(bool is_connected) {
         "<h1>ESP32 Door Station Setup</h1>"
         "<p>Welcome! This is the setup page for your ESP32 Door Station. Connect your device to a WiFi network to enable SIP calling and door control features. Use the scan button to find available networks, or enter your network details manually.</p>"
         "<p>Please connect to your WiFi network:</p>"
-        "<button onclick='scanNetworks()' style='margin-bottom:10px;'>Scan for Networks</button>"
+        "<button onclick='triggerNewScan()' style='margin-bottom:10px;' id='new-scan-button'>Scan for Networks</button>"
         "<p id='scan-status' style='margin-bottom:10px;'></p>"
         "<form action='/wifi' method='post'>"
         "<div class='form-group'><label>WiFi SSID:</label><select name='ssid' id='ssid-select'><option value=''>Scan networks or enter SSID manually</option></select><br><input type='text' name='ssid_manual' placeholder='Or enter manually' required style='margin-top:5px;width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px;'></div>"
@@ -88,37 +88,56 @@ static const char* get_html_page(bool is_connected) {
         "<button type='submit'>Connect to WiFi</button>"
         "</form>"
         "<script>"
-        "function scanNetworks() {"
-        "  const status = document.getElementById('scan-status');"
-        "  status.textContent = 'Scanning...';"
-        "  fetch('/scan').then(response => {"
-        "    if (!response.ok) {"
-        "      throw new Error('Scan failed');"
-        "    }"
-        "    return response.json();"
-        "  }).then(data => {"
-        "    const select = document.getElementById('ssid-select');"
-        "    select.innerHTML = '<option value=\"\">Scan networks or enter SSID manually</option>';"
-        "    data.forEach(ssid => {"
-        "      const option = document.createElement('option');"
-        "      option.value = ssid;"
-        "      option.textContent = ssid;"
-        "      select.appendChild(option);"
+        "function triggerNewScan() {"
+        "  console.log('Scan button clicked');"
+        "  var status = document.getElementById('scan-status');"
+        "  var button = document.getElementById('new-scan-button');"
+        "  var select = document.getElementById('ssid-select');"
+        "  if (!status || !button || !select) {"
+        "    console.error('Elements not found');"
+        "    return;"
+        "  }"
+        "  status.textContent = 'Scanning for networks...';"
+        "  button.textContent = 'Scanning...';"
+        "  button.disabled = true;"
+        "  fetch('/scan?new=1')"
+        "    .then(function(response) {"
+        "      console.log('Scan response:', response.status);"
+        "      if (!response.ok) {"
+        "        throw new Error('HTTP ' + response.status);"
+        "      }"
+        "      return response.json();"
+        "    })"
+        "    .then(function(data) {"
+        "      console.log('Scan data:', data);"
+        "      while (select.children.length > 1) {"
+        "        select.removeChild(select.lastChild);"
+        "      }"
+        "      if (data && data.length > 0) {"
+        "        for (var i = 0; i < data.length; i++) {"
+        "          var option = document.createElement('option');"
+        "          option.value = data[i];"
+        "          option.textContent = data[i];"
+        "          select.appendChild(option);"
+        "          console.log('Added network:', data[i]);"
+        "        }"
+        "        status.textContent = 'Found ' + data.length + ' networks';"
+        "        status.style.color = 'green';"
+        "      } else {"
+        "        status.textContent = 'No networks found';"
+        "        status.style.color = 'orange';"
+        "      }"
+        "    })"
+        "    .catch(function(error) {"
+        "      console.error('Scan error:', error);"
+        "      status.textContent = 'Scan error';"
+        "      status.style.color = 'red';"
+        "    })"
+        "    .then(function() {"
+        "      button.textContent = 'Scan for Networks';"
+        "      button.disabled = false;"
         "    });"
-        "    status.textContent = 'Scan completed: ' + data.length + ' networks found';"
-        "    status.style.color = data.length > 0 ? 'green' : 'orange';"
-        "  }).catch(error => {"
-        "    console.error('Scan failed:', error);"
-        "    status.textContent = 'Scan failed';"
-        "    status.style.color = 'red';"
-        "  });"
         "}"
-        "document.querySelector('input[name=ssid_manual]').addEventListener('input', function() {"
-        "  document.getElementById('ssid-select').value = '';"
-        "});"
-        "document.getElementById('ssid-select').addEventListener('change', function() {"
-        "  document.querySelector('input[name=ssid_manual]').value = this.value;"
-        "});"
         "</script>"
         "</div></body></html>";
     } else {
@@ -378,6 +397,23 @@ static esp_err_t reset_handler(httpd_req_t *req)
 
 static esp_err_t scan_handler(httpd_req_t *req)
 {
+    // Check for new scan parameter
+    char buf[32];
+    int ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
+    bool is_new_scan = false;
+
+    if (ret == ESP_OK) {
+        char param[32];
+        if (httpd_query_key_value(buf, "new", param, sizeof(param)) == ESP_OK) {
+            is_new_scan = true;
+            ESP_LOGI(TAG, "New scan requested, clearing results");
+            wifi_clear_scan_results();
+            wifi_start_background_scan();
+            // Wait a bit for scan to complete
+            vTaskDelay(pdMS_TO_TICKS(4000));
+        }
+    }
+
     char *json = wifi_scan_networks();
     if (json == NULL) {
         ESP_LOGE(TAG, "Scan returned NULL");
