@@ -200,3 +200,21 @@ wifi_manager_config_t wifi_load_config(void)
     
     return config;
 }
+
+void wifi_clear_config(void)
+{
+    ESP_LOGI(TAG, "Clearing WiFi configuration");
+
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_erase_key(nvs_handle, "ssid");
+        nvs_erase_key(nvs_handle, "password");
+        nvs_erase_key(nvs_handle, "configured");
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+        ESP_LOGI(TAG, "WiFi configuration cleared");
+    } else {
+        ESP_LOGE(TAG, "Failed to open NVS for clearing config: %s", esp_err_to_name(err));
+    }
+}

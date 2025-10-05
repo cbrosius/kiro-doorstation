@@ -19,5 +19,6 @@ void wifi_start_ap_mode(void);
 void wifi_connect_sta(const char* ssid, const char* password);
 void wifi_save_config(const char* ssid, const char* password);
 wifi_manager_config_t wifi_load_config(void);
+void wifi_clear_config(void);
 
 #endif

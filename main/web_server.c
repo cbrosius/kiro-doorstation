@@ -1,7 +1,9 @@
+#include "nvs_flash.h"
+#include "esp_log.h"
+#include "esp_system.h"
 #include "web_server.h"
 #include "wifi_manager.h"
 #include "sip_client.h"
-#include "esp_log.h"
 #include "cJSON.h"
 
 static const char *TAG = "WEB_SERVER";
@@ -110,6 +112,10 @@ static const char* get_html_page(bool is_connected) {
         "<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' placeholder='apartment1@example.com' required></div>"
         "<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' placeholder='apartment2@example.com' required></div>"
         "<button type='submit'>Save SIP Config</button>"
+        "</form>"
+        "<h2>System</h2>"
+        "<form action='/reset' method='post' onsubmit='return confirm(\"Are you sure you want to reset to factory defaults?\")'>"
+        "<button type='submit' style='background:#dc3545;color:white;'>Factory Reset</button>"
         "</form>"
         "<h2>DTMF Codes</h2>"
         "<p><strong>*1</strong> - Activate door opener</p>"
@@ -301,6 +307,24 @@ static esp_err_t sip_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t reset_handler(httpd_req_t *req)
+{
+    ESP_LOGW(TAG, "Factory reset requested");
+
+    // Clear WiFi config
+    wifi_clear_config();
+
+    const char* response = "<html><body><h1>Factory Reset Complete</h1>"
+                          "<p>The device will restart...</p></body></html>";
+    httpd_resp_send(req, response, strlen(response));
+
+    // Restart after a short delay
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    esp_restart();
+
+    return ESP_OK;
+}
+
 void web_server_start(void)
 {
     ESP_LOGI(TAG, "Web Server starten");
@@ -332,6 +356,14 @@ void web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &sip_uri);
+
+        httpd_uri_t reset_uri = {
+            .uri = "/reset",
+            .method = HTTP_POST,
+            .handler = reset_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &reset_uri);
 
         // Captive portal handlers
         httpd_uri_t generate_204_uri = {
