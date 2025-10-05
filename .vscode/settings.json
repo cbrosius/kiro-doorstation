@@ -26,5 +26,6 @@
     "--query-driver=C:\\Espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
     "--compile-commands-dir=c:\\Projekte\\Github\\OpenDoorstation\\kiro-doorstation\\build"
   ],
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "sonarlint.pathToCompileCommands": "${workspaceFolder}\\firmware\\compile_commands.json"
 }

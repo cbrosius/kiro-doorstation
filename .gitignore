@@ -1,5 +1,1 @@
-firmware/*
-firmware/build.ninja
-firmware/CMakeCache.txt
-firmware/compile_commands.json
-firmware/project_description.json
+firmware/

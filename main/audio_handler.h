@@ -1,7 +1,7 @@
 #ifndef AUDIO_HANDLER_H
 #define AUDIO_HANDLER_H
 
-#include "driver/i2s.h"
+#include "driver/i2s_std.h"
 
 #define SAMPLE_RATE     8000
 #define BITS_PER_SAMPLE 16
