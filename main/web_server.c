@@ -53,6 +53,14 @@ static esp_err_t root_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t captive_portal_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 static esp_err_t wifi_handler(httpd_req_t *req)
 {
     char buf[1000];
@@ -174,7 +182,40 @@ void web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &sip_uri);
-        
+
+        // Captive portal handlers
+        httpd_uri_t generate_204_uri = {
+            .uri = "/generate_204",
+            .method = HTTP_GET,
+            .handler = captive_portal_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &generate_204_uri);
+
+        httpd_uri_t hotspot_detect_uri = {
+            .uri = "/hotspot-detect.html",
+            .method = HTTP_GET,
+            .handler = captive_portal_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &hotspot_detect_uri);
+
+        httpd_uri_t success_uri = {
+            .uri = "/library/test/success.html",
+            .method = HTTP_GET,
+            .handler = captive_portal_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &success_uri);
+
+        httpd_uri_t ncsi_uri = {
+            .uri = "/ncsi.txt",
+            .method = HTTP_GET,
+            .handler = captive_portal_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &ncsi_uri);
+
         ESP_LOGI(TAG, "Web Server gestartet auf Port %d", config.server_port);
     } else {
         ESP_LOGE(TAG, "Fehler beim Starten des Web Servers");
