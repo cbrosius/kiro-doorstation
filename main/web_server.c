@@ -65,23 +65,61 @@ static const char* get_html_page(bool is_connected) {
         "<!DOCTYPE html>"
         "<html><head><title>ESP32 Door Station Setup</title>"
         "<meta charset='UTF-8'>"
-        "<style>body{font-family:Arial;margin:40px;background:#f0f0f0}"
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+        "<style>body{font-family:Arial;margin:20px;background:#f0f0f0}"
         ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
-        "h1{color:#333;text-align:center}"
+        "h1{color:#333;text-align:center;font-size:24px}"
         ".form-group{margin:15px 0}"
         "label{display:block;margin-bottom:5px;font-weight:bold}"
-        "input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}"
-        "button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer;margin:5px}"
+        "input[type=text],input[type=password],select{width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px}"
+        "button{background:#007bff;color:white;padding:12px 24px;border:none;border-radius:5px;cursor:pointer;margin:5px;font-size:16px;width:100%;max-width:200px}"
         "button:hover{background:#0056b3}"
+        "@media (max-width: 600px) {body{margin:10px}.container{padding:15px}h1{font-size:20px}button{padding:14px}}"
         "</style></head><body>"
         "<div class='container'>"
         "<h1>ESP32 Door Station Setup</h1>"
+        "<p>Welcome! This is the setup page for your ESP32 Door Station. Connect your device to a WiFi network to enable SIP calling and door control features. Use the scan button to find available networks, or enter your network details manually.</p>"
         "<p>Please connect to your WiFi network:</p>"
+        "<button onclick='scanNetworks()' style='margin-bottom:10px;'>Scan for Networks</button>"
+        "<p id='scan-status' style='margin-bottom:10px;'></p>"
         "<form action='/wifi' method='post'>"
-        "<div class='form-group'><label>WiFi SSID:</label><input type='text' name='ssid' required></div>"
+        "<div class='form-group'><label>WiFi SSID:</label><select name='ssid' id='ssid-select'><option value=''>Scan networks or enter SSID manually</option></select><br><input type='text' name='ssid_manual' placeholder='Or enter manually' required style='margin-top:5px;width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px;'></div>"
         "<div class='form-group'><label>WiFi Password:</label><input type='password' name='password' required></div>"
         "<button type='submit'>Connect to WiFi</button>"
         "</form>"
+        "<script>"
+        "function scanNetworks() {"
+        "  const status = document.getElementById('scan-status');"
+        "  status.textContent = 'Scanning...';"
+        "  fetch('/scan').then(response => {"
+        "    if (!response.ok) {"
+        "      throw new Error('Scan failed');"
+        "    }"
+        "    return response.json();"
+        "  }).then(data => {"
+        "    const select = document.getElementById('ssid-select');"
+        "    select.innerHTML = '<option value=\"\">Scan networks or enter SSID manually</option>';"
+        "    data.forEach(ssid => {"
+        "      const option = document.createElement('option');"
+        "      option.value = ssid;"
+        "      option.textContent = ssid;"
+        "      select.appendChild(option);"
+        "    });"
+        "    status.textContent = 'Scan completed: ' + data.length + ' networks found';"
+        "    status.style.color = data.length > 0 ? 'green' : 'orange';"
+        "  }).catch(error => {"
+        "    console.error('Scan failed:', error);"
+        "    status.textContent = 'Scan failed';"
+        "    status.style.color = 'red';"
+        "  });"
+        "}"
+        "document.querySelector('input[name=ssid_manual]').addEventListener('input', function() {"
+        "  document.getElementById('ssid-select').value = '';"
+        "});"
+        "document.getElementById('ssid-select').addEventListener('change', function() {"
+        "  document.querySelector('input[name=ssid_manual]').value = this.value;"
+        "});"
+        "</script>"
         "</div></body></html>";
     } else {
         // Connected mode: full config
@@ -164,23 +202,36 @@ static esp_err_t wifi_handler(httpd_req_t *req)
     // Parse form data
     char ssid[64] = {0};
     char password[64] = {0};
-    
+
     char *ssid_start = strstr(buf, "ssid=");
+    char *ssid_manual_start = strstr(buf, "ssid_manual=");
     char *password_start = strstr(buf, "password=");
-    
-    if (ssid_start && password_start) {
-        ssid_start += 5; // Skip "ssid="
-        char *ssid_end = strchr(ssid_start, '&');
-        if (ssid_end) {
-            strncpy(ssid, ssid_start, ssid_end - ssid_start);
-        }
-        
+
+    if (password_start) {
         password_start += 9; // Skip "password="
         char *password_end = strchr(password_start, '&');
         if (password_end) {
             strncpy(password, password_start, password_end - password_start);
         } else {
             strcpy(password, password_start);
+        }
+
+        // Get SSID from select or manual
+        if (ssid_start) {
+            ssid_start += 5; // Skip "ssid="
+            char *ssid_end = strchr(ssid_start, '&');
+            if (ssid_end) {
+                strncpy(ssid, ssid_start, ssid_end - ssid_start);
+            }
+        }
+        if (strlen(ssid) == 0 && ssid_manual_start) {
+            ssid_manual_start += 12; // Skip "ssid_manual="
+            char *ssid_end = strchr(ssid_manual_start, '&');
+            if (ssid_end) {
+                strncpy(ssid, ssid_manual_start, ssid_end - ssid_manual_start);
+            } else {
+                strcpy(ssid, ssid_manual_start);
+            }
         }
 
         // URL decode
@@ -325,12 +376,29 @@ static esp_err_t reset_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t scan_handler(httpd_req_t *req)
+{
+    char *json = wifi_scan_networks();
+    if (json == NULL) {
+        ESP_LOGE(TAG, "Scan returned NULL");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Scan result: %s", json);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json, strlen(json));
+    free(json);
+    return ESP_OK;
+}
+
 void web_server_start(void)
 {
     ESP_LOGI(TAG, "Web Server starten");
     
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
+    config.max_uri_handlers = 16;
     
     if (httpd_start(&server, &config) == ESP_OK) {
         httpd_uri_t root_uri = {
@@ -348,7 +416,15 @@ void web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &wifi_uri);
-        
+
+        httpd_uri_t scan_uri = {
+            .uri = "/scan",
+            .method = HTTP_GET,
+            .handler = scan_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &scan_uri);
+
         httpd_uri_t sip_uri = {
             .uri = "/sip",
             .method = HTTP_POST,

@@ -20,5 +20,6 @@ void wifi_connect_sta(const char* ssid, const char* password);
 void wifi_save_config(const char* ssid, const char* password);
 wifi_manager_config_t wifi_load_config(void);
 void wifi_clear_config(void);
+char* wifi_scan_networks(void);
 
 #endif

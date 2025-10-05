@@ -84,6 +84,85 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+char* wifi_scan_networks(void) {
+    ESP_LOGI(TAG, "Scanning for WiFi networks - using APSTA mode");
+
+    // Switch to APSTA mode to allow scanning while keeping AP active
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+
+    // Reconfigure AP in APSTA mode
+    wifi_config_t ap_config = {
+        .ap = {
+            .ssid = "ESP32-Doorbell",
+            .ssid_len = strlen("ESP32-Doorbell"),
+            .password = "doorbell123",
+            .max_connection = 4,
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK
+        },
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+
+    wifi_scan_config_t scan_config = {0};
+    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Scan start failed: %s", esp_err_to_name(err));
+        // Switch back to AP only
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+        return strdup("[]");
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for scan to complete
+
+    uint16_t ap_count = 0;
+    esp_wifi_scan_get_ap_num(&ap_count);
+    ESP_LOGI(TAG, "Scan completed, found %d APs", ap_count);
+
+    char *json = NULL;
+    if (ap_count > 0) {
+        wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_count);
+        if (ap_list != NULL) {
+            ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
+
+            // Build JSON array
+            json = malloc(4096); // Should be enough
+            if (json != NULL) {
+                strcpy(json, "[");
+                for (int i = 0; i < ap_count; i++) {
+                    char ssid_escaped[33];
+                    // Simple escape for JSON
+                    char *p = ssid_escaped;
+                    for (int j = 0; j < 32 && ap_list[i].ssid[j]; j++) {
+                        if (ap_list[i].ssid[j] == '"' || ap_list[i].ssid[j] == '\\') {
+                            *p++ = '\\';
+                        }
+                        *p++ = ap_list[i].ssid[j];
+                    }
+                    *p = 0;
+
+                    char entry[128];
+                    snprintf(entry, sizeof(entry), "\"%s\"", ssid_escaped);
+                    strcat(json, entry);
+                    if (i < ap_count - 1) {
+                        strcat(json, ",");
+                    }
+                }
+                strcat(json, "]");
+            }
+            free(ap_list);
+        }
+    }
+
+    if (json == NULL) {
+        json = strdup("[]");
+    }
+
+    // Switch back to AP only mode
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
+    ESP_LOGI(TAG, "Switched back to AP mode");
+    return json;
+}
+
 void wifi_manager_init(void)
 {
     ESP_LOGI(TAG, "WiFi Manager initialisieren");
