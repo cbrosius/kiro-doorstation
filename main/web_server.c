@@ -267,14 +267,16 @@ static esp_err_t wifi_handler(httpd_req_t *req)
             return ESP_FAIL;
         }
 
-        ESP_LOGI(TAG, "WiFi Konfiguration: SSID=%s", ssid);
+        ESP_LOGI(TAG, "WiFi Configuration: SSID=%s", ssid);
         wifi_save_config(ssid, password);
-        wifi_connect_sta(ssid, password);
-        
-        const char* response = "<html><body><h1>WiFi Konfiguration gespeichert</h1>"
-                              "<p>Das Gerät versucht sich zu verbinden...</p>"
-                              "<a href='/'>Zurück</a></body></html>";
+
+        const char* response = "<html><body><h1>WiFi Configuration Saved</h1>"
+                              "<p>The device is attempting to connect...</p>"
+                              "<a href='/'>Back</a></body></html>";
         httpd_resp_send(req, response, strlen(response));
+
+        web_server_stop();
+        wifi_connect_sta(ssid, password);
     } else {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form data");
     }
@@ -365,13 +367,13 @@ static esp_err_t sip_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "SIP Konfiguration: Server=%s, User=%s", server, username);
+    ESP_LOGI(TAG, "SIP Configuration: Server=%s, User=%s", server, username);
 
     // Save SIP config (placeholder)
     // sip_save_config(server, username, sip_password, apt1, apt2);
 
-    const char* response = "<html><body><h1>SIP Konfiguration gespeichert</h1>"
-                          "<a href='/'>Zurück</a></body></html>";
+    const char* response = "<html><body><h1>SIP Configuration Saved</h1>"
+                          "<a href='/'>Back</a></body></html>";
     httpd_resp_send(req, response, strlen(response));
     
     return ESP_OK;
@@ -428,7 +430,7 @@ static esp_err_t scan_handler(httpd_req_t *req)
 
 void web_server_start(void)
 {
-    ESP_LOGI(TAG, "Web Server starten");
+    ESP_LOGI(TAG, "Starting web server");
     
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
@@ -516,9 +518,9 @@ void web_server_start(void)
         };
         httpd_register_uri_handler(server, &favicon_uri);
 
-        ESP_LOGI(TAG, "Web Server gestartet auf Port %d", config.server_port);
+        ESP_LOGI(TAG, "Web server started on port %d", config.server_port);
     } else {
-        ESP_LOGE(TAG, "Fehler beim Starten des Web Servers");
+        ESP_LOGE(TAG, "Error starting web server");
     }
 }
 
@@ -527,6 +529,6 @@ void web_server_stop(void)
     if (server) {
         httpd_stop(server);
         server = NULL;
-        ESP_LOGI(TAG, "Web Server gestoppt");
+        ESP_LOGI(TAG, "Web server stopped");
     }
 }

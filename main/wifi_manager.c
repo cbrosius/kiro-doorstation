@@ -5,6 +5,7 @@
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "web_server.h"
 
 static const char *TAG = "WIFI";
 static EventGroupHandle_t wifi_event_group;
@@ -89,6 +90,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        // Restart web server in STA mode
+        web_server_start();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
@@ -200,7 +203,7 @@ char* wifi_scan_networks(void) {
 
 void wifi_manager_init(void)
 {
-    ESP_LOGI(TAG, "WiFi Manager initialisieren");
+    ESP_LOGI(TAG, "Initializing WiFi Manager");
     
     wifi_event_group = xEventGroupCreate();
     
@@ -220,14 +223,14 @@ void wifi_manager_init(void)
     wifi_manager_config_t saved_config = wifi_load_config();
 
     if (saved_config.configured) {
-        ESP_LOGI(TAG, "Gespeicherte WiFi-Konfiguration gefunden, verbinde mit %s", saved_config.ssid);
+        ESP_LOGI(TAG, "Saved WiFi configuration found, connecting to %s", saved_config.ssid);
         wifi_connect_sta(saved_config.ssid, saved_config.password);
     } else {
-        ESP_LOGI(TAG, "Keine WiFi-Konfiguration gefunden, starte AP-Modus");
+        ESP_LOGI(TAG, "No WiFi configuration found, starting AP mode");
         wifi_start_ap_mode();
     }
-    
-    ESP_LOGI(TAG, "WiFi Manager initialisiert");
+
+    ESP_LOGI(TAG, "WiFi Manager initialized");
 }
 
 bool wifi_is_connected(void)
@@ -237,7 +240,7 @@ bool wifi_is_connected(void)
 
 void wifi_start_ap_mode(void)
 {
-    ESP_LOGI(TAG, "Starte AP-Modus");
+    ESP_LOGI(TAG, "Starting AP mode");
 
     // ESPHome approach: Start in APSTA mode to allow STA configuration
     ESP_LOGI(TAG, "ESPHome approach: Starting in APSTA mode for dual-interface support");
@@ -262,12 +265,14 @@ void wifi_start_ap_mode(void)
 
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "AP gestartet. SSID: %s", wifi_config.ap.ssid);
+    ESP_LOGI(TAG, "AP started. SSID: %s", wifi_config.ap.ssid);
+    // Restart web server in AP mode
+    web_server_start();
 }
 
 void wifi_connect_sta(const char* ssid, const char* password)
 {
-    ESP_LOGI(TAG, "Verbinde mit WiFi: %s", ssid);
+    ESP_LOGI(TAG, "Connecting to WiFi: %s", ssid);
 
     retry_count = 0; // Reset retry count when starting new connection
 
@@ -282,7 +287,7 @@ void wifi_connect_sta(const char* ssid, const char* password)
 
 void wifi_save_config(const char* ssid, const char* password)
 {
-    ESP_LOGI(TAG, "Speichere WiFi-Konfiguration");
+    ESP_LOGI(TAG, "Saving WiFi configuration");
     
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
@@ -292,9 +297,9 @@ void wifi_save_config(const char* ssid, const char* password)
         nvs_set_u8(nvs_handle, "configured", 1);
         nvs_commit(nvs_handle);
         nvs_close(nvs_handle);
-        ESP_LOGI(TAG, "WiFi-Konfiguration gespeichert");
+        ESP_LOGI(TAG, "WiFi configuration saved");
     } else {
-        ESP_LOGE(TAG, "Fehler beim Öffnen des NVS: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error opening NVS: %s", esp_err_to_name(err));
     }
 }
 

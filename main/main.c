@@ -18,7 +18,7 @@ static const char *TAG = "MAIN";
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "ESP32 SIP Türstation gestartet");
+    ESP_LOGI(TAG, "ESP32 SIP Door Station started");
     
     // NVS initialisieren
     esp_err_t ret = nvs_flash_init();
@@ -46,7 +46,7 @@ void app_main(void)
     // SIP Client initialisieren
     sip_client_init();
     
-    ESP_LOGI(TAG, "Alle Komponenten initialisiert");
+    ESP_LOGI(TAG, "All components initialized");
     
     // Hauptschleife
     while (1) {
