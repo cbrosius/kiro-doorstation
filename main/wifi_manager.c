@@ -90,8 +90,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
-        // Restart web server in STA mode
-        web_server_start();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
@@ -266,8 +264,6 @@ void wifi_start_ap_mode(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "AP started. SSID: %s", wifi_config.ap.ssid);
-    // Restart web server in AP mode
-    web_server_start();
 }
 
 void wifi_connect_sta(const char* ssid, const char* password)

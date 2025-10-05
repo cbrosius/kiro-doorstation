@@ -271,12 +271,12 @@ static esp_err_t wifi_handler(httpd_req_t *req)
         wifi_save_config(ssid, password);
 
         const char* response = "<html><body><h1>WiFi Configuration Saved</h1>"
-                              "<p>The device is attempting to connect...</p>"
-                              "<a href='/'>Back</a></body></html>";
+                              "<p>The device will restart and connect...</p></body></html>";
         httpd_resp_send(req, response, strlen(response));
 
-        web_server_stop();
-        wifi_connect_sta(ssid, password);
+        // Restart to apply new WiFi config
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
     } else {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form data");
     }
