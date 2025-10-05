@@ -10,6 +10,8 @@ static const char *TAG = "WIFI";
 static EventGroupHandle_t wifi_event_group;
 static const int WIFI_CONNECTED_BIT = BIT0;
 static bool is_connected = false;
+static int retry_count = 0;
+static const int MAX_RETRIES = 10;
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                               int32_t event_id, void* event_data)
@@ -17,14 +19,22 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "WiFi Verbindung getrennt, versuche Reconnect");
+        retry_count++;
+        ESP_LOGI(TAG, "WiFi Verbindung getrennt, Retry %d/%d", retry_count, MAX_RETRIES);
         is_connected = false;
-        esp_wifi_connect();
+        if (retry_count >= MAX_RETRIES) {
+            ESP_LOGW(TAG, "Max retries reached, falling back to AP mode");
+            wifi_start_ap_mode();
+            retry_count = 0; // Reset for future attempts
+        } else {
+            esp_wifi_connect();
+        }
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "IP erhalten:" IPSTR, IP2STR(&event->ip_info.ip));
         is_connected = true;
+        retry_count = 0; // Reset retry count on successful connection
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
@@ -90,11 +100,13 @@ void wifi_start_ap_mode(void)
 void wifi_connect_sta(const char* ssid, const char* password)
 {
     ESP_LOGI(TAG, "Verbinde mit WiFi: %s", ssid);
-    
+
+    retry_count = 0; // Reset retry count when starting new connection
+
     wifi_config_t wifi_config = {0};
     strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
-    
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
