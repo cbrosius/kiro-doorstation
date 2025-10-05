@@ -56,49 +56,75 @@ static esp_err_t favicon_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-static const char* html_page =
-"<!DOCTYPE html>"
-"<html><head><title>ESP32 Türstation</title>"
-"<meta charset='UTF-8'>"
-"<style>body{font-family:Arial;margin:40px;background:#f0f0f0}"
-".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
-"h1{color:#333;text-align:center}"
-".form-group{margin:15px 0}"
-"label{display:block;margin-bottom:5px;font-weight:bold}"
-"input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}"
-"button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer;margin:5px}"
-"button:hover{background:#0056b3}"
-".status{padding:10px;margin:10px 0;border-radius:5px}"
-".success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}"
-".error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}"
-"</style></head><body>"
-"<div class='container'>"
-"<h1>ESP32 SIP Türstation</h1>"
-"<h2>WiFi Konfiguration</h2>"
-"<form action='/wifi' method='post'>"
-"<div class='form-group'><label>SSID:</label><input type='text' name='ssid' required></div>"
-"<div class='form-group'><label>Passwort:</label><input type='password' name='password' required></div>"
-"<button type='submit'>WiFi Verbinden</button>"
-"</form>"
-"<h2>SIP Konfiguration</h2>"
-"<form action='/sip' method='post'>"
-"<div class='form-group'><label>SIP Server:</label><input type='text' name='server' placeholder='sip.example.com'></div>"
-"<div class='form-group'><label>Benutzername:</label><input type='text' name='username' placeholder='doorbell'></div>"
-"<div class='form-group'><label>Passwort:</label><input type='password' name='password'></div>"
-"<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' placeholder='apartment1@example.com'></div>"
-"<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' placeholder='apartment2@example.com'></div>"
-"<button type='submit'>SIP Konfigurieren</button>"
-"</form>"
-"<h2>DTMF Codes</h2>"
-"<p><strong>*1</strong> - Türöffner aktivieren</p>"
-"<p><strong>*2</strong> - Licht ein/aus</p>"
-"<p><strong>#</strong> - Gespräch beenden</p>"
-"</div></body></html>";
+static const char* get_html_page(bool is_connected) {
+    if (!is_connected) {
+        // AP mode: only WiFi config
+        return
+        "<!DOCTYPE html>"
+        "<html><head><title>ESP32 Door Station Setup</title>"
+        "<meta charset='UTF-8'>"
+        "<style>body{font-family:Arial;margin:40px;background:#f0f0f0}"
+        ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
+        "h1{color:#333;text-align:center}"
+        ".form-group{margin:15px 0}"
+        "label{display:block;margin-bottom:5px;font-weight:bold}"
+        "input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}"
+        "button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer;margin:5px}"
+        "button:hover{background:#0056b3}"
+        "</style></head><body>"
+        "<div class='container'>"
+        "<h1>ESP32 Door Station Setup</h1>"
+        "<p>Please connect to your WiFi network:</p>"
+        "<form action='/wifi' method='post'>"
+        "<div class='form-group'><label>WiFi SSID:</label><input type='text' name='ssid' required></div>"
+        "<div class='form-group'><label>WiFi Password:</label><input type='password' name='password' required></div>"
+        "<button type='submit'>Connect to WiFi</button>"
+        "</form>"
+        "</div></body></html>";
+    } else {
+        // Connected mode: full config
+        return
+        "<!DOCTYPE html>"
+        "<html><head><title>ESP32 Door Station</title>"
+        "<meta charset='UTF-8'>"
+        "<style>body{font-family:Arial;margin:40px;background:#f0f0f0}"
+        ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
+        "h1{color:#333;text-align:center}"
+        ".form-group{margin:15px 0}"
+        "label{display:block;margin-bottom:5px;font-weight:bold}"
+        "input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}"
+        "button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer;margin:5px}"
+        "button:hover{background:#0056b3}"
+        ".status{padding:10px;margin:10px 0;border-radius:5px}"
+        ".success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}"
+        ".error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}"
+        "</style></head><body>"
+        "<div class='container'>"
+        "<h1>ESP32 Door Station</h1>"
+        "<div class='status success'>✓ Connected to WiFi</div>"
+        "<h2>SIP Configuration</h2>"
+        "<form action='/sip' method='post'>"
+        "<div class='form-group'><label>SIP Server:</label><input type='text' name='server' placeholder='sip.example.com' required></div>"
+        "<div class='form-group'><label>Username:</label><input type='text' name='username' placeholder='doorbell' required></div>"
+        "<div class='form-group'><label>Password:</label><input type='password' name='password'></div>"
+        "<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' placeholder='apartment1@example.com' required></div>"
+        "<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' placeholder='apartment2@example.com' required></div>"
+        "<button type='submit'>Save SIP Config</button>"
+        "</form>"
+        "<h2>DTMF Codes</h2>"
+        "<p><strong>*1</strong> - Activate door opener</p>"
+        "<p><strong>*2</strong> - Toggle light</p>"
+        "<p><strong>#</strong> - End call</p>"
+        "</div></body></html>";
+    }
+}
 
 static esp_err_t root_handler(httpd_req_t *req)
 {
+    bool is_connected = wifi_is_connected();
+    const char* page = get_html_page(is_connected);
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, html_page, strlen(html_page));
+    httpd_resp_send(req, page, strlen(page));
     return ESP_OK;
 }
 
