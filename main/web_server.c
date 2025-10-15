@@ -161,15 +161,22 @@ static const char* get_html_page(bool is_connected) {
         "<div class='container'>"
         "<h1>ESP32 Door Station</h1>"
         "<div class='status success'>✓ Connected to WiFi</div>"
+        "<h2>SIP Status</h2>"
+        "<div id='sip-status' class='status' style='margin-bottom:20px;'>Loading SIP status...</div>"
+        "<button onclick='refreshSipStatus()' style='margin-bottom:20px;'>Refresh SIP Status</button>"
         "<h2>SIP Configuration</h2>"
-        "<form action='/sip' method='post'>"
-        "<div class='form-group'><label>SIP Server:</label><input type='text' name='server' placeholder='sip.example.com' required></div>"
-        "<div class='form-group'><label>Username:</label><input type='text' name='username' placeholder='doorbell' required></div>"
-        "<div class='form-group'><label>Password:</label><input type='password' name='password'></div>"
-        "<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' placeholder='apartment1@example.com' required></div>"
-        "<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' placeholder='apartment2@example.com' required></div>"
-        "<button type='submit'>Save SIP Config</button>"
+        "<div id='sip-save-result' class='status' style='display:none;margin-bottom:15px;'></div>"
+        "<div id='current-sip-config' style='margin-bottom:15px;padding:10px;background:#e9ecef;border-radius:5px;display:none;'></div>"
+        "<form action='/sip' method='post' onsubmit='return handleSipConfigSubmit()'>"
+        "<div class='form-group'><label>SIP Server:</label><input type='text' name='server' id='sip-server' placeholder='sip.example.com' required></div>"
+        "<div class='form-group'><label>Username:</label><input type='text' name='username' id='sip-username' placeholder='doorbell' required></div>"
+        "<div class='form-group'><label>Password:</label><input type='password' name='password' id='sip-password'></div>"
+        "<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' id='sip-apt1' placeholder='apartment1@example.com' required></div>"
+        "<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' id='sip-apt2' placeholder='apartment2@example.com' required></div>"
+        "<button type='submit' id='sip-save-btn'>Save SIP Config</button>"
         "</form>"
+        "<button onclick='testSipConnection()' style='background:#17a2b8;color:white;margin-top:10px;'>Test SIP Connection</button>"
+        "<div id='sip-test-result' class='status' style='display:none;margin-top:10px;'></div>"
         "<h2>System</h2>"
         "<form action='/reset' method='post' onsubmit='return confirm(\"Are you sure you want to reset to factory defaults?\")'>"
         "<button type='submit' style='background:#dc3545;color:white;'>Factory Reset</button>"
@@ -178,6 +185,178 @@ static const char* get_html_page(bool is_connected) {
         "<p><strong>*1</strong> - Activate door opener</p>"
         "<p><strong>*2</strong> - Toggle light</p>"
         "<p><strong>#</strong> - End call</p>"
+        "<script>"
+        "function handleSipConfigSubmit() {"
+        "  var saveBtn = document.getElementById('sip-save-btn');"
+        "  var resultDiv = document.getElementById('sip-save-result');"
+        "  if (!saveBtn || !resultDiv) return true;"
+        "  "
+        "  // Disable button and show saving message"
+        "  saveBtn.textContent = 'Saving...';"
+        "  saveBtn.disabled = true;"
+        "  "
+        "  resultDiv.textContent = 'Saving SIP configuration...';"
+        "  resultDiv.className = 'status';"
+        "  resultDiv.style.display = 'block';"
+        "  "
+        "  // Submit form via fetch to handle response"
+        "  var form = saveBtn.closest('form');"
+        "  var formData = new FormData(form);"
+        "  "
+        "  fetch('/sip', {"
+        "    method: 'POST',"
+        "    body: formData"
+        "  })"
+        "  .then(function(response) {"
+        "    if (!response.ok) {"
+        "      throw new Error('HTTP ' + response.status);"
+        "    }"
+        "    return response.text();"
+        "  })"
+        "  .then(function(html) {"
+        "    resultDiv.textContent = '✓ SIP configuration saved successfully';"
+        "    resultDiv.className = 'status success';"
+        "    "
+        "    // Reload current configuration after a short delay"
+        "    setTimeout(function() {"
+        "      loadCurrentSipConfig();"
+        "    }, 1000);"
+        "  })"
+        "  .catch(function(error) {"
+        "    console.error('SIP save error:', error);"
+        "    resultDiv.textContent = '✗ Failed to save SIP configuration';"
+        "    resultDiv.className = 'status error';"
+        "  })"
+        "  .then(function() {"
+        "    // Re-enable button"
+        "    saveBtn.textContent = 'Save SIP Config';"
+        "    saveBtn.disabled = false;"
+        "  });"
+        "  "
+        "  // Prevent actual form submission"
+        "  return false;"
+        "}"
+        ""
+        "function testSipConnection() {"
+        "  var resultDiv = document.getElementById('sip-test-result');"
+        "  if (!resultDiv) return;"
+        "  "
+        "  resultDiv.textContent = 'Testing SIP connection...';"
+        "  resultDiv.className = 'status';"
+        "  resultDiv.style.display = 'block';"
+        "  "
+        "  fetch('/sip-test')"
+        "    .then(function(response) {"
+        "      if (!response.ok) {"
+        "        throw new Error('HTTP ' + response.status);"
+        "      }"
+        "      return response.json();"
+        "    })"
+        "    .then(function(data) {"
+        "      if (data.success === true) {"
+        "        resultDiv.textContent = '✓ ' + data.message;"
+        "        resultDiv.className = 'status success';"
+        "      } else {"
+        "        resultDiv.textContent = '✗ ' + data.message;"
+        "        resultDiv.className = 'status error';"
+        "      }"
+        "    })"
+        "    .catch(function(error) {"
+        "      console.error('SIP test error:', error);"
+        "      resultDiv.textContent = '✗ SIP test failed';"
+        "      resultDiv.className = 'status error';"
+        "    });"
+        "}"
+        ""
+        "function refreshSipStatus() {"
+        "  var statusDiv = document.getElementById('sip-status');"
+        "  if (!statusDiv) return;"
+        "  "
+        "  fetch('/sip-status')"
+        "    .then(function(response) {"
+        "      if (!response.ok) {"
+        "        throw new Error('HTTP ' + response.status);"
+        "      }"
+        "      return response.json();"
+        "    })"
+        "    .then(function(data) {"
+        "      var statusText = 'SIP State: ' + data.state;"
+        "      if (data.configured === true) {"
+        "        statusText += ' | Server: ' + data.server + ' | User: ' + data.username;"
+        "      } else {"
+        "        statusText += ' | Not configured';"
+        "      }"
+        "      "
+        "      statusDiv.textContent = statusText;"
+        "      "
+        "      // Set status color based on state"
+        "      switch(data.state) {"
+        "        case 'CONNECTED':"
+        "          statusDiv.className = 'status success';"
+        "          break;"
+        "        case 'IDLE':"
+        "          statusDiv.className = 'status success';"
+        "          break;"
+        "        case 'REGISTERING':"
+        "          statusDiv.className = 'status';"
+        "          break;"
+        "        case 'ERROR':"
+        "          statusDiv.className = 'status error';"
+        "          break;"
+        "        default:"
+        "          statusDiv.className = 'status';"
+        "      }"
+        "    })"
+        "    .catch(function(error) {"
+        "      console.error('SIP status error:', error);"
+        "      statusDiv.textContent = '✗ Failed to load SIP status';"
+        "      statusDiv.className = 'status error';"
+        "    });"
+        "}"
+        ""
+        "// Auto-refresh SIP status every 5 seconds"
+        "setInterval(refreshSipStatus, 5000);"
+        ""
+        "function loadCurrentSipConfig() {"
+        "  fetch('/sip-status')"
+        "    .then(function(response) {"
+        "      if (!response.ok) {"
+        "        throw new Error('HTTP ' + response.status);"
+        "      }"
+        "      return response.json();"
+        "    })"
+        "    .then(function(data) {"
+        "      if (data.configured === true) {"
+        "        // Pre-populate form fields"
+        "        document.getElementById('sip-server').value = data.server || '';"
+        "        document.getElementById('sip-username').value = data.username || '';"
+        "        document.getElementById('sip-apt1').value = data.apartment1 || '';"
+        "        document.getElementById('sip-apt2').value = data.apartment2 || '';"
+        "        "
+        "        // Show current configuration"
+        "        var configDiv = document.getElementById('current-sip-config');"
+        "        if (configDiv) {"
+        "          configDiv.innerHTML = '<strong>Current Configuration:</strong><br>' +"
+        "            'Server: ' + data.server + '<br>' +"
+        "            'Username: ' + data.username + '<br>' +"
+        "            'Apartment 1: ' + data.apartment1 + '<br>' +"
+        "            'Apartment 2: ' + data.apartment2 + '<br>' +"
+        "            'Port: ' + data.port;"
+        "          configDiv.style.display = 'block';"
+        "        }"
+        "      }"
+        "    })"
+        "    .catch(function(error) {"
+        "      console.error('Load SIP config error:', error);"
+        "    });"
+        "}"
+        ""
+        "// Initial status load"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  refreshSipStatus();"
+        "  loadCurrentSipConfig();"
+        "});"
+        "</script>"
         "</div></body></html>";
     }
 }
@@ -363,19 +542,110 @@ static esp_err_t sip_handler(httpd_req_t *req)
 
     // Validate
     if (strlen(server) == 0 || strlen(username) == 0 || strlen(apt1) == 0 || strlen(apt2) == 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing required SIP fields");
-        return ESP_FAIL;
+        const char* error_response = "<html><body><h1>Error</h1>"
+                                   "<p style='color:red;'>Missing required SIP fields. Please fill in all required fields.</p>"
+                                   "<a href='/'>Back</a></body></html>";
+        httpd_resp_send(req, error_response, strlen(error_response));
+        return ESP_OK;
+    }
+
+    // Validate server format (basic check)
+    if (strstr(server, "sip.") == NULL && strstr(server, ".") == NULL) {
+        const char* error_response = "<html><body><h1>Error</h1>"
+                                   "<p style='color:red;'>Invalid SIP server format. Please enter a valid SIP server address.</p>"
+                                   "<a href='/'>Back</a></body></html>";
+        httpd_resp_send(req, error_response, strlen(error_response));
+        return ESP_OK;
     }
 
     ESP_LOGI(TAG, "SIP Configuration: Server=%s, User=%s", server, username);
 
-    // Save SIP config (placeholder)
-    // sip_save_config(server, username, sip_password, apt1, apt2);
+    // Save SIP config
+    sip_save_config(server, username, sip_password, apt1, apt2, 5060);
 
     const char* response = "<html><body><h1>SIP Configuration Saved</h1>"
-                          "<a href='/'>Back</a></body></html>";
+                           "<p style='color:green;'>Configuration saved successfully!</p>"
+                           "<a href='/'>Back</a></body></html>";
     httpd_resp_send(req, response, strlen(response));
     
+    return ESP_OK;
+}
+
+static esp_err_t sip_test_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "SIP Test angefordert");
+
+    bool test_result = sip_client_test_connection();
+
+    const char* response_template =
+        "{"
+        "\"success\": %s,"
+        "\"message\": \"%s\","
+        "\"timestamp\": \"%lld\""
+        "}";
+
+    char* message;
+    if (test_result) {
+        message = "SIP Verbindung erfolgreich";
+    } else {
+        // Get current state for more detailed error message
+        sip_state_t current_state = sip_client_get_state();
+        switch (current_state) {
+            case SIP_STATE_ERROR:
+                message = "SIP Fehler - Bitte überprüfen Sie die Konfiguration";
+                break;
+            case SIP_STATE_DISCONNECTED:
+                message = "SIP nicht verbunden - Konfiguration erforderlich";
+                break;
+            case SIP_STATE_REGISTERING:
+                message = "SIP Registrierung läuft - Bitte warten";
+                break;
+            default:
+                message = "SIP Verbindung fehlgeschlagen";
+        }
+    }
+
+    char response[256];
+    snprintf(response, sizeof(response), response_template,
+             test_result ? "true" : "false",
+             message,
+             esp_timer_get_time() / 1000);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, strlen(response));
+
+    return ESP_OK;
+}
+
+static esp_err_t sip_status_handler(httpd_req_t *req)
+{
+    char status_buffer[512];
+
+    // Clear buffer first
+    memset(status_buffer, 0, sizeof(status_buffer));
+
+    sip_get_status(status_buffer, sizeof(status_buffer));
+
+    // Check if we got valid data
+    if (strlen(status_buffer) == 0) {
+        const char* error_response =
+            "{"
+            "\"state\": \"ERROR\","
+            "\"state_code\": 8,"
+            "\"configured\": false,"
+            "\"server\": \"\","
+            "\"username\": \"\","
+            "\"apartment1\": \"\","
+            "\"apartment2\": \"\","
+            "\"port\": 0"
+            "}";
+
+        strcpy(status_buffer, error_response);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, status_buffer, strlen(status_buffer));
+
     return ESP_OK;
 }
 
@@ -468,6 +738,22 @@ void web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &sip_uri);
+
+        httpd_uri_t sip_test_uri = {
+            .uri = "/sip-test",
+            .method = HTTP_GET,
+            .handler = sip_test_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &sip_test_uri);
+
+        httpd_uri_t sip_status_uri = {
+            .uri = "/sip-status",
+            .method = HTTP_GET,
+            .handler = sip_status_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &sip_status_uri);
 
         httpd_uri_t reset_uri = {
             .uri = "/reset",
