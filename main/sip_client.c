@@ -3,6 +3,7 @@
 #include "dtmf_decoder.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
@@ -73,6 +74,25 @@ static void sip_add_log_entry(const char* type, const char* message)
         
         xSemaphoreGive(sip_log_mutex);
     }
+}
+
+// Helper function to get local IP address
+static bool get_local_ip(char* ip_str, size_t max_len)
+{
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif == NULL) {
+        ESP_LOGW(TAG, "WiFi STA interface not found");
+        return false;
+    }
+    
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+        snprintf(ip_str, max_len, IPSTR, IP2STR(&ip_info.ip));
+        return true;
+    }
+    
+    ESP_LOGW(TAG, "Failed to get IP address");
+    return false;
 }
 
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
@@ -296,14 +316,23 @@ bool sip_client_register(void)
 
     memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
 
+    // Get local IP address
+    char local_ip[16];
+    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+        strcpy(local_ip, "192.168.1.100"); // Fallback
+        ESP_LOGW(TAG, "Using fallback IP address");
+    } else {
+        ESP_LOGI(TAG, "Using local IP: %s", local_ip);
+    }
+
     // REGISTER-Nachricht erstellen (vereinfacht)
     char register_msg[1024];
     snprintf(register_msg, sizeof(register_msg), sip_register_template,
-             sip_config.server, "192.168.1.100", rand(),
+             sip_config.server, local_ip, rand(),
              sip_config.username, sip_config.server, rand(),
              sip_config.username, sip_config.server,
-             rand(), "192.168.1.100",
-             sip_config.username, "192.168.1.100");
+             rand(), local_ip,
+             sip_config.username, local_ip);
 
     int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -330,16 +359,25 @@ void sip_client_make_call(const char* uri)
     ESP_LOGI(TAG, "Call to %s", uri);
     current_state = SIP_STATE_CALLING;
     
+    // Get local IP address
+    char local_ip[16];
+    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+        strcpy(local_ip, "192.168.1.100"); // Fallback
+    }
+    
     // Vereinfachte INVITE-Nachricht
     // In einer echten Implementierung würde hier eine vollständige SDP-Session-Description erstellt
-    const char* sdp = "v=0\r\no=- 0 0 IN IP4 192.168.1.100\r\ns=-\r\nc=IN IP4 192.168.1.100\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n";
+    char sdp[256];
+    snprintf(sdp, sizeof(sdp), 
+             "v=0\r\no=- 0 0 IN IP4 %s\r\ns=-\r\nc=IN IP4 %s\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
+             local_ip, local_ip);
     
     char invite_msg[2048];
     snprintf(invite_msg, sizeof(invite_msg), sip_invite_template,
-             uri, "192.168.1.100", rand(),
+             uri, local_ip, rand(),
              sip_config.username, sip_config.server, rand(),
-             uri, rand(), "192.168.1.100",
-             sip_config.username, "192.168.1.100",
+             uri, rand(), local_ip,
+             sip_config.username, local_ip,
              strlen(sdp), sdp);
     
     // Nachricht senden (vereinfacht)
@@ -406,30 +444,6 @@ bool sip_client_test_connection(void)
     }
 
     ESP_LOGI(TAG, "SIP server %s is reachable", sip_config.server);
-
-    // Try to send a REGISTER message
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(sip_config.port);
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
-
-    char register_msg[1024];
-    snprintf(register_msg, sizeof(register_msg), sip_register_template,
-             sip_config.server, "192.168.1.100", rand(),
-             sip_config.username, sip_config.server, rand(),
-             sip_config.username, sip_config.server,
-             rand(), "192.168.1.100",
-             sip_config.username, "192.168.1.100");
-
-    int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
-                       (struct sockaddr*)&server_addr, sizeof(server_addr));
-
-    if (sent < 0) {
-        ESP_LOGE(TAG, "Error sending REGISTER message");
-        return false;
-    }
-
-    ESP_LOGI(TAG, "SIP test REGISTER message sent");
     return true;
 }
 
