@@ -12,6 +12,8 @@
 #include "lwip/netdb.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "mbedtls/md5.h"
+#include "esp_random.h"
 
 static const char *TAG = "SIP";
 static sip_state_t current_state = SIP_STATE_IDLE;
@@ -45,6 +47,21 @@ static const char* sip_register_template =
 "Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
 "User-Agent: ESP32-Doorbell/1.0\r\n"
 "Content-Length: 0\r\n\r\n";
+
+// SIP authentication challenge structure
+typedef struct {
+    char realm[128];
+    char nonce[128];
+    char qop[32];
+    char opaque[128];
+    char algorithm[32];
+    bool valid;
+} sip_auth_challenge_t;
+
+static sip_auth_challenge_t last_auth_challenge = {0};
+
+// Forward declaration
+static bool sip_client_register_auth(sip_auth_challenge_t* challenge);
 
 static const char* sip_invite_template = 
 "INVITE %s SIP/2.0\r\n"
@@ -86,6 +103,156 @@ static void sip_add_log_entry(const char* type, const char* message)
         
         xSemaphoreGive(sip_log_mutex);
     }
+}
+
+// Calculate MD5 hash and convert to hex string
+static void calculate_md5_hex(const char* input, char* output) {
+    unsigned char hash[16];
+    
+    // Use mbedtls_md5() instead of deprecated mbedtls_md5_ret()
+    mbedtls_md5((const unsigned char*)input, strlen(input), hash);
+    
+    // Convert to hex string
+    for (int i = 0; i < 16; i++) {
+        sprintf(output + (i * 2), "%02x", hash[i]);
+    }
+    output[32] = '\0';
+}
+
+// Generate random cnonce for digest authentication
+static void generate_cnonce(char* cnonce_out, size_t len) {
+    uint32_t random = esp_random();
+    snprintf(cnonce_out, len, "%08lx%08lx", (unsigned long)random, (unsigned long)esp_random());
+}
+
+// Parse WWW-Authenticate header
+static sip_auth_challenge_t parse_www_authenticate(const char* buffer) {
+    sip_auth_challenge_t challenge = {0};
+    
+    char* auth_header = strstr(buffer, "WWW-Authenticate:");
+    if (!auth_header) {
+        return challenge;
+    }
+    
+    // Extract realm
+    char* realm_start = strstr(auth_header, "realm=\"");
+    if (realm_start) {
+        realm_start += 7;
+        char* realm_end = strchr(realm_start, '"');
+        if (realm_end) {
+            int len = realm_end - realm_start;
+            if (len < sizeof(challenge.realm)) {
+                strncpy(challenge.realm, realm_start, len);
+                challenge.realm[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract nonce
+    char* nonce_start = strstr(auth_header, "nonce=\"");
+    if (nonce_start) {
+        nonce_start += 7;
+        char* nonce_end = strchr(nonce_start, '"');
+        if (nonce_end) {
+            int len = nonce_end - nonce_start;
+            if (len < sizeof(challenge.nonce)) {
+                strncpy(challenge.nonce, nonce_start, len);
+                challenge.nonce[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract qop
+    char* qop_start = strstr(auth_header, "qop=\"");
+    if (qop_start) {
+        qop_start += 5;
+        char* qop_end = strchr(qop_start, '"');
+        if (qop_end) {
+            int len = qop_end - qop_start;
+            if (len < sizeof(challenge.qop)) {
+                strncpy(challenge.qop, qop_start, len);
+                challenge.qop[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract opaque (optional)
+    char* opaque_start = strstr(auth_header, "opaque=\"");
+    if (opaque_start) {
+        opaque_start += 8;
+        char* opaque_end = strchr(opaque_start, '"');
+        if (opaque_end) {
+            int len = opaque_end - opaque_start;
+            if (len < sizeof(challenge.opaque)) {
+                strncpy(challenge.opaque, opaque_start, len);
+                challenge.opaque[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract algorithm (optional, defaults to MD5)
+    char* algo_start = strstr(auth_header, "algorithm=");
+    if (algo_start) {
+        algo_start += 10;
+        if (*algo_start == '"') algo_start++;
+        char* algo_end = strpbrk(algo_start, "\",\r\n ");
+        if (algo_end) {
+            int len = algo_end - algo_start;
+            if (len < sizeof(challenge.algorithm)) {
+                strncpy(challenge.algorithm, algo_start, len);
+                challenge.algorithm[len] = '\0';
+            }
+        }
+    } else {
+        strcpy(challenge.algorithm, "MD5");
+    }
+    
+    challenge.valid = (strlen(challenge.realm) > 0 && strlen(challenge.nonce) > 0);
+    
+    if (challenge.valid) {
+        NTP_LOGI(TAG, "Auth challenge parsed: realm=%s, qop=%s, algorithm=%s", 
+                 challenge.realm, challenge.qop, challenge.algorithm);
+    }
+    
+    return challenge;
+}
+
+// Calculate digest authentication response
+static void calculate_digest_response(
+    const char* username,
+    const char* password,
+    const char* realm,
+    const char* nonce,
+    const char* method,
+    const char* uri,
+    const char* qop,
+    const char* nc,
+    const char* cnonce,
+    char* response_out)
+{
+    char ha1[33], ha2[33];
+    char ha1_input[256], ha2_input[256], response_input[512];
+    
+    // Calculate HA1 = MD5(username:realm:password)
+    snprintf(ha1_input, sizeof(ha1_input), "%s:%s:%s", username, realm, password);
+    calculate_md5_hex(ha1_input, ha1);
+    
+    // Calculate HA2 = MD5(method:uri)
+    snprintf(ha2_input, sizeof(ha2_input), "%s:sip:%s", method, uri);
+    calculate_md5_hex(ha2_input, ha2);
+    
+    // Calculate response
+    if (qop && strlen(qop) > 0 && strcmp(qop, "auth") == 0) {
+        // With qop=auth: MD5(HA1:nonce:nc:cnonce:qop:HA2)
+        snprintf(response_input, sizeof(response_input), 
+                 "%s:%s:%s:%s:%s:%s", ha1, nonce, nc, cnonce, qop, ha2);
+    } else {
+        // Without qop: MD5(HA1:nonce:HA2)
+        snprintf(response_input, sizeof(response_input), 
+                 "%s:%s:%s", ha1, nonce, ha2);
+    }
+    
+    calculate_md5_hex(response_input, response_out);
 }
 
 // Helper function to get local IP address
@@ -169,11 +336,20 @@ static void sip_task(void *pvParameters)
                     }
                 } else if (strstr(buffer, "SIP/2.0 401 Unauthorized")) {
                     if (current_state == SIP_STATE_REGISTERING) {
-                        NTP_LOGI(TAG, "Authentication required - digest auth not yet implemented");
-                        ESP_LOGW(TAG, "SIP server requires authentication");
-                        ESP_LOGW(TAG, "Digest authentication will be implemented in future update");
-                        sip_add_log_entry("error", "Authentication required (not yet implemented)");
-                        current_state = SIP_STATE_AUTH_FAILED;
+                        NTP_LOGI(TAG, "Authentication required, parsing challenge");
+                        sip_add_log_entry("info", "Authentication required");
+                        
+                        // Parse authentication challenge
+                        last_auth_challenge = parse_www_authenticate(buffer);
+                        
+                        if (last_auth_challenge.valid) {
+                            // Send authenticated REGISTER
+                            sip_client_register_auth(&last_auth_challenge);
+                        } else {
+                            ESP_LOGE(TAG, "Failed to parse authentication challenge");
+                            sip_add_log_entry("error", "Failed to parse auth challenge");
+                            current_state = SIP_STATE_AUTH_FAILED;
+                        }
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
                     // Provisional response, just log it
@@ -397,6 +573,121 @@ bool sip_client_register(void)
     ESP_LOGI(TAG, "REGISTER message sent successfully (%d bytes)", sent);
 
     NTP_LOGI(TAG, "REGISTER message sent");
+    return true;
+}
+
+// Send authenticated REGISTER with digest authentication
+static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
+{
+    if (!sip_config.configured || sip_socket < 0 || !challenge || !challenge->valid) {
+        current_state = SIP_STATE_ERROR;
+        return false;
+    }
+
+    NTP_LOGI(TAG, "Sending authenticated REGISTER");
+    sip_add_log_entry("info", "Sending authenticated REGISTER");
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(sip_config.port);
+
+    struct hostent *host = gethostbyname(sip_config.server);
+    if (host == NULL) {
+        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+        current_state = SIP_STATE_ERROR;
+        return false;
+    }
+    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+
+    // Get local IP
+    char local_ip[16];
+    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+        strcpy(local_ip, "192.168.1.100");
+    }
+
+    // Generate cnonce and nc
+    char cnonce[17];
+    const char* nc = "00000001";
+    generate_cnonce(cnonce, sizeof(cnonce));
+
+    // Calculate digest response
+    char response[33];
+    calculate_digest_response(
+        sip_config.username,
+        sip_config.password,
+        challenge->realm,
+        challenge->nonce,
+        "REGISTER",
+        sip_config.server,
+        challenge->qop,
+        nc,
+        cnonce,
+        response
+    );
+
+    // Build authenticated REGISTER message
+    char register_msg[2048];
+    int call_id = rand();
+    int tag = rand();
+    int branch = rand();
+    
+    int len = snprintf(register_msg, sizeof(register_msg),
+        "REGISTER sip:%s SIP/2.0\r\n"
+        "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+        "Max-Forwards: 70\r\n"
+        "From: <sip:%s@%s>;tag=%d\r\n"
+        "To: <sip:%s@%s>\r\n"
+        "Call-ID: %d@%s\r\n"
+        "CSeq: 2 REGISTER\r\n"
+        "Contact: <sip:%s@%s:5060>\r\n"
+        "Authorization: Digest username=\"%s\", realm=\"%s\", nonce=\"%s\", uri=\"sip:%s\", response=\"%s\"",
+        sip_config.server, local_ip, branch,
+        sip_config.username, sip_config.server, tag,
+        sip_config.username, sip_config.server,
+        call_id, local_ip,
+        sip_config.username, local_ip,
+        sip_config.username, challenge->realm, challenge->nonce, sip_config.server, response
+    );
+
+    // Add qop parameters if present
+    if (strlen(challenge->qop) > 0) {
+        len += snprintf(register_msg + len, sizeof(register_msg) - len,
+            ", qop=%s, nc=%s, cnonce=\"%s\"", challenge->qop, nc, cnonce);
+    }
+
+    // Add opaque if present
+    if (strlen(challenge->opaque) > 0) {
+        len += snprintf(register_msg + len, sizeof(register_msg) - len,
+            ", opaque=\"%s\"", challenge->opaque);
+    }
+
+    // Add algorithm if not MD5
+    if (strlen(challenge->algorithm) > 0 && strcmp(challenge->algorithm, "MD5") != 0) {
+        len += snprintf(register_msg + len, sizeof(register_msg) - len,
+            ", algorithm=%s", challenge->algorithm);
+    }
+
+    // Complete the message
+    len += snprintf(register_msg + len, sizeof(register_msg) - len,
+        "\r\n"
+        "Expires: 3600\r\n"
+        "Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
+        "User-Agent: ESP32-Doorbell/1.0\r\n"
+        "Content-Length: 0\r\n\r\n"
+    );
+
+    int sent = sendto(sip_socket, register_msg, len, 0,
+                       (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    if (sent < 0) {
+        ESP_LOGE(TAG, "Error sending authenticated REGISTER: %d", sent);
+        sip_add_log_entry("error", "Failed to send authenticated REGISTER");
+        current_state = SIP_STATE_ERROR;
+        return false;
+    }
+
+    NTP_LOGI(TAG, "Authenticated REGISTER sent successfully (%d bytes)", sent);
+    sip_add_log_entry("info", "Authenticated REGISTER sent");
     return true;
 }
 
