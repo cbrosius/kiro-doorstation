@@ -155,42 +155,64 @@ static void sip_task(void *pvParameters)
                 sip_add_log_entry("received", log_msg);
                 
                 // Enhanced SIP message processing with better error handling
-                if (strstr(buffer, "200 OK")) {
+                // Check response codes first (more specific than method names)
+                if (strstr(buffer, "SIP/2.0 200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
                         NTP_LOGI(TAG, "SIP registration successful");
+                        sip_add_log_entry("info", "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_CONNECTED;
                         NTP_LOGI(TAG, "Call connected");
                         audio_start_recording();
                         audio_start_playback();
                     }
-                } else if (strstr(buffer, "INVITE")) {
+                } else if (strstr(buffer, "SIP/2.0 401 Unauthorized")) {
+                    if (current_state == SIP_STATE_REGISTERING) {
+                        NTP_LOGI(TAG, "Authentication required - digest auth not yet implemented");
+                        ESP_LOGW(TAG, "SIP server requires authentication");
+                        ESP_LOGW(TAG, "Digest authentication will be implemented in future update");
+                        sip_add_log_entry("error", "Authentication required (not yet implemented)");
+                        current_state = SIP_STATE_AUTH_FAILED;
+                    }
+                } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
+                    // Provisional response, just log it
+                    NTP_LOGI(TAG, "Server processing request");
+                } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
+                    ESP_LOGE(TAG, "SIP forbidden");
+                    sip_add_log_entry("error", "SIP forbidden");
+                    current_state = SIP_STATE_AUTH_FAILED;
+                } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
+                    ESP_LOGE(TAG, "SIP target not found");
+                    sip_add_log_entry("error", "SIP target not found");
+                    current_state = SIP_STATE_ERROR;
+                } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
+                    ESP_LOGE(TAG, "SIP request timeout");
+                    sip_add_log_entry("error", "SIP request timeout");
+                    current_state = SIP_STATE_TIMEOUT;
+                } else if (strstr(buffer, "SIP/2.0 486 Busy Here")) {
+                    ESP_LOGW(TAG, "SIP target busy");
+                    sip_add_log_entry("info", "SIP target busy");
+                    current_state = SIP_STATE_REGISTERED;
+                } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
+                    NTP_LOGI(TAG, "SIP request terminated");
+                    sip_add_log_entry("info", "SIP request terminated");
+                    current_state = SIP_STATE_REGISTERED;
+                } else if (strncmp(buffer, "INVITE sip:", 11) == 0) {
+                    // Check for INVITE request (not response)
                     NTP_LOGI(TAG, "Incoming call");
+                    sip_add_log_entry("info", "Incoming call");
                     current_state = SIP_STATE_RINGING;
                     // Auto-answer after short delay
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     sip_client_answer_call();
-                } else if (strstr(buffer, "BYE")) {
+                } else if (strncmp(buffer, "BYE sip:", 8) == 0) {
+                    // Check for BYE request (not response)
                     NTP_LOGI(TAG, "Call ended");
+                    sip_add_log_entry("info", "Call ended");
                     current_state = SIP_STATE_REGISTERED;
                     audio_stop_recording();
                     audio_stop_playback();
-                } else if (strstr(buffer, "401 Unauthorized") || strstr(buffer, "403 Forbidden")) {
-                    ESP_LOGE(TAG, "SIP authentication failed");
-                    current_state = SIP_STATE_AUTH_FAILED;
-                } else if (strstr(buffer, "404 Not Found")) {
-                    ESP_LOGE(TAG, "SIP target not found");
-                    current_state = SIP_STATE_ERROR;
-                } else if (strstr(buffer, "408 Request Timeout")) {
-                    ESP_LOGE(TAG, "SIP request timeout");
-                    current_state = SIP_STATE_TIMEOUT;
-                } else if (strstr(buffer, "486 Busy Here")) {
-                    ESP_LOGW(TAG, "SIP target busy");
-                    current_state = SIP_STATE_REGISTERED;
-                } else if (strstr(buffer, "487 Request Terminated")) {
-                    ESP_LOGI(TAG, "SIP request terminated");
-                    current_state = SIP_STATE_REGISTERED;
                 }
             }
         }
