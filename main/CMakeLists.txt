@@ -18,3 +18,5 @@ idf_component_register(
         esp_adc
         json
 )
+
+target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)

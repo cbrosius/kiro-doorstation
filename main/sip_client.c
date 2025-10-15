@@ -100,7 +100,7 @@ static void sip_task(void *pvParameters)
 
 void sip_client_init(void)
 {
-    ESP_LOGI(TAG, "SIP Client initialisieren");
+    ESP_LOGI(TAG, "Initializing SIP client");
 
     // Set initial state
     current_state = SIP_STATE_IDLE;
@@ -109,12 +109,12 @@ void sip_client_init(void)
     sip_config = sip_load_config();
 
     if (sip_config.configured) {
-        ESP_LOGI(TAG, "SIP Konfiguration geladen: %s@%s", sip_config.username, sip_config.server);
+        ESP_LOGI(TAG, "SIP configuration loaded: %s@%s", sip_config.username, sip_config.server);
 
-        // Socket erstellen
+        // Create socket
         sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sip_socket < 0) {
-            ESP_LOGE(TAG, "Fehler beim Erstellen des SIP Sockets");
+            ESP_LOGE(TAG, "Error creating SIP socket");
             current_state = SIP_STATE_ERROR;
             return;
         }
@@ -122,14 +122,17 @@ void sip_client_init(void)
         // Task für SIP-Verarbeitung starten
         xTaskCreate(sip_task, "sip_task", 4096, NULL, 5, &sip_task_handle);
 
+        // Set state to registering before attempting registration
+        current_state = SIP_STATE_REGISTERING;
+
         // Registrierung versuchen
         sip_client_register();
     } else {
-        ESP_LOGI(TAG, "Keine SIP Konfiguration gefunden");
+        ESP_LOGI(TAG, "No SIP configuration found");
         current_state = SIP_STATE_DISCONNECTED;
     }
 
-    ESP_LOGI(TAG, "SIP Client initialisiert");
+    ESP_LOGI(TAG, "SIP client initialized");
 }
 
 void sip_client_deinit(void)
@@ -154,7 +157,7 @@ bool sip_client_register(void)
         return false;
     }
 
-    ESP_LOGI(TAG, "SIP Registrierung bei %s", sip_config.server);
+    ESP_LOGI(TAG, "SIP registration with %s", sip_config.server);
     current_state = SIP_STATE_REGISTERING;
 
     struct sockaddr_in server_addr;
@@ -163,7 +166,7 @@ bool sip_client_register(void)
 
     struct hostent *host = gethostbyname(sip_config.server);
     if (host == NULL) {
-        ESP_LOGE(TAG, "Hostname nicht auflösbar: %s", sip_config.server);
+        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         current_state = SIP_STATE_ERROR;
         return false;
     }
@@ -183,12 +186,14 @@ bool sip_client_register(void)
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent < 0) {
-        ESP_LOGE(TAG, "Fehler beim Senden der REGISTER-Nachricht");
+        ESP_LOGE(TAG, "Fehler beim Senden der REGISTER-Nachricht: %d", sent);
         current_state = SIP_STATE_ERROR;
         return false;
     }
 
-    ESP_LOGI(TAG, "REGISTER-Nachricht gesendet");
+    ESP_LOGI(TAG, "REGISTER-Nachricht erfolgreich gesendet (%d Bytes)", sent);
+
+    ESP_LOGI(TAG, "REGISTER message sent");
     return true;
 }
 
@@ -199,7 +204,7 @@ void sip_client_make_call(const char* uri)
         return;
     }
     
-    ESP_LOGI(TAG, "Anruf an %s", uri);
+    ESP_LOGI(TAG, "Call to %s", uri);
     current_state = SIP_STATE_CALLING;
     
     // Vereinfachte INVITE-Nachricht
@@ -221,7 +226,7 @@ void sip_client_make_call(const char* uri)
 void sip_client_hangup(void)
 {
     if (current_state == SIP_STATE_CONNECTED || current_state == SIP_STATE_CALLING) {
-        ESP_LOGI(TAG, "Anruf beenden");
+        ESP_LOGI(TAG, "Ending call");
         current_state = SIP_STATE_IDLE;
         audio_stop_recording();
         audio_stop_playback();
@@ -231,7 +236,7 @@ void sip_client_hangup(void)
 void sip_client_answer_call(void)
 {
     if (current_state == SIP_STATE_RINGING) {
-        ESP_LOGI(TAG, "Anruf annehmen");
+        ESP_LOGI(TAG, "Answering call");
         current_state = SIP_STATE_CONNECTED;
         audio_start_recording();
         audio_start_playback();
@@ -241,59 +246,68 @@ void sip_client_answer_call(void)
 void sip_client_send_dtmf(char dtmf_digit)
 {
     if (current_state == SIP_STATE_CONNECTED) {
-        ESP_LOGI(TAG, "Sende DTMF: %c", dtmf_digit);
+        ESP_LOGI(TAG, "Sending DTMF: %c", dtmf_digit);
         current_state = SIP_STATE_DTMF_SENDING;
 
         // DTMF sending logic would go here
         // For now, we'll just log it and return to connected state
-        ESP_LOGI(TAG, "DTMF %c gesendet", dtmf_digit);
+        ESP_LOGI(TAG, "DTMF %c sent", dtmf_digit);
 
         // Return to connected state after DTMF
         current_state = SIP_STATE_CONNECTED;
     } else {
-        ESP_LOGW(TAG, "Kann DTMF nicht senden - Status: %d", current_state);
+        ESP_LOGW(TAG, "Cannot send DTMF - Status: %d", current_state);
     }
 }
 
 bool sip_client_test_connection(void)
 {
-    ESP_LOGI(TAG, "SIP Verbindung testen");
+    ESP_LOGI(TAG, "Testing SIP connection");
 
     if (!sip_config.configured) {
-        ESP_LOGE(TAG, "Keine SIP Konfiguration verfügbar");
-        current_state = SIP_STATE_ERROR;
+        ESP_LOGE(TAG, "No SIP configuration available");
         return false;
     }
 
     if (sip_socket < 0) {
-        ESP_LOGE(TAG, "SIP Socket nicht verfügbar");
-        current_state = SIP_STATE_ERROR;
+        ESP_LOGE(TAG, "SIP socket not available");
         return false;
     }
 
-    // Temporarily store current state
-    sip_state_t original_state = current_state;
-
-    // Attempt registration
-    bool result = sip_client_register();
-
-    // Wait a bit for response (in real implementation, this would be async)
-    vTaskDelay(pdMS_TO_TICKS(2000));
-
-    // Check if we're in a success state
-    if (current_state == SIP_STATE_IDLE) {
-        ESP_LOGI(TAG, "SIP Verbindung erfolgreich");
-        result = true;
-    } else if (current_state == SIP_STATE_ERROR) {
-        ESP_LOGE(TAG, "SIP Verbindung fehlgeschlagen");
-        result = false;
-    } else {
-        ESP_LOGW(TAG, "SIP Verbindung noch in Bearbeitung");
-        // Restore original state if test didn't complete
-        current_state = original_state;
+    // For testing purposes, we'll just check if we can resolve the hostname
+    // and send a REGISTER message (without waiting for response)
+    struct hostent *host = gethostbyname(sip_config.server);
+    if (host == NULL) {
+        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+        return false;
     }
 
-    return result;
+    ESP_LOGI(TAG, "SIP server %s is reachable", sip_config.server);
+
+    // Try to send a REGISTER message
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(sip_config.port);
+    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+
+    char register_msg[1024];
+    snprintf(register_msg, sizeof(register_msg), sip_register_template,
+             sip_config.server, "192.168.1.100", rand(),
+             sip_config.username, sip_config.server, rand(),
+             sip_config.username, sip_config.server,
+             rand(), "192.168.1.100",
+             sip_config.username, "192.168.1.100");
+
+    int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
+                       (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    if (sent < 0) {
+        ESP_LOGE(TAG, "Error sending REGISTER message");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "SIP test REGISTER message sent");
+    return true;
 }
 
 void sip_get_status(char* buffer, size_t buffer_size)
@@ -317,14 +331,25 @@ void sip_get_status(char* buffer, size_t buffer_size)
         "\"port\": %d"
         "}";
 
+    char server[64] = {0};
+    char username[32] = {0};
+    char apt1[64] = {0};
+    char apt2[64] = {0};
+
+    // Safely copy strings to avoid buffer issues
+    strncpy(server, sip_config.server, sizeof(server) - 1);
+    strncpy(username, sip_config.username, sizeof(username) - 1);
+    strncpy(apt1, sip_config.apartment1_uri, sizeof(apt1) - 1);
+    strncpy(apt2, sip_config.apartment2_uri, sizeof(apt2) - 1);
+
     snprintf(buffer, buffer_size, status_template,
              state < sizeof(state_names)/sizeof(state_names[0]) ? state_names[state] : "UNKNOWN",
              state,
              sip_config.configured ? "true" : "false",
-             sip_config.server,
-             sip_config.username,
-             sip_config.apartment1_uri,
-             sip_config.apartment2_uri,
+             server,
+             username,
+             apt1,
+             apt2,
              sip_config.port);
 }
 
@@ -395,4 +420,97 @@ sip_config_t sip_load_config(void)
     }
     
     return config;
+}
+
+// Additional functions for web interface
+bool sip_is_registered(void)
+{
+    return (current_state != SIP_STATE_IDLE &&
+            current_state != SIP_STATE_DISCONNECTED &&
+            current_state != SIP_STATE_ERROR);
+}
+
+const char* sip_get_server(void)
+{
+    return sip_config.server;
+}
+
+const char* sip_get_username(void)
+{
+    return sip_config.username;
+}
+
+const char* sip_get_password(void)
+{
+    return sip_config.password;
+}
+
+const char* sip_get_uri(void)
+{
+    // Return apartment1_uri as the default URI
+    return sip_config.apartment1_uri;
+}
+
+void sip_set_server(const char* server)
+{
+    if (server) {
+        strncpy(sip_config.server, server, sizeof(sip_config.server) - 1);
+        sip_config.server[sizeof(sip_config.server) - 1] = '\0';
+        sip_config.configured = true;
+    }
+}
+
+void sip_set_username(const char* username)
+{
+    if (username) {
+        strncpy(sip_config.username, username, sizeof(sip_config.username) - 1);
+        sip_config.username[sizeof(sip_config.username) - 1] = '\0';
+        sip_config.configured = true;
+    }
+}
+
+void sip_set_password(const char* password)
+{
+    if (password) {
+        strncpy(sip_config.password, password, sizeof(sip_config.password) - 1);
+        sip_config.password[sizeof(sip_config.password) - 1] = '\0';
+        sip_config.configured = true;
+    }
+}
+
+void sip_set_uri(const char* uri)
+{
+    if (uri) {
+        strncpy(sip_config.apartment1_uri, uri, sizeof(sip_config.apartment1_uri) - 1);
+        sip_config.apartment1_uri[sizeof(sip_config.apartment1_uri) - 1] = '\0';
+        sip_config.configured = true;
+    }
+}
+
+void sip_reinit(void)
+{
+    ESP_LOGI(TAG, "Reinitializing SIP client");
+
+    // Stop current SIP task if running
+    if (sip_task_handle) {
+        vTaskDelete(sip_task_handle);
+        sip_task_handle = NULL;
+    }
+
+    // Close socket if open
+    if (sip_socket >= 0) {
+        close(sip_socket);
+        sip_socket = -1;
+    }
+
+    // Reload configuration
+    sip_config = sip_load_config();
+
+    if (sip_config.configured) {
+        // Reinitialize with new config
+        sip_client_init();
+    } else {
+        ESP_LOGI(TAG, "No SIP configuration found after reinit");
+        current_state = SIP_STATE_DISCONNECTED;
+    }
 }

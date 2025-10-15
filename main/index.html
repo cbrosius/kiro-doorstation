@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SIP Door Station</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        .status { margin-bottom: 20px; padding: 10px; border-radius: 4px; }
+        .status.registered { background-color: #e7f5e7; border: 1px solid #4caf50; color: #4caf50; }
+        .status.unregistered { background-color: #fdecea; border: 1px solid #f44336; color: #f44336; }
+        form { display: flex; flex-direction: column; }
+        label { margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #45a049; }
+        .toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 2px; padding: 16px; position: fixed; z-index: 1; left: 50%; bottom: 30px; }
+        .toast.show { visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @-webkit-keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @-webkit-keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+    </style>
+    <script defer>
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusDiv = document.getElementById('sip-status');
+            const sipForm = document.getElementById('sip-form');
+            const toast = document.getElementById('toast');
+
+            const fetchStatus = async () => {
+                try {
+                    const response = await fetch('/api/sip/status');
+                    const data = await response.json();
+                    statusDiv.textContent = `Status: ${data.status}`;
+                    statusDiv.className = `status ${data.status === 'Registered' ? 'registered' : 'unregistered'}`;
+                } catch (error) {
+                    console.error('Error fetching SIP status:', error);
+                    statusDiv.textContent = 'Status: Error';
+                    statusDiv.className = 'status unregistered';
+                }
+            };
+
+            const fetchConfig = async () => {
+                try {
+                    const response = await fetch('/api/sip/config');
+                    const data = await response.json();
+                    document.getElementById('uri').value = data.uri || '';
+                    document.getElementById('server').value = data.server || '';
+                    document.getElementById('username').value = data.username || '';
+                    document.getElementById('password').value = data.password || '';
+                } catch (error) {
+                    console.error('Error fetching SIP config:', error);
+                }
+            };
+
+            sipForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formData = new FormData(sipForm);
+                const data = Object.fromEntries(formData.entries());
+
+                try {
+                    const response = await fetch('/api/sip/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    if (response.ok) {
+                        showToast('Configuration saved successfully!');
+                        setTimeout(fetchStatus, 2000); // Re-check status after a delay
+                    } else {
+                        showToast('Error saving configuration.');
+                    }
+                } catch (error) {
+                    console.error('Error submitting form:', error);
+                    showToast('Error saving configuration.');
+                }
+            });
+
+            function showToast(message) {
+                toast.textContent = message;
+                toast.className = 'toast show';
+                setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+            }
+
+            // Initial fetches
+            fetchStatus();
+            fetchConfig();
+            // Refresh status every 10 seconds
+            setInterval(fetchStatus, 10000);
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>SIP Door Station</h1>
+        <div id="sip-status" class="status">Loading status...</div>
+
+        <h2>SIP Configuration</h2>
+        <form id="sip-form">
+            <label for="uri">SIP URI (e.g., sip:user@domain.com):</label>
+            <input type="text" id="uri" name="uri" required>
+
+            <label for="server">SIP Server (e.g., sip.domain.com):</label>
+            <input type="text" id="server" name="server" required>
+
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">Save Configuration</button>
+        </form>
+    </div>
+    <div id="toast" class="toast"></div>
+</body>
+</html>

@@ -39,4 +39,16 @@ void sip_save_config(const char* server, const char* username, const char* passw
                      const char* apt1, const char* apt2, int port);
 sip_config_t sip_load_config(void);
 
+// Additional getter/setter functions for web interface
+bool sip_is_registered(void);
+const char* sip_get_server(void);
+const char* sip_get_username(void);
+const char* sip_get_password(void);
+const char* sip_get_uri(void);  // Returns apartment1_uri as default
+void sip_set_server(const char* server);
+void sip_set_username(const char* username);
+void sip_set_password(const char* password);
+void sip_set_uri(const char* uri);
+void sip_reinit(void);
+
 #endif
