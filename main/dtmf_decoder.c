@@ -24,12 +24,12 @@ static void dtmf_command_handler(dtmf_tone_t tone)
     ESP_LOGI(TAG, "DTMF Ton empfangen: %c", tone);
     
     if (tone == DTMF_HASH) {
-        // Kommando ausführen
+        // Execute command
         if (strcmp(command_buffer, "*1") == 0) {
-            ESP_LOGI(TAG, "Türöffner aktivieren");
+            ESP_LOGI(TAG, "Activating door opener");
             xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
         } else if (strcmp(command_buffer, "*2") == 0) {
-            ESP_LOGI(TAG, "Licht umschalten");
+            ESP_LOGI(TAG, "Toggling light");
             light_relay_toggle();
         }
         
@@ -43,9 +43,9 @@ static void dtmf_command_handler(dtmf_tone_t tone)
 
 void dtmf_decoder_init(void)
 {
-    ESP_LOGI(TAG, "DTMF Decoder initialisieren");
+    ESP_LOGI(TAG, "Initializing DTMF Decoder");
     dtmf_callback = dtmf_command_handler;
-    ESP_LOGI(TAG, "DTMF Decoder initialisiert");
+    ESP_LOGI(TAG, "DTMF Decoder initialized");
 }
 
 void dtmf_set_callback(dtmf_callback_t callback)

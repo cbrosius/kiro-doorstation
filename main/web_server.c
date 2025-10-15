@@ -1,6 +1,7 @@
 #include "web_server.h"
 #include "sip_client.h"
 #include "wifi_manager.h"
+#include "ntp_sync.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
@@ -377,6 +378,109 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// NTP API Handlers
+static esp_err_t get_ntp_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool is_synced = ntp_is_synced();
+    cJSON_AddBoolToObject(root, "synced", is_synced);
+    
+    if (is_synced) {
+        char time_str[64];
+        ntp_get_time_string(time_str, sizeof(time_str));
+        cJSON_AddStringToObject(root, "current_time", time_str);
+        cJSON_AddNumberToObject(root, "timestamp_ms", ntp_get_timestamp_ms());
+    }
+    
+    cJSON_AddStringToObject(root, "server", ntp_get_server());
+    cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t get_ntp_config_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(root, "server", ntp_get_server());
+    cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_ntp_config_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *timezone = cJSON_GetObjectItem(root, "timezone");
+
+    if (!cJSON_IsString(server) || (server->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing server");
+        return ESP_FAIL;
+    }
+
+    const char* tz = (cJSON_IsString(timezone) && timezone->valuestring) ? 
+                     timezone->valuestring : NTP_DEFAULT_TIMEZONE;
+
+    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", server->valuestring, tz);
+    
+    // Update NTP configuration
+    ntp_set_config(server->valuestring, tz);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"NTP configuration updated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"NTP configuration updated\"}"));
+    return ESP_OK;
+}
+
+static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "Manual NTP sync requested");
+    
+    ntp_force_sync();
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"NTP sync initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"NTP sync initiated\"}"));
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -459,10 +563,26 @@ static const httpd_uri_t system_restart_uri = {
     .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t ntp_status_uri = {
+    .uri = "/api/ntp/status", .method = HTTP_GET, .handler = get_ntp_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_get_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_GET, .handler = get_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_post_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_POST, .handler = post_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_sync_uri = {
+    .uri = "/api/ntp/sync", .method = HTTP_POST, .handler = post_ntp_sync_handler, .user_ctx = NULL
+};
+
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 16; // Increase handler limit
+    config.max_uri_handlers = 20; // Increase handler limit for NTP endpoints
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Register all URI handlers
@@ -485,6 +605,12 @@ void web_server_start(void)
         // System API endpoints
         httpd_register_uri_handler(server, &system_status_uri);
         httpd_register_uri_handler(server, &system_restart_uri);
+        
+        // NTP API endpoints
+        httpd_register_uri_handler(server, &ntp_status_uri);
+        httpd_register_uri_handler(server, &ntp_config_get_uri);
+        httpd_register_uri_handler(server, &ntp_config_post_uri);
+        httpd_register_uri_handler(server, &ntp_sync_uri);
         
         ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {

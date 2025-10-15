@@ -622,8 +622,29 @@
                         else if (entry.type === 'sent') color = '#dcdcaa';
                         else if (entry.type === 'received') color = '#9cdcfe';
                         
-                        const time = new Date(entry.timestamp).toLocaleTimeString();
-                        entryDiv.innerHTML = `<span style="color: #888;">[${time}]</span> <span style="color: ${color};">[${entry.type.toUpperCase()}]</span> ${escapeHtml(entry.message)}`;
+                        // Format timestamp - if it's a real timestamp (> year 2000), show date-time, otherwise show uptime
+                        let timeStr;
+                        if (entry.timestamp > 946684800000) { // Jan 1, 2000 in ms
+                            // Real timestamp from NTP - show full date and time
+                            const date = new Date(entry.timestamp);
+                            timeStr = date.toLocaleString('en-GB', { 
+                                year: 'numeric', 
+                                month: '2-digit', 
+                                day: '2-digit',
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit',
+                                hour12: false 
+                            });
+                        } else {
+                            // Uptime timestamp - show as HH:MM:SS
+                            const totalSeconds = Math.floor(entry.timestamp / 1000);
+                            const hours = Math.floor(totalSeconds / 3600);
+                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                            const seconds = totalSeconds % 60;
+                            timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                        }
+                        entryDiv.innerHTML = `<span style="color: #888;">[${timeStr}]</span> <span style="color: ${color};">[${entry.type.toUpperCase()}]</span> ${escapeHtml(entry.message)}`;
                         
                         logDiv.appendChild(entryDiv);
                         lastLogTimestamp = Math.max(lastLogTimestamp, entry.timestamp + 1);
@@ -646,6 +667,56 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // NTP Functions
+        async function fetchNtpStatus() {
+            try {
+                const response = await fetch('/api/ntp/status');
+                const data = await response.json();
+                
+                document.getElementById('ntp-synced').textContent = data.synced ? '✅ Yes' : '❌ No';
+                document.getElementById('ntp-current-time').textContent = data.current_time || 'Not synced';
+            } catch (error) {
+                console.error('Error fetching NTP status:', error);
+                document.getElementById('ntp-synced').textContent = 'Error';
+                document.getElementById('ntp-current-time').textContent = 'Error';
+            }
+        }
+
+        async function fetchNtpConfig() {
+            try {
+                const response = await fetch('/api/ntp/config');
+                const data = await response.json();
+                document.getElementById('ntp-server').value = data.server || 'pool.ntp.org';
+                document.getElementById('ntp-timezone').value = data.timezone || 'UTC0';
+            } catch (error) {
+                console.error('Error fetching NTP config:', error);
+            }
+        }
+
+        async function syncNtpTime() {
+            const syncBtn = event.target;
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Syncing...';
+
+            try {
+                const response = await fetch('/api/ntp/sync', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showToast('NTP sync initiated', 'success');
+                    setTimeout(fetchNtpStatus, 2000);
+                } else {
+                    showToast('Failed to sync NTP', 'error');
+                }
+            } catch (error) {
+                console.error('Error syncing NTP:', error);
+                showToast('Error syncing NTP', 'error');
+            }
+
+            syncBtn.disabled = false;
+            syncBtn.textContent = 'Force Sync Now';
         }
 
         // Auto-refresh log
@@ -677,6 +748,43 @@
             
             // Initial log fetch
             refreshSipLog();
+            
+            // Load NTP configuration and status
+            fetchNtpConfig();
+            fetchNtpStatus();
+            
+            // Refresh NTP status every 5 seconds
+            setInterval(fetchNtpStatus, 5000);
+            
+            // NTP form submission
+            const ntpForm = document.getElementById('ntp-form');
+            ntpForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(ntpForm);
+                const data = {
+                    server: formData.get('server'),
+                    timezone: formData.get('timezone')
+                };
+
+                try {
+                    const response = await fetch('/api/ntp/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        showToast('NTP configuration saved!', 'success');
+                        setTimeout(fetchNtpStatus, 2000);
+                    } else {
+                        showToast('Failed to save NTP configuration', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error saving NTP config:', error);
+                    showToast('Error saving NTP configuration', 'error');
+                }
+            });
         });
     </script>
 </head>
@@ -709,6 +817,30 @@
             <div class="button-group" style="margin-top: 15px;">
                 <button onclick="restartSystem()" class="danger">Restart System</button>
             </div>
+        </div>
+
+        <!-- NTP Time Configuration -->
+        <div class="form-section">
+            <h2>NTP Time Synchronization</h2>
+            <div class="system-info" style="margin-bottom: 15px;">
+                <div><strong>Time Synced:</strong> <span id="ntp-synced">Loading...</span></div>
+                <div><strong>Current Time:</strong> <span id="ntp-current-time">Loading...</span></div>
+            </div>
+            <form id="ntp-form">
+                <label for="ntp-server">NTP Server:</label>
+                <input type="text" id="ntp-server" name="server" placeholder="pool.ntp.org" required>
+
+                <label for="ntp-timezone">Timezone:</label>
+                <input type="text" id="ntp-timezone" name="timezone" placeholder="Europe/Berlin or UTC0" required>
+                <small style="color: #666; margin-bottom: 10px; display: block;">
+                    Examples: Europe/Berlin, America/New_York, Asia/Tokyo, UTC, or POSIX strings like CET-1CEST,M3.5.0,M10.5.0/3
+                </small>
+
+                <div class="button-group">
+                    <button type="submit">Save NTP Configuration</button>
+                    <button type="button" onclick="syncNtpTime()" class="secondary">Force Sync Now</button>
+                </div>
+            </form>
         </div>
 
         <!-- WiFi Configuration -->

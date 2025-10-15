@@ -7,6 +7,7 @@ idf_component_register(
         "gpio_handler.c"
         "wifi_manager.c"
         "web_server.c"
+        "ntp_sync.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

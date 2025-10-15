@@ -1,6 +1,8 @@
 #include "sip_client.h"
 #include "audio_handler.h"
 #include "dtmf_decoder.h"
+#include "ntp_sync.h"
+#include "ntp_log.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "esp_netif.h"
@@ -29,7 +31,7 @@ static int sip_log_write_index = 0;
 static int sip_log_count = 0;
 static SemaphoreHandle_t sip_log_mutex = NULL;
 
-// Vereinfachte SIP-Nachrichten
+// Simplified SIP messages
 static const char* sip_register_template = 
 "REGISTER sip:%s SIP/2.0\r\n"
 "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
@@ -61,7 +63,14 @@ static void sip_add_log_entry(const char* type, const char* message)
     
     if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         sip_log_entry_t* entry = &sip_log_buffer[sip_log_write_index];
-        entry->timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        
+        // Use NTP timestamp if available, otherwise fall back to tick count
+        if (ntp_is_synced()) {
+            entry->timestamp = ntp_get_timestamp_ms();
+        } else {
+            entry->timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        }
+        
         strncpy(entry->type, type, sizeof(entry->type) - 1);
         entry->type[sizeof(entry->type) - 1] = '\0';
         strncpy(entry->message, message, sizeof(entry->message) - 1);
@@ -101,7 +110,7 @@ static void sip_task(void *pvParameters)
     char buffer[2048];
     int len;
     
-    ESP_LOGI(TAG, "SIP task started on core %d", xPortGetCoreID());
+    NTP_LOGI(TAG, "SIP task started on core %d", xPortGetCoreID());
     sip_add_log_entry("info", "SIP task started on Core 1");
     
     while (1) {
@@ -118,7 +127,7 @@ static void sip_task(void *pvParameters)
             sip_config.configured &&
             (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >= auto_register_delay_ms) {
             init_timestamp = 0; // Clear flag so we only try once
-            ESP_LOGI(TAG, "Auto-registration triggered after %lu ms delay", auto_register_delay_ms);
+            NTP_LOGI(TAG, "Auto-registration triggered after %lu ms delay", auto_register_delay_ms);
             sip_add_log_entry("info", "Auto-registration starting (WiFi stable)");
             registration_requested = true;
         }
@@ -126,7 +135,7 @@ static void sip_task(void *pvParameters)
         // Check if registration was requested (manual or auto)
         if (registration_requested && current_state != SIP_STATE_REGISTERED) {
             registration_requested = false;
-            ESP_LOGI(TAG, "Processing registration request");
+            NTP_LOGI(TAG, "Processing registration request");
             sip_add_log_entry("info", "Starting SIP registration");
             sip_client_register();
         }
@@ -135,7 +144,7 @@ static void sip_task(void *pvParameters)
             len = recv(sip_socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
             if (len > 0) {
                 buffer[len] = '\0';
-                ESP_LOGI(TAG, "SIP message received:\n%s", buffer);
+                NTP_LOGI(TAG, "SIP message received:\n%s", buffer);
                 
                 // Log received message (truncated for display)
                 char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
@@ -146,21 +155,21 @@ static void sip_task(void *pvParameters)
                 if (strstr(buffer, "200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
-                        ESP_LOGI(TAG, "SIP registration successful");
+                        NTP_LOGI(TAG, "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_CONNECTED;
-                        ESP_LOGI(TAG, "Call connected");
+                        NTP_LOGI(TAG, "Call connected");
                         audio_start_recording();
                         audio_start_playback();
                     }
                 } else if (strstr(buffer, "INVITE")) {
-                    ESP_LOGI(TAG, "Incoming call");
+                    NTP_LOGI(TAG, "Incoming call");
                     current_state = SIP_STATE_RINGING;
                     // Auto-answer after short delay
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     sip_client_answer_call();
                 } else if (strstr(buffer, "BYE")) {
-                    ESP_LOGI(TAG, "Call ended");
+                    NTP_LOGI(TAG, "Call ended");
                     current_state = SIP_STATE_REGISTERED;
                     audio_stop_recording();
                     audio_stop_playback();
@@ -203,16 +212,16 @@ static void sip_task(void *pvParameters)
 
 void sip_client_init(void)
 {
-    ESP_LOGI(TAG, "Initializing SIP client");
+    NTP_LOGI(TAG, "Initializing SIP client");
 
     // Set initial state
     current_state = SIP_STATE_IDLE;
 
-    // Konfiguration laden
+    // Load configuration
     sip_config = sip_load_config();
 
     if (sip_config.configured) {
-        ESP_LOGI(TAG, "SIP configuration loaded: %s@%s", sip_config.username, sip_config.server);
+        NTP_LOGI(TAG, "SIP configuration loaded: %s@%s", sip_config.username, sip_config.server);
 
         // Create socket
         sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -278,7 +287,7 @@ void sip_client_deinit(void)
         sip_socket = -1;
     }
     
-    ESP_LOGI(TAG, "SIP Client deinitialisiert");
+    ESP_LOGI(TAG, "SIP Client deinitialized");
 }
 
 bool sip_client_register(void)
@@ -288,7 +297,7 @@ bool sip_client_register(void)
         return false;
     }
 
-    ESP_LOGI(TAG, "SIP registration with %s", sip_config.server);
+    NTP_LOGI(TAG, "SIP registration with %s", sip_config.server);
     sip_add_log_entry("info", "Starting DNS lookup");
     current_state = SIP_STATE_REGISTERING;
 
@@ -311,7 +320,7 @@ bool sip_client_register(void)
         return false;
     }
     
-    ESP_LOGI(TAG, "DNS lookup successful");
+    NTP_LOGI(TAG, "DNS lookup successful");
     sip_add_log_entry("info", "DNS lookup successful");
 
     memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
@@ -325,7 +334,7 @@ bool sip_client_register(void)
         ESP_LOGI(TAG, "Using local IP: %s", local_ip);
     }
 
-    // REGISTER-Nachricht erstellen (vereinfacht)
+    // Create REGISTER message (simplified)
     char register_msg[1024];
     snprintf(register_msg, sizeof(register_msg), sip_register_template,
              sip_config.server, local_ip, rand(),
@@ -338,14 +347,14 @@ bool sip_client_register(void)
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent < 0) {
-        ESP_LOGE(TAG, "Fehler beim Senden der REGISTER-Nachricht: %d", sent);
+        ESP_LOGE(TAG, "Error sending REGISTER message: %d", sent);
         current_state = SIP_STATE_ERROR;
         return false;
     }
 
-    ESP_LOGI(TAG, "REGISTER-Nachricht erfolgreich gesendet (%d Bytes)", sent);
+    ESP_LOGI(TAG, "REGISTER message sent successfully (%d bytes)", sent);
 
-    ESP_LOGI(TAG, "REGISTER message sent");
+    NTP_LOGI(TAG, "REGISTER message sent");
     return true;
 }
 
@@ -365,8 +374,8 @@ void sip_client_make_call(const char* uri)
         strcpy(local_ip, "192.168.1.100"); // Fallback
     }
     
-    // Vereinfachte INVITE-Nachricht
-    // In einer echten Implementierung würde hier eine vollständige SDP-Session-Description erstellt
+    // Simplified INVITE message
+    // In a real implementation, a complete SDP session description would be created here
     char sdp[256];
     snprintf(sdp, sizeof(sdp), 
              "v=0\r\no=- 0 0 IN IP4 %s\r\ns=-\r\nc=IN IP4 %s\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
@@ -380,8 +389,8 @@ void sip_client_make_call(const char* uri)
              sip_config.username, local_ip,
              strlen(sdp), sdp);
     
-    // Nachricht senden (vereinfacht)
-    ESP_LOGI(TAG, "INVITE-Nachricht erstellt");
+    // Send message (simplified)
+    ESP_LOGI(TAG, "INVITE message created");
 }
 
 void sip_client_hangup(void)
@@ -523,7 +532,7 @@ sip_state_t sip_client_get_state(void)
 void sip_save_config(const char* server, const char* username, const char* password,
                      const char* apt1, const char* apt2, int port)
 {
-    ESP_LOGI(TAG, "SIP Konfiguration speichern: %s@%s", username, server);
+    ESP_LOGI(TAG, "Saving SIP configuration: %s@%s", username, server);
 
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open("sip_config", NVS_READWRITE, &nvs_handle);
@@ -539,9 +548,9 @@ void sip_save_config(const char* server, const char* username, const char* passw
 
         nvs_commit(nvs_handle);
         nvs_close(nvs_handle);
-        ESP_LOGI(TAG, "SIP Konfiguration gespeichert");
+        ESP_LOGI(TAG, "SIP configuration saved");
     } else {
-        ESP_LOGE(TAG, "Fehler beim Öffnen des NVS-Handles: %d", err);
+        ESP_LOGE(TAG, "Error opening NVS handle: %d", err);
     }
 }
 
@@ -735,7 +744,7 @@ bool sip_test_configuration(void)
 // Connect to SIP server (start registration)
 bool sip_connect(void)
 {
-    ESP_LOGI(TAG, "SIP connect requested");
+    NTP_LOGI(TAG, "SIP connect requested");
     sip_add_log_entry("info", "SIP connection requested");
     
     if (!sip_config.configured) {
@@ -760,7 +769,7 @@ bool sip_connect(void)
 // Disconnect from SIP server
 void sip_disconnect(void)
 {
-    ESP_LOGI(TAG, "SIP disconnect requested");
+    NTP_LOGI(TAG, "SIP disconnect requested");
     sip_add_log_entry("info", "SIP disconnection requested");
     
     if (sip_socket >= 0) {
