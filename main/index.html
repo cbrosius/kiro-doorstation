@@ -2,6 +2,7 @@
 <html>
 
 <head>
+    <meta charset="UTF-8">
     <title>ESP32 SIP Door Station</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -193,6 +194,10 @@
             background-color: #dc3545;
         }
 
+        .toast.info {
+            background-color: #17a2b8;
+        }
+
         .system-info {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -265,6 +270,37 @@
         }
     </style>
     <script defer>
+        // Track previous SIP status to detect changes
+        let previousSipStatus = null;
+
+        // Global function to fetch SIP status (used by connect/disconnect buttons)
+        async function fetchSipStatus() {
+            try {
+                const response = await fetch('/api/sip/status');
+                const data = await response.json();
+                const sipStatusDiv = document.getElementById('sip-status');
+                if (sipStatusDiv) {
+                    sipStatusDiv.textContent = `SIP: ${data.status}`;
+                    sipStatusDiv.className = `status-card status ${data.status === 'Registered' ? 'connected' : 'disconnected'}`;
+                }
+                
+                // Show toast when registration becomes successful
+                if (data.status === 'Registered' && previousSipStatus !== 'Registered') {
+                    showToast('✅ SIP registration successful!', 'success');
+                }
+                
+                // Update previous status
+                previousSipStatus = data.status;
+            } catch (error) {
+                console.error('Error fetching SIP status:', error);
+                const sipStatusDiv = document.getElementById('sip-status');
+                if (sipStatusDiv) {
+                    sipStatusDiv.textContent = 'SIP: Error';
+                    sipStatusDiv.className = 'status-card status error';
+                }
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const sipStatusDiv = document.getElementById('sip-status');
             const wifiStatusDiv = document.getElementById('wifi-status');
@@ -289,18 +325,7 @@
                 }
             };
 
-            const fetchSipStatus = async () => {
-                try {
-                    const response = await fetch('/api/sip/status');
-                    const data = await response.json();
-                    sipStatusDiv.textContent = `SIP: ${data.status}`;
-                    sipStatusDiv.className = `status-card status ${data.status === 'Registered' ? 'connected' : 'disconnected'}`;
-                } catch (error) {
-                    console.error('Error fetching SIP status:', error);
-                    sipStatusDiv.textContent = 'SIP: Error';
-                    sipStatusDiv.className = 'status-card status error';
-                }
-            };
+
 
             const fetchWifiStatus = async () => {
                 try {
@@ -422,10 +447,34 @@
                 }
             });
 
+            // Toast queue system
+            let toastQueue = [];
+            let isShowingToast = false;
+
             function showToast(message, type = 'info') {
+                toastQueue.push({ message, type });
+                if (!isShowingToast) {
+                    processToastQueue();
+                }
+            }
+
+            function processToastQueue() {
+                if (toastQueue.length === 0) {
+                    isShowingToast = false;
+                    return;
+                }
+
+                isShowingToast = true;
+                const { message, type } = toastQueue.shift();
+                
                 toast.textContent = message;
                 toast.className = `toast show ${type}`;
-                setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+                
+                setTimeout(() => {
+                    toast.className = toast.className.replace('show', '');
+                    // Wait for fade out animation before showing next toast
+                    setTimeout(processToastQueue, 500);
+                }, 3000);
             }
 
             // Initial fetches
@@ -541,33 +590,118 @@
             }
         }
 
+        // Toast queue system (global version)
+        let toastQueue = [];
+        let isShowingToast = false;
+
         function showToast(message, type = 'info') {
+            toastQueue.push({ message, type });
+            if (!isShowingToast) {
+                processToastQueue();
+            }
+        }
+
+        function processToastQueue() {
+            if (toastQueue.length === 0) {
+                isShowingToast = false;
+                return;
+            }
+
+            isShowingToast = true;
+            const { message, type } = toastQueue.shift();
             const toast = document.getElementById('toast');
+            
             toast.textContent = message;
             toast.className = `toast show ${type}`;
-            setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+            
+            setTimeout(() => {
+                toast.className = toast.className.replace('show', '');
+                // Wait for fade out animation before showing next toast
+                setTimeout(processToastQueue, 500);
+            }, 3000);
+        }
+
+        // Add a local log entry to the display
+        function addLocalLogEntry(type, message) {
+            const logDiv = document.getElementById('sip-log');
+            const entryDiv = document.createElement('div');
+            entryDiv.style.marginBottom = '5px';
+            
+            // Color code by type
+            let color = '#d4d4d4';
+            if (type === 'error') color = '#f48771';
+            else if (type === 'info') color = '#4ec9b0';
+            else if (type === 'user') color = '#c586c0'; // Purple for user actions
+            
+            // Format current time
+            const now = new Date();
+            const timeStr = now.toLocaleString('en-GB', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: false 
+            });
+            
+            entryDiv.innerHTML = `<span style="color: #888;">[${timeStr}]</span> <span style="color: ${color};">[${type.toUpperCase()}]</span> ${escapeHtml(message)}`;
+            logDiv.appendChild(entryDiv);
+            
+            // Auto-scroll to bottom
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
         // SIP Connection Management
         async function connectToSip() {
+            // Log button press
+            addLocalLogEntry('user', '🔘 Connect button pressed');
+            
             const connectBtn = document.getElementById('sip-connect-btn');
             connectBtn.disabled = true;
             connectBtn.textContent = 'Connecting...';
 
             try {
+                // First check current status
+                const statusResponse = await fetch('/api/sip/status');
+                const statusData = await statusResponse.json();
+                
+                // If already registered, show info toast and return
+                if (statusData.status === 'Registered') {
+                    showToast('ℹ️ Already registered to SIP server', 'info');
+                    connectBtn.disabled = false;
+                    connectBtn.textContent = 'Connect to SIP';
+                    return;
+                }
+                
+                // Proceed with connection
                 const response = await fetch('/api/sip/connect', { method: 'POST' });
+                
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Connect response:', data);
                 
                 if (data.status === 'success') {
-                    showToast('SIP connection initiated!', 'success');
+                    showToast('🔄 Connecting to SIP server...', 'info');
+                    // Poll more frequently for a few seconds to catch registration success
+                    let pollCount = 0;
+                    const pollInterval = setInterval(() => {
+                        fetchSipStatus();
+                        pollCount++;
+                        if (pollCount >= 10) { // Poll for 5 seconds (500ms * 10)
+                            clearInterval(pollInterval);
+                        }
+                    }, 500);
                 } else {
                     showToast(data.message || 'Failed to connect to SIP', 'error');
                 }
-                
-                setTimeout(fetchSipStatus, 2000);
             } catch (error) {
                 console.error('Error connecting to SIP:', error);
-                showToast('Error connecting to SIP', 'error');
+                showToast(`Error: ${error.message}`, 'error');
             }
 
             connectBtn.disabled = false;
@@ -575,19 +709,34 @@
         }
 
         async function disconnectFromSip() {
+            // Log button press
+            addLocalLogEntry('user', '🔘 Disconnect button pressed');
+            
             const disconnectBtn = document.getElementById('sip-disconnect-btn');
             disconnectBtn.disabled = true;
             disconnectBtn.textContent = 'Disconnecting...';
 
             try {
                 const response = await fetch('/api/sip/disconnect', { method: 'POST' });
-                const data = await response.json();
                 
-                showToast('Disconnected from SIP', 'success');
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Disconnect response:', data);
+                
+                if (data.status === 'success') {
+                    showToast('Disconnected from SIP', 'success');
+                } else {
+                    showToast(data.message || 'Failed to disconnect', 'error');
+                }
+                
                 setTimeout(fetchSipStatus, 1000);
             } catch (error) {
                 console.error('Error disconnecting from SIP:', error);
-                showToast('Error disconnecting from SIP', 'error');
+                showToast(`Error: ${error.message}`, 'error');
             }
 
             disconnectBtn.disabled = false;
@@ -700,7 +849,7 @@
                 const response = await fetch('/api/ntp/status');
                 const data = await response.json();
                 
-                document.getElementById('ntp-synced').textContent = data.synced ? '✅ Yes' : '❌ No';
+                document.getElementById('ntp-synced').innerHTML = data.synced ? '&#x2705; Yes' : '&#x274C; No';
                 document.getElementById('ntp-current-time').textContent = data.current_time || 'Not synced';
             } catch (error) {
                 console.error('Error fetching NTP status:', error);

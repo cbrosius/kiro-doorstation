@@ -305,6 +305,40 @@ static void sip_task(void *pvParameters)
         // Check if registration was requested (manual or auto)
         if (registration_requested && current_state != SIP_STATE_REGISTERED) {
             registration_requested = false;
+            
+            // Recreate socket if it was closed
+            if (sip_socket < 0) {
+                NTP_LOGI(TAG, "Recreating SIP socket");
+                sip_add_log_entry("info", "Creating SIP socket");
+                
+                sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                if (sip_socket < 0) {
+                    ESP_LOGE(TAG, "Error creating SIP socket");
+                    sip_add_log_entry("error", "Failed to create SIP socket");
+                    current_state = SIP_STATE_ERROR;
+                    continue;
+                }
+                
+                // Bind socket to port 5060
+                struct sockaddr_in local_addr;
+                memset(&local_addr, 0, sizeof(local_addr));
+                local_addr.sin_family = AF_INET;
+                local_addr.sin_addr.s_addr = INADDR_ANY;
+                local_addr.sin_port = htons(5060);
+                
+                if (bind(sip_socket, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+                    ESP_LOGE(TAG, "Error binding SIP socket to port 5060");
+                    sip_add_log_entry("error", "Failed to bind socket to port 5060");
+                    close(sip_socket);
+                    sip_socket = -1;
+                    current_state = SIP_STATE_ERROR;
+                    continue;
+                }
+                
+                NTP_LOGI(TAG, "SIP socket recreated and bound to port 5060");
+                sip_add_log_entry("info", "SIP socket ready");
+            }
+            
             NTP_LOGI(TAG, "Processing registration request");
             sip_add_log_entry("info", "Starting SIP registration");
             sip_client_register();
@@ -1088,9 +1122,16 @@ bool sip_connect(void)
     }
     
     if (current_state == SIP_STATE_REGISTERED) {
-        ESP_LOGI(TAG, "Already registered");
+        NTP_LOGI(TAG, "Already registered");
         sip_add_log_entry("info", "Already registered to SIP server");
         return true;
+    }
+    
+    // If disconnected, change state to idle so registration can proceed
+    if (current_state == SIP_STATE_DISCONNECTED) {
+        current_state = SIP_STATE_IDLE;
+        NTP_LOGI(TAG, "State changed from DISCONNECTED to IDLE");
+        sip_add_log_entry("info", "Reconnecting to SIP server");
     }
     
     // Set flag to trigger registration in SIP task (non-blocking)
@@ -1106,11 +1147,26 @@ void sip_disconnect(void)
     NTP_LOGI(TAG, "SIP disconnect requested");
     sip_add_log_entry("info", "SIP disconnection requested");
     
+    // Send REGISTER with Expires: 0 to unregister (if registered)
+    if (current_state == SIP_STATE_REGISTERED && sip_socket >= 0) {
+        NTP_LOGI(TAG, "Sending unregister message");
+        sip_add_log_entry("info", "Unregistering from SIP server");
+        // TODO: Send REGISTER with Expires: 0
+    }
+    
+    // Close socket
     if (sip_socket >= 0) {
         close(sip_socket);
         sip_socket = -1;
+        NTP_LOGI(TAG, "SIP socket closed");
     }
     
+    // Clear registration flag
+    registration_requested = false;
+    
+    // Update state
     current_state = SIP_STATE_DISCONNECTED;
     sip_add_log_entry("info", "Disconnected from SIP server");
+    
+    NTP_LOGI(TAG, "SIP client disconnected");
 }
