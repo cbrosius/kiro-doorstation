@@ -2,6 +2,17 @@
 
 ## Current Status: Major Features Implemented ✅
 
+### Phase 0: SIP Logging and Connection Management ✅ COMPLETED
+- [x] Add "Connect to SIP" button for manual connection control
+- [x] Add "Disconnect" button for manual disconnection
+- [x] Implement real-time SIP logging display in web interface
+- [x] Add color-coded log entries (error, info, sent, received)
+- [x] Implement auto-refresh with 500ms polling
+- [x] Add manual refresh and clear display controls
+- [x] Create thread-safe log buffer (50 entries, circular)
+- [x] Implement /api/sip/log endpoint with timestamp filtering
+- [x] Implement /api/sip/connect and /api/sip/disconnect endpoints
+
 ### Phase 1: SIP Settings Persistence ✅ COMPLETED
 - [x] Fix SIP configuration persistence - Update sip_save_config() to properly parse and save actual form data instead of hardcoded values
 - [x] Connect web server SIP handler - Implement proper JSON parsing and configuration saving

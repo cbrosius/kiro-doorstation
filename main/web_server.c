@@ -78,6 +78,82 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t get_sip_log_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    
+    // Parse query parameter "since"
+    char query[64];
+    uint32_t since_timestamp = 0;
+    
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char param[32];
+        if (httpd_query_key_value(query, "since", param, sizeof(param)) == ESP_OK) {
+            since_timestamp = atoi(param);
+        }
+    }
+    
+    // Get log entries
+    sip_log_entry_t entries[50];
+    int count = sip_get_log_entries(entries, 50, since_timestamp);
+    
+    cJSON *root = cJSON_CreateObject();
+    cJSON *entries_array = cJSON_CreateArray();
+    
+    for (int i = 0; i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        cJSON_AddNumberToObject(entry, "timestamp", entries[i].timestamp);
+        cJSON_AddStringToObject(entry, "type", entries[i].type);
+        cJSON_AddStringToObject(entry, "message", entries[i].message);
+        cJSON_AddItemToArray(entries_array, entry);
+    }
+    
+    cJSON_AddItemToObject(root, "entries", entries_array);
+    cJSON_AddNumberToObject(root, "count", count);
+    
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_connect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool result = sip_connect();
+
+    cJSON_AddStringToObject(root, "status", result ? "success" : "failed");
+    cJSON_AddStringToObject(root, "message", result ?
+        "SIP connection initiated" :
+        "SIP connection failed - check configuration");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    
+    sip_disconnect();
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "success");
+    cJSON_AddStringToObject(root, "message", "SIP disconnected");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
     char buf[1024];
@@ -337,6 +413,27 @@ static const httpd_uri_t sip_test_uri = {
     .user_ctx  = NULL
 };
 
+static const httpd_uri_t sip_log_uri = {
+    .uri       = "/api/sip/log",
+    .method    = HTTP_GET,
+    .handler   = get_sip_log_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_connect_uri = {
+    .uri       = "/api/sip/connect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_connect_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_disconnect_uri = {
+    .uri       = "/api/sip/disconnect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_disconnect_handler,
+    .user_ctx  = NULL
+};
+
 // URI handlers
 static const httpd_uri_t root_uri = {
     .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
@@ -376,6 +473,9 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &sip_config_get_uri);
         httpd_register_uri_handler(server, &sip_config_post_uri);
         httpd_register_uri_handler(server, &sip_test_uri);
+        httpd_register_uri_handler(server, &sip_log_uri);
+        httpd_register_uri_handler(server, &sip_connect_uri);
+        httpd_register_uri_handler(server, &sip_disconnect_uri);
         
         // WiFi API endpoints
         httpd_register_uri_handler(server, &wifi_status_uri);

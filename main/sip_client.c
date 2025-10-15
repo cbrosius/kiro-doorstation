@@ -14,6 +14,7 @@ static sip_state_t current_state = SIP_STATE_IDLE;
 static sip_config_t sip_config = {0};
 static int sip_socket = -1;
 static TaskHandle_t sip_task_handle = NULL;
+static bool registration_requested = false;
 
 // SIP Log buffer for web interface
 #define SIP_LOG_MAX_ENTRIES 50
@@ -84,6 +85,14 @@ static void sip_task(void *pvParameters)
         // Longer delay to minimize CPU usage - SIP doesn't need fast polling
         // 200ms is more than sufficient for SIP protocol
         vTaskDelay(pdMS_TO_TICKS(200));
+        
+        // Check if registration was requested
+        if (registration_requested && current_state != SIP_STATE_REGISTERED) {
+            registration_requested = false;
+            ESP_LOGI(TAG, "Processing registration request");
+            sip_add_log_entry("info", "Starting SIP registration");
+            sip_client_register();
+        }
         
         if (sip_socket >= 0) {
             len = recv(sip_socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
@@ -649,52 +658,66 @@ void sip_reinit(void)
 bool sip_test_configuration(void)
 {
     ESP_LOGI(TAG, "Testing SIP configuration");
+    sip_add_log_entry("info", "Testing SIP configuration");
 
     if (!sip_config.configured) {
         ESP_LOGE(TAG, "No SIP configuration available for testing");
+        sip_add_log_entry("error", "No SIP configuration available");
         return false;
     }
 
     ESP_LOGI(TAG, "Testing SIP server: %s:%d", sip_config.server, sip_config.port);
     ESP_LOGI(TAG, "Testing SIP user: %s", sip_config.username);
 
-    // For testing purposes, we'll just check if we can resolve the hostname
-    // and send a REGISTER message (without waiting for response)
-    struct hostent *host = gethostbyname(sip_config.server);
-    if (host == NULL) {
-        ESP_LOGE(TAG, "Cannot resolve SIP server hostname: %s", sip_config.server);
+    // Simple validation - just check if configuration is present
+    // Don't do DNS lookup or network operations here to avoid blocking
+    if (strlen(sip_config.server) == 0 || strlen(sip_config.username) == 0) {
+        ESP_LOGE(TAG, "Invalid SIP configuration");
+        sip_add_log_entry("error", "Invalid SIP configuration");
         return false;
     }
 
-    ESP_LOGI(TAG, "SIP server %s resolved successfully", sip_config.server);
+    ESP_LOGI(TAG, "SIP configuration validation passed");
+    sip_add_log_entry("info", "SIP configuration validation passed");
+    return true;
+}
 
-    // Try to send a REGISTER message for testing
+// Connect to SIP server (start registration)
+bool sip_connect(void)
+{
+    ESP_LOGI(TAG, "SIP connect requested");
+    sip_add_log_entry("info", "SIP connection requested");
+    
+    if (!sip_config.configured) {
+        ESP_LOGE(TAG, "Cannot connect: SIP not configured");
+        sip_add_log_entry("error", "Cannot connect: SIP not configured");
+        return false;
+    }
+    
+    if (current_state == SIP_STATE_REGISTERED) {
+        ESP_LOGI(TAG, "Already registered");
+        sip_add_log_entry("info", "Already registered to SIP server");
+        return true;
+    }
+    
+    // Set flag to trigger registration in SIP task (non-blocking)
+    registration_requested = true;
+    sip_add_log_entry("info", "SIP registration queued");
+    
+    return true;
+}
+
+// Disconnect from SIP server
+void sip_disconnect(void)
+{
+    ESP_LOGI(TAG, "SIP disconnect requested");
+    sip_add_log_entry("info", "SIP disconnection requested");
+    
     if (sip_socket >= 0) {
-        struct sockaddr_in server_addr;
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(sip_config.port);
-        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
-
-        char register_msg[1024];
-        snprintf(register_msg, sizeof(register_msg), sip_register_template,
-                 sip_config.server, "192.168.1.100", rand(),
-                 sip_config.username, sip_config.server, rand(),
-                 sip_config.username, sip_config.server,
-                 rand(), "192.168.1.100",
-                 sip_config.username, "192.168.1.100");
-
-        int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
-                            (struct sockaddr*)&server_addr, sizeof(server_addr));
-
-        if (sent > 0) {
-            ESP_LOGI(TAG, "SIP test REGISTER message sent successfully (%d bytes)", sent);
-            return true;
-        } else {
-            ESP_LOGE(TAG, "Failed to send SIP test message");
-            return false;
-        }
-    } else {
-        ESP_LOGE(TAG, "SIP socket not available for testing");
-        return false;
+        close(sip_socket);
+        sip_socket = -1;
     }
+    
+    current_state = SIP_STATE_DISCONNECTED;
+    sip_add_log_entry("info", "Disconnected from SIP server");
 }

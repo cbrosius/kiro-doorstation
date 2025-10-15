@@ -66,4 +66,8 @@ typedef struct {
 
 int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t since_timestamp);
 
+// Connection management
+bool sip_connect(void);
+void sip_disconnect(void);
+
 #endif
