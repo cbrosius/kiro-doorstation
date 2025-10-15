@@ -1,6 +1,7 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "web_server.h"
 #include "wifi_manager.h"
 #include "sip_client.h"
@@ -157,15 +158,18 @@ static const char* get_html_page(bool is_connected) {
         ".status{padding:10px;margin:10px 0;border-radius:5px}"
         ".success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}"
         ".error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}"
+        ".toast{position:fixed;top:20px;right:20px;padding:15px;border-radius:5px;z-index:1000;opacity:0;transition:opacity 0.3s ease;display:none}"
+        ".toast.success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}"
+        ".toast.error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}"
         "</style></head><body>"
         "<div class='container'>"
         "<h1>ESP32 Door Station</h1>"
         "<div class='status success'>✓ Connected to WiFi</div>"
+        "<div id='toast' class='toast'></div>"
         "<h2>SIP Status</h2>"
         "<div id='sip-status' class='status' style='margin-bottom:20px;'>Loading SIP status...</div>"
         "<button onclick='refreshSipStatus()' style='margin-bottom:20px;'>Refresh SIP Status</button>"
         "<h2>SIP Configuration</h2>"
-        "<div id='sip-save-result' class='status' style='display:none;margin-bottom:15px;'></div>"
         "<div id='current-sip-config' style='margin-bottom:15px;padding:10px;background:#e9ecef;border-radius:5px;display:none;'></div>"
         "<form action='/sip' method='post' onsubmit='return handleSipConfigSubmit()'>"
         "<div class='form-group'><label>SIP Server:</label><input type='text' name='server' id='sip-server' placeholder='sip.example.com' required></div>"
@@ -186,18 +190,35 @@ static const char* get_html_page(bool is_connected) {
         "<p><strong>*2</strong> - Toggle light</p>"
         "<p><strong>#</strong> - End call</p>"
         "<script>"
+        "function showToast(message, type) {"
+        "  var toast = document.getElementById('toast');"
+        "  if (!toast) return;"
+        "  "
+        "  toast.textContent = message;"
+        "  toast.className = 'toast ' + type;"
+        "  toast.style.display = 'block';"
+        "  "
+        "  // Fade in"
+        "  setTimeout(function() {"
+        "    toast.style.opacity = '1';"
+        "  }, 10);"
+        "  "
+        "  // Auto hide after 3 seconds"
+        "  setTimeout(function() {"
+        "    toast.style.opacity = '0';"
+        "    setTimeout(function() {"
+        "      toast.style.display = 'none';"
+        "    }, 300);"
+        "  }, 3000);"
+        "}"
+        ""
         "function handleSipConfigSubmit() {"
         "  var saveBtn = document.getElementById('sip-save-btn');"
-        "  var resultDiv = document.getElementById('sip-save-result');"
-        "  if (!saveBtn || !resultDiv) return true;"
+        "  if (!saveBtn) return true;"
         "  "
         "  // Disable button and show saving message"
         "  saveBtn.textContent = 'Saving...';"
         "  saveBtn.disabled = true;"
-        "  "
-        "  resultDiv.textContent = 'Saving SIP configuration...';"
-        "  resultDiv.className = 'status';"
-        "  resultDiv.style.display = 'block';"
         "  "
         "  // Submit form via fetch to handle response"
         "  var form = saveBtn.closest('form');"
@@ -213,9 +234,8 @@ static const char* get_html_page(bool is_connected) {
         "    }"
         "    return response.text();"
         "  })"
-        "  .then(function(html) {"
-        "    resultDiv.textContent = '✓ SIP configuration saved successfully';"
-        "    resultDiv.className = 'status success';"
+        "  .then(function(message) {"
+        "    showToast('✓ ' + message, 'success');"
         "    "
         "    // Reload current configuration after a short delay"
         "    setTimeout(function() {"
@@ -224,8 +244,7 @@ static const char* get_html_page(bool is_connected) {
         "  })"
         "  .catch(function(error) {"
         "    console.error('SIP save error:', error);"
-        "    resultDiv.textContent = '✗ Failed to save SIP configuration';"
-        "    resultDiv.className = 'status error';"
+        "    showToast('✗ Failed to save SIP configuration', 'error');"
         "  })"
         "  .then(function() {"
         "    // Re-enable button"
@@ -542,20 +561,14 @@ static esp_err_t sip_handler(httpd_req_t *req)
 
     // Validate
     if (strlen(server) == 0 || strlen(username) == 0 || strlen(apt1) == 0 || strlen(apt2) == 0) {
-        const char* error_response = "<html><body><h1>Error</h1>"
-                                   "<p style='color:red;'>Missing required SIP fields. Please fill in all required fields.</p>"
-                                   "<a href='/'>Back</a></body></html>";
-        httpd_resp_send(req, error_response, strlen(error_response));
-        return ESP_OK;
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing required SIP fields");
+        return ESP_FAIL;
     }
 
     // Validate server format (basic check)
     if (strstr(server, "sip.") == NULL && strstr(server, ".") == NULL) {
-        const char* error_response = "<html><body><h1>Error</h1>"
-                                   "<p style='color:red;'>Invalid SIP server format. Please enter a valid SIP server address.</p>"
-                                   "<a href='/'>Back</a></body></html>";
-        httpd_resp_send(req, error_response, strlen(error_response));
-        return ESP_OK;
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SIP server format");
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "SIP Configuration: Server=%s, User=%s", server, username);
@@ -563,9 +576,7 @@ static esp_err_t sip_handler(httpd_req_t *req)
     // Save SIP config
     sip_save_config(server, username, sip_password, apt1, apt2, 5060);
 
-    const char* response = "<html><body><h1>SIP Configuration Saved</h1>"
-                           "<p style='color:green;'>Configuration saved successfully!</p>"
-                           "<a href='/'>Back</a></body></html>";
+    const char* response = "SIP configuration saved successfully";
     httpd_resp_send(req, response, strlen(response));
     
     return ESP_OK;
@@ -580,8 +591,7 @@ static esp_err_t sip_test_handler(httpd_req_t *req)
     const char* response_template =
         "{"
         "\"success\": %s,"
-        "\"message\": \"%s\","
-        "\"timestamp\": \"%lld\""
+        "\"message\": \"%s\""
         "}";
 
     char* message;
@@ -608,8 +618,7 @@ static esp_err_t sip_test_handler(httpd_req_t *req)
     char response[256];
     snprintf(response, sizeof(response), response_template,
              test_result ? "true" : "false",
-             message,
-             esp_timer_get_time() / 1000);
+             message);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, strlen(response));

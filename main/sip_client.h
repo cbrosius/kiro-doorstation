@@ -1,6 +1,7 @@
 #ifndef SIP_CLIENT_H
 #define SIP_CLIENT_H
 
+#include <stddef.h>
 #include <stdbool.h>
 
 typedef struct {
