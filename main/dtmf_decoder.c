@@ -8,7 +8,7 @@
 static const char *TAG = "DTMF";
 static dtmf_callback_t dtmf_callback = NULL;
 
-// DTMF Zeichen-Matrix
+// DTMF character matrix
 static const char dtmf_chars[4][4] = {
     {'1', '2', '3', 'A'},
     {'4', '5', '6', 'B'},
@@ -21,7 +21,7 @@ static void dtmf_command_handler(dtmf_tone_t tone)
     static char command_buffer[10] = {0};
     static int command_index = 0;
     
-    ESP_LOGI(TAG, "DTMF Ton empfangen: %c", tone);
+    ESP_LOGI(TAG, "DTMF tone received: %c", tone);
     
     if (tone == DTMF_HASH) {
         // Execute command
@@ -33,7 +33,7 @@ static void dtmf_command_handler(dtmf_tone_t tone)
             light_relay_toggle();
         }
         
-        // Buffer zurücksetzen
+        // Reset buffer
         memset(command_buffer, 0, sizeof(command_buffer));
         command_index = 0;
     } else if (command_index < sizeof(command_buffer) - 1) {
@@ -55,17 +55,17 @@ void dtmf_set_callback(dtmf_callback_t callback)
 
 dtmf_tone_t dtmf_decode_buffer(const int16_t *buffer, size_t length)
 {
-    // Vereinfachte DTMF-Erkennung über Goertzel-Algorithmus
-    // In einer echten Implementierung würde hier eine FFT oder 
-    // Goertzel-Filter für jede DTMF-Frequenz verwendet
+    // Simplified DTMF detection using Goertzel algorithm
+    // In a real implementation, FFT or Goertzel filters
+    // would be used for each DTMF frequency
     
     float max_magnitude = 0;
     int detected_low = -1, detected_high = -1;
     
-    // Hier würde die eigentliche Frequenzanalyse stattfinden
-    // Für das Beispiel nehmen wir eine vereinfachte Erkennung
+    // Here the actual frequency analysis would take place
+    // For this example we use simplified detection
     
-    // Schwellwert für DTMF-Erkennung
+    // Threshold for DTMF detection
     const float threshold = 1000.0f;
     
     if (max_magnitude > threshold) {

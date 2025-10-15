@@ -727,12 +727,21 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
 
 void sip_client_make_call(const char* uri)
 {
-    if (current_state != SIP_STATE_IDLE || !sip_config.configured) {
-        ESP_LOGW(TAG, "Kann keinen Anruf tätigen - Status: %d", current_state);
+    // Allow calls only when IDLE or REGISTERED
+    if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED) {
+        NTP_LOGW(TAG, "Cannot make call - current state: %d (not IDLE or REGISTERED)", current_state);
+        sip_add_log_entry("error", "Cannot make call - not in ready state");
         return;
     }
     
-    ESP_LOGI(TAG, "Call to %s", uri);
+    if (!sip_config.configured) {
+        NTP_LOGW(TAG, "Cannot make call - SIP not configured");
+        sip_add_log_entry("error", "Cannot make call - SIP not configured");
+        return;
+    }
+    
+    NTP_LOGI(TAG, "Initiating call to %s", uri);
+    sip_add_log_entry("info", "Initiating call");
     current_state = SIP_STATE_CALLING;
     
     // Get local IP address
@@ -756,8 +765,22 @@ void sip_client_make_call(const char* uri)
              sip_config.username, local_ip,
              strlen(sdp), sdp);
     
-    // Send message (simplified)
-    ESP_LOGI(TAG, "INVITE message created");
+    NTP_LOGI(TAG, "INVITE message created (%d bytes)", strlen(invite_msg));
+    sip_add_log_entry("sent", "INVITE message prepared");
+    
+    // TODO: Send INVITE message via socket
+    // For now, just log and reset state after a delay
+    // In a full implementation, this would:
+    // 1. Send INVITE via UDP socket
+    // 2. Wait for 100 Trying, 180 Ringing, 200 OK responses
+    // 3. Send ACK
+    // 4. Establish RTP audio stream
+    
+    NTP_LOGW(TAG, "Call functionality not fully implemented - returning to ready state");
+    sip_add_log_entry("info", "Call simulation complete (not fully implemented)");
+    
+    // Reset state back to registered/idle after simulated call
+    current_state = (current_state == SIP_STATE_REGISTERED) ? SIP_STATE_REGISTERED : SIP_STATE_IDLE;
 }
 
 void sip_client_hangup(void)

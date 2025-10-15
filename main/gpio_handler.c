@@ -3,24 +3,68 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "sip_client.h"
 
 static const char *TAG = "GPIO";
 static bool light_state = false;
+static QueueHandle_t doorbell_queue = NULL;
+static TaskHandle_t doorbell_task_handle = NULL;
+
+typedef struct {
+    doorbell_t bell;
+} doorbell_event_t;
+
+// Task to handle doorbell events (not in ISR context)
+static void doorbell_task(void *arg)
+{
+    doorbell_event_t event;
+    static TickType_t last_call_time[2] = {0, 0}; // Debounce tracking for each bell
+    const TickType_t debounce_delay = pdMS_TO_TICKS(2000); // 2 second debounce
+    
+    while (1) {
+        if (xQueueReceive(doorbell_queue, &event, portMAX_DELAY)) {
+            TickType_t current_time = xTaskGetTickCount();
+            int bell_index = (event.bell == DOORBELL_1) ? 0 : 1;
+            
+            // Check debounce - ignore if pressed too soon after last press
+            if ((current_time - last_call_time[bell_index]) < debounce_delay) {
+                ESP_LOGW(TAG, "Doorbell %d press ignored (debounce)", event.bell);
+                continue;
+            }
+            
+            last_call_time[bell_index] = current_time;
+            
+            if (event.bell == DOORBELL_1) {
+                ESP_LOGI(TAG, "Doorbell 1 pressed");
+                sip_client_make_call("apartment1@example.com");
+            } else if (event.bell == DOORBELL_2) {
+                ESP_LOGI(TAG, "Doorbell 2 pressed");
+                sip_client_make_call("apartment2@example.com");
+            }
+        }
+    }
+}
 
 static void IRAM_ATTR doorbell_isr_handler(void* arg)
 {
     doorbell_t bell = (doorbell_t)(int)arg;
-    // ISR - nur Flag setzen, Verarbeitung in Task
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     
-    if (bell == DOORBELL_1) {
-        ESP_LOGI(TAG, "Doorbell 1 pressed");
-        sip_client_make_call("apartment1@example.com");
-    } else if (bell == DOORBELL_2) {
-        ESP_LOGI(TAG, "Doorbell 2 pressed");
-        sip_client_make_call("apartment2@example.com");
-    }
+    // Send event to queue for processing in task context
+    doorbell_event_t event = { .bell = bell };
+    xQueueSendFromISR(doorbell_queue, &event, &xHigherPriorityTaskWoken);
+    
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+static void IRAM_ATTR boot_button_isr_handler(void* arg)
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    
+    // Send DOORBELL_1 event to simulate doorbell press
+    doorbell_event_t event = { .bell = DOORBELL_1 };
+    xQueueSendFromISR(doorbell_queue, &event, &xHigherPriorityTaskWoken);
     
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
@@ -28,6 +72,16 @@ static void IRAM_ATTR doorbell_isr_handler(void* arg)
 void gpio_handler_init(void)
 {
     ESP_LOGI(TAG, "Initializing GPIO Handler");
+    
+    // Create queue for doorbell events
+    doorbell_queue = xQueueCreate(10, sizeof(doorbell_event_t));
+    if (doorbell_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create doorbell queue");
+        return;
+    }
+    
+    // Create task to handle doorbell events (increased stack for SIP operations)
+    xTaskCreate(doorbell_task, "doorbell_task", 8192, NULL, 5, &doorbell_task_handle);
     
     // Configure doorbell inputs
     gpio_config_t doorbell_config = {
@@ -38,6 +92,16 @@ void gpio_handler_init(void)
         .intr_type = GPIO_INTR_NEGEDGE
     };
     gpio_config(&doorbell_config);
+    
+    // Configure BOOT button (GPIO 0) for testing
+    gpio_config_t boot_button_config = {
+        .pin_bit_mask = (1ULL << BOOT_BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_NEGEDGE  // Trigger on falling edge (button press)
+    };
+    gpio_config(&boot_button_config);
     
     // Configure relay outputs
     gpio_config_t relay_config = {
@@ -53,12 +117,13 @@ void gpio_handler_init(void)
     gpio_set_level(DOOR_RELAY_PIN, 0);
     gpio_set_level(LIGHT_RELAY_PIN, 0);
     
-    // Interrupt Service installieren
+    // Install interrupt service
     gpio_install_isr_service(0);
     gpio_isr_handler_add(DOORBELL_1_PIN, doorbell_isr_handler, (void*)DOORBELL_1);
     gpio_isr_handler_add(DOORBELL_2_PIN, doorbell_isr_handler, (void*)DOORBELL_2);
+    gpio_isr_handler_add(BOOT_BUTTON_PIN, boot_button_isr_handler, NULL);
     
-    ESP_LOGI(TAG, "GPIO Handler initialisiert");
+    ESP_LOGI(TAG, "GPIO Handler initialized (BOOT button on GPIO 0 enabled for testing)");
 }
 
 void door_relay_activate(void)

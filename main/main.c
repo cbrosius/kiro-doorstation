@@ -38,13 +38,13 @@ void app_main(void)
     // Initialize DTMF Decoder
     dtmf_decoder_init();
     
-    // WiFi Manager starten
+    // Start WiFi Manager
     wifi_manager_init();
     
     // NTP time synchronization (after WiFi)
     ntp_sync_init();
     
-    // Web Server starten
+    // Start Web Server
     web_server_start();
     
     // Initialize SIP Client

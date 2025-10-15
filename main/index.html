@@ -1087,10 +1087,22 @@
                 <div><strong>*2:</strong> Toggle Light</div>
                 <div><strong>#:</strong> End Call</div>
                 <div><strong>Bell 1:</strong> GPIO 21 (Apartment 1)</div>
-                <div><strong>Bell 2:</strong> GPIO 22 (Apartment 2)</div>
-                <div><strong>Door Relay:</strong> GPIO 25</div>
-                <div><strong>Light Relay:</strong> GPIO 26</div>
+                <div><strong>Bell 2:</strong> GPIO 4 (Apartment 2)</div>
+                <div><strong>Door Relay:</strong> GPIO 5</div>
+                <div><strong>Light Relay:</strong> GPIO 6</div>
             </div>
+        </div>
+
+        <!-- Testing Information -->
+        <div class="form-section">
+            <h2>🧪 Testing</h2>
+            <div class="system-info">
+                <div><strong>BOOT Button:</strong> GPIO 0 (Press to simulate doorbell)</div>
+                <div><strong>Function:</strong> Triggers SIP call to apartment1@example.com</div>
+            </div>
+            <p style="color: #666; margin-top: 10px; font-size: 14px;">
+                Press the physical BOOT button on your ESP32-S3 to simulate a doorbell press and initiate a SIP call.
+            </p>
         </div>
     </div>
     <div id="toast" class="toast"></div>
