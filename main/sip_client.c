@@ -34,13 +34,16 @@ static SemaphoreHandle_t sip_log_mutex = NULL;
 // Simplified SIP messages
 static const char* sip_register_template = 
 "REGISTER sip:%s SIP/2.0\r\n"
-"Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+"Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+"Max-Forwards: 70\r\n"
 "From: <sip:%s@%s>;tag=%d\r\n"
 "To: <sip:%s@%s>\r\n"
 "Call-ID: %d@%s\r\n"
 "CSeq: 1 REGISTER\r\n"
 "Contact: <sip:%s@%s:5060>\r\n"
 "Expires: 3600\r\n"
+"Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
+"User-Agent: ESP32-Doorbell/1.0\r\n"
 "Content-Length: 0\r\n\r\n";
 
 static const char* sip_invite_template = 
@@ -230,6 +233,23 @@ void sip_client_init(void)
             current_state = SIP_STATE_ERROR;
             return;
         }
+        
+        // Bind socket to port 5060 so we can receive responses
+        struct sockaddr_in local_addr;
+        memset(&local_addr, 0, sizeof(local_addr));
+        local_addr.sin_family = AF_INET;
+        local_addr.sin_addr.s_addr = INADDR_ANY;  // Listen on all interfaces
+        local_addr.sin_port = htons(5060);  // SIP port
+        
+        if (bind(sip_socket, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+            ESP_LOGE(TAG, "Error binding SIP socket to port 5060");
+            close(sip_socket);
+            sip_socket = -1;
+            current_state = SIP_STATE_ERROR;
+            return;
+        }
+        
+        NTP_LOGI(TAG, "SIP socket bound to port 5060");
 
         // Create SIP task pinned to Core 1 (APP CPU)
         // This isolates SIP from WiFi which runs on Core 0 (PRO CPU)
