@@ -1,47 +1,106 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SIP Door Station</title>
+    <title>ESP32 SIP Door Station</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h1, h2 { color: #333; }
-        .status { margin-bottom: 20px; padding: 10px; border-radius: 4px; }
-        .status.registered { background-color: #e7f5e7; border: 1px solid #4caf50; color: #4caf50; }
-        .status.unregistered { background-color: #fdecea; border: 1px solid #f44336; color: #f44336; }
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .status-card { padding: 15px; border-radius: 8px; border: 2px solid #ddd; }
+        .status-card h3 { margin-top: 0; margin-bottom: 10px; }
+        .status.connected { background-color: #e7f5e7; border-color: #4caf50; color: #4caf50; }
+        .status.disconnected { background-color: #fdecea; border-color: #f44336; color: #f44336; }
+        .status.connecting { background-color: #fff3cd; border-color: #ffc107; color: #856404; }
+        .status.error { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+        .form-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
         form { display: flex; flex-direction: column; }
         label { margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="password"] { padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        input[type="text"], input[type="password"], select { padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px 0; }
         button:hover { background-color: #45a049; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+        .button-group { display: flex; gap: 10px; }
+        .wifi-networks { max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; }
+        .wifi-network { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .wifi-network:hover { background-color: #f8f9fa; }
+        .wifi-network.selected { background-color: #e3f2fd; }
+        .signal-strength { font-size: 12px; color: #666; }
         .toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 2px; padding: 16px; position: fixed; z-index: 1; left: 50%; bottom: 30px; }
         .toast.show { visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        .toast.success { background-color: #28a745; }
+        .toast.error { background-color: #dc3545; }
+        .system-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+        .system-info div { padding: 5px; background-color: #f8f9fa; border-radius: 4px; }
         @-webkit-keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
         @-webkit-keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
         @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        @media (max-width: 768px) {
+            .status-grid { grid-template-columns: 1fr; }
+            .system-info { grid-template-columns: 1fr; }
+        }
     </style>
     <script defer>
         document.addEventListener('DOMContentLoaded', () => {
-            const statusDiv = document.getElementById('sip-status');
+            const sipStatusDiv = document.getElementById('sip-status');
+            const wifiStatusDiv = document.getElementById('wifi-status');
             const sipForm = document.getElementById('sip-form');
+            const wifiForm = document.getElementById('wifi-form');
             const toast = document.getElementById('toast');
+            const wifiNetworksList = document.getElementById('wifi-networks');
+            let selectedNetwork = null;
 
-            const fetchStatus = async () => {
+            const fetchSystemStatus = async () => {
                 try {
-                    const response = await fetch('/api/sip/status');
+                    const response = await fetch('/api/system/status');
                     const data = await response.json();
-                    statusDiv.textContent = `Status: ${data.status}`;
-                    statusDiv.className = `status ${data.status === 'Registered' ? 'registered' : 'unregistered'}`;
+                    
+                    // Update system info
+                    document.getElementById('uptime').textContent = data.uptime || 'Unknown';
+                    document.getElementById('free-heap').textContent = data.free_heap || 'Unknown';
+                    document.getElementById('ip-address').textContent = data.ip_address || 'Not connected';
+                    document.getElementById('firmware-version').textContent = data.firmware_version || 'Unknown';
                 } catch (error) {
-                    console.error('Error fetching SIP status:', error);
-                    statusDiv.textContent = 'Status: Error';
-                    statusDiv.className = 'status unregistered';
+                    console.error('Error fetching system status:', error);
                 }
             };
 
-            const fetchConfig = async () => {
+            const fetchSipStatus = async () => {
+                try {
+                    const response = await fetch('/api/sip/status');
+                    const data = await response.json();
+                    sipStatusDiv.textContent = `SIP: ${data.status}`;
+                    sipStatusDiv.className = `status-card status ${data.status === 'Registered' ? 'connected' : 'disconnected'}`;
+                } catch (error) {
+                    console.error('Error fetching SIP status:', error);
+                    sipStatusDiv.textContent = 'SIP: Error';
+                    sipStatusDiv.className = 'status-card status error';
+                }
+            };
+
+            const fetchWifiStatus = async () => {
+                try {
+                    const response = await fetch('/api/wifi/status');
+                    const data = await response.json();
+                    wifiStatusDiv.textContent = `WiFi: ${data.status}`;
+                    let statusClass = 'disconnected';
+                    if (data.status === 'Connected') statusClass = 'connected';
+                    else if (data.status === 'Connecting') statusClass = 'connecting';
+                    wifiStatusDiv.className = `status-card status ${statusClass}`;
+                } catch (error) {
+                    console.error('Error fetching WiFi status:', error);
+                    wifiStatusDiv.textContent = 'WiFi: Error';
+                    wifiStatusDiv.className = 'status-card status error';
+                }
+            };
+
+            const fetchSipConfig = async () => {
                 try {
                     const response = await fetch('/api/sip/config');
                     const data = await response.json();
@@ -51,6 +110,46 @@
                     document.getElementById('password').value = data.password || '';
                 } catch (error) {
                     console.error('Error fetching SIP config:', error);
+                }
+            };
+
+            const fetchWifiNetworks = async () => {
+                try {
+                    const scanBtn = document.getElementById('scan-btn');
+                    scanBtn.disabled = true;
+                    scanBtn.textContent = 'Scanning...';
+                    
+                    const response = await fetch('/api/wifi/scan', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    wifiNetworksList.innerHTML = '';
+                    if (data.networks && data.networks.length > 0) {
+                        data.networks.forEach(network => {
+                            const networkDiv = document.createElement('div');
+                            networkDiv.className = 'wifi-network';
+                            networkDiv.innerHTML = `
+                                <span>${network.ssid}</span>
+                                <span class="signal-strength">Signal: ${network.rssi} dBm</span>
+                            `;
+                            networkDiv.onclick = () => {
+                                document.querySelectorAll('.wifi-network').forEach(n => n.classList.remove('selected'));
+                                networkDiv.classList.add('selected');
+                                document.getElementById('wifi-ssid').value = network.ssid;
+                                selectedNetwork = network;
+                            };
+                            wifiNetworksList.appendChild(networkDiv);
+                        });
+                    } else {
+                        wifiNetworksList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No networks found</div>';
+                    }
+                    
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = 'Scan Networks';
+                } catch (error) {
+                    console.error('Error scanning WiFi networks:', error);
+                    showToast('Error scanning networks', 'error');
+                    document.getElementById('scan-btn').disabled = false;
+                    document.getElementById('scan-btn').textContent = 'Scan Networks';
                 }
             };
 
@@ -66,38 +165,72 @@
                         body: JSON.stringify(data)
                     });
                     if (response.ok) {
-                        showToast('Configuration saved successfully!');
-                        setTimeout(fetchStatus, 2000); // Re-check status after a delay
+                        showToast('SIP configuration saved successfully!', 'success');
+                        setTimeout(fetchSipStatus, 2000);
                     } else {
-                        showToast('Error saving configuration.');
+                        const errorData = await response.json();
+                        showToast(errorData.message || 'Error saving SIP configuration', 'error');
                     }
                 } catch (error) {
-                    console.error('Error submitting form:', error);
-                    showToast('Error saving configuration.');
+                    console.error('Error submitting SIP form:', error);
+                    showToast('Error saving SIP configuration', 'error');
                 }
             });
 
-            function showToast(message) {
+            wifiForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formData = new FormData(wifiForm);
+                const data = Object.fromEntries(formData.entries());
+
+                try {
+                    const response = await fetch('/api/wifi/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    if (response.ok) {
+                        showToast('WiFi connection initiated!', 'success');
+                        setTimeout(() => {
+                            fetchWifiStatus();
+                            fetchSystemStatus();
+                        }, 5000);
+                    } else {
+                        const errorData = await response.json();
+                        showToast(errorData.message || 'Error connecting to WiFi', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error submitting WiFi form:', error);
+                    showToast('Error connecting to WiFi', 'error');
+                }
+            });
+
+            function showToast(message, type = 'info') {
                 toast.textContent = message;
-                toast.className = 'toast show';
+                toast.className = `toast show ${type}`;
                 setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
             }
 
             // Initial fetches
-            fetchStatus();
-            fetchConfig();
+            fetchSipStatus();
+            fetchWifiStatus();
+            fetchSipConfig();
+            fetchSystemStatus();
+            
             // Refresh status every 10 seconds
-            setInterval(fetchStatus, 10000);
+            setInterval(() => {
+                fetchSipStatus();
+                fetchWifiStatus();
+                fetchSystemStatus();
+            }, 10000);
         });
     </script>
 
     <script>
-        // Global function for test button (must be in separate script tag for global scope)
-        async function testConfiguration() {
-            const testBtn = document.getElementById('test-btn');
-            const testResult = document.getElementById('test-result');
+        // Global functions for test buttons
+        async function testSipConfiguration() {
+            const testBtn = document.getElementById('sip-test-btn');
+            const testResult = document.getElementById('sip-test-result');
 
-            // Disable button and show loading state
             testBtn.disabled = true;
             testBtn.textContent = 'Testing...';
 
@@ -109,62 +242,181 @@
                 });
 
                 const data = await response.json();
-
-                // Show test result
                 testResult.textContent = data.message;
-                testResult.className = `status ${data.status === 'success' ? 'registered' : 'unregistered'}`;
+                testResult.className = `status ${data.status === 'success' ? 'connected' : 'error'}`;
                 testResult.style.display = 'block';
 
-                // Show toast notification
                 const toast = document.getElementById('toast');
-                toast.textContent = data.status === 'success' ? 'Test completed successfully!' : 'Test failed.';
-                toast.className = 'toast show';
-                setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+                const toastType = data.status === 'success' ? 'success' : 'error';
+                const toastMessage = data.status === 'success' ? 'SIP test completed successfully!' : 'SIP test failed';
+                showToast(toastMessage, toastType);
 
             } catch (error) {
                 console.error('Error testing SIP configuration:', error);
                 testResult.textContent = 'Error testing configuration';
-                testResult.className = 'status unregistered';
+                testResult.className = 'status error';
                 testResult.style.display = 'block';
-
-                // Show error toast
-                const toast = document.getElementById('toast');
-                toast.textContent = 'Error testing configuration.';
-                toast.className = 'toast show';
-                setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+                showToast('Error testing SIP configuration', 'error');
             }
 
-            // Re-enable button
             testBtn.disabled = false;
             testBtn.textContent = 'Test SIP Configuration';
+        }
+
+        async function restartSystem() {
+            if (confirm('Are you sure you want to restart the system?')) {
+                try {
+                    const response = await fetch('/api/system/restart', { method: 'POST' });
+                    if (response.ok) {
+                        showToast('System restart initiated...', 'success');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 5000);
+                    } else {
+                        showToast('Error restarting system', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error restarting system:', error);
+                    showToast('Error restarting system', 'error');
+                }
+            }
+        }
+
+        async function scanWifiNetworks() {
+            const scanBtn = document.getElementById('scan-btn');
+            const wifiNetworksList = document.getElementById('wifi-networks');
+            
+            scanBtn.disabled = true;
+            scanBtn.textContent = 'Scanning...';
+            
+            try {
+                const response = await fetch('/api/wifi/scan', { method: 'POST' });
+                const data = await response.json();
+                
+                wifiNetworksList.innerHTML = '';
+                if (data.networks && data.networks.length > 0) {
+                    data.networks.forEach(network => {
+                        const networkDiv = document.createElement('div');
+                        networkDiv.className = 'wifi-network';
+                        networkDiv.innerHTML = `
+                            <span>${network.ssid}</span>
+                            <span class="signal-strength">Signal: ${network.rssi} dBm</span>
+                        `;
+                        networkDiv.onclick = () => {
+                            document.querySelectorAll('.wifi-network').forEach(n => n.classList.remove('selected'));
+                            networkDiv.classList.add('selected');
+                            document.getElementById('wifi-ssid').value = network.ssid;
+                        };
+                        wifiNetworksList.appendChild(networkDiv);
+                    });
+                } else {
+                    wifiNetworksList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No networks found</div>';
+                }
+                
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Networks';
+            } catch (error) {
+                console.error('Error scanning WiFi networks:', error);
+                showToast('Error scanning networks', 'error');
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Networks';
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast show ${type}`;
+            setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
         }
     </script>
 </head>
 <body>
     <div class="container">
-        <h1>SIP Door Station</h1>
-        <div id="sip-status" class="status">Loading status...</div>
+        <h1>ESP32 SIP Door Station</h1>
+        
+        <!-- System Status Dashboard -->
+        <div class="status-grid">
+            <div id="wifi-status" class="status-card status disconnected">
+                <h3>WiFi Status</h3>
+                <p>Loading...</p>
+            </div>
+            <div id="sip-status" class="status-card status disconnected">
+                <h3>SIP Status</h3>
+                <p>Loading...</p>
+            </div>
+        </div>
 
-        <h2>SIP Configuration</h2>
-        <form id="sip-form">
-            <label for="uri">SIP URI (e.g., sip:user@domain.com):</label>
-            <input type="text" id="uri" name="uri" required>
+        <!-- System Information -->
+        <div class="form-section">
+            <h2>System Information</h2>
+            <div class="system-info">
+                <div><strong>Uptime:</strong> <span id="uptime">Loading...</span></div>
+                <div><strong>Free Heap:</strong> <span id="free-heap">Loading...</span></div>
+                <div><strong>IP Address:</strong> <span id="ip-address">Loading...</span></div>
+                <div><strong>Firmware:</strong> <span id="firmware-version">Loading...</span></div>
+            </div>
+            <div class="button-group" style="margin-top: 15px;">
+                <button onclick="restartSystem()" class="danger">Restart System</button>
+            </div>
+        </div>
 
-            <label for="server">SIP Server (e.g., sip.domain.com):</label>
-            <input type="text" id="server" name="server" required>
+        <!-- WiFi Configuration -->
+        <div class="form-section">
+            <h2>WiFi Configuration</h2>
+            <div class="button-group">
+                <button id="scan-btn" onclick="scanWifiNetworks()" class="secondary">Scan Networks</button>
+            </div>
+            <div id="wifi-networks" class="wifi-networks"></div>
+            
+            <form id="wifi-form">
+                <label for="wifi-ssid">Network Name (SSID):</label>
+                <input type="text" id="wifi-ssid" name="ssid" required>
 
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
+                <label for="wifi-password">Password:</label>
+                <input type="password" id="wifi-password" name="password" autocomplete="new-password">
 
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required autocomplete="current-password">
+                <button type="submit">Connect to WiFi</button>
+            </form>
+        </div>
 
-            <button type="submit">Save Configuration</button>
-        </form>
+        <!-- SIP Configuration -->
+        <div class="form-section">
+            <h2>SIP Configuration</h2>
+            <form id="sip-form">
+                <label for="uri">SIP URI (e.g., sip:user@domain.com):</label>
+                <input type="text" id="uri" name="uri" required>
 
-        <h2>Test Configuration</h2>
-        <button id="test-btn" onclick="testConfiguration()">Test SIP Configuration</button>
-        <div id="test-result" class="status" style="display: none; margin-top: 10px;"></div>
+                <label for="server">SIP Server (e.g., sip.domain.com):</label>
+                <input type="text" id="server" name="server" required>
+
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+
+                <div class="button-group">
+                    <button type="submit">Save Configuration</button>
+                    <button type="button" id="sip-test-btn" onclick="testSipConfiguration()" class="secondary">Test Configuration</button>
+                </div>
+            </form>
+            <div id="sip-test-result" class="status" style="display: none; margin-top: 10px;"></div>
+        </div>
+
+        <!-- DTMF Information -->
+        <div class="form-section">
+            <h2>DTMF Control Codes</h2>
+            <div class="system-info">
+                <div><strong>*1:</strong> Open Door (3 seconds)</div>
+                <div><strong>*2:</strong> Toggle Light</div>
+                <div><strong>#:</strong> End Call</div>
+                <div><strong>Bell 1:</strong> GPIO 21 (Apartment 1)</div>
+                <div><strong>Bell 2:</strong> GPIO 22 (Apartment 2)</div>
+                <div><strong>Door Relay:</strong> GPIO 25</div>
+                <div><strong>Light Relay:</strong> GPIO 26</div>
+            </div>
+        </div>
     </div>
     <div id="toast" class="toast"></div>
 </body>

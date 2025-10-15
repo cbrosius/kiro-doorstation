@@ -3,9 +3,14 @@
 #include "wifi_manager.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "WEB_SERVER";
+static httpd_handle_t server = NULL;
 
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
@@ -128,6 +133,174 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// WiFi API Handlers
+static esp_err_t get_wifi_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool is_connected = wifi_is_connected();
+    const char* status = is_connected ? "Connected" : "Disconnected";
+    
+    cJSON_AddStringToObject(root, "status", status);
+    cJSON_AddBoolToObject(root, "connected", is_connected);
+
+    if (is_connected) {
+        // Get IP address and other connection info
+        wifi_connection_info_t info = wifi_get_connection_info();
+        cJSON_AddStringToObject(root, "ssid", info.ssid);
+        cJSON_AddStringToObject(root, "ip_address", info.ip_address);
+        cJSON_AddNumberToObject(root, "rssi", info.rssi);
+    }
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+    cJSON *networks_array = cJSON_CreateArray();
+
+    ESP_LOGI(TAG, "Starting WiFi scan");
+    
+    // Trigger WiFi scan
+    wifi_scan_result_t* scan_results = NULL;
+    int network_count = wifi_scan_networks(&scan_results);
+
+    if (network_count > 0 && scan_results != NULL) {
+        for (int i = 0; i < network_count; i++) {
+            cJSON *network = cJSON_CreateObject();
+            cJSON_AddStringToObject(network, "ssid", scan_results[i].ssid);
+            cJSON_AddNumberToObject(network, "rssi", scan_results[i].rssi);
+            cJSON_AddBoolToObject(network, "secure", scan_results[i].secure);
+            cJSON_AddItemToArray(networks_array, network);
+        }
+        free(scan_results);
+    }
+
+    cJSON_AddItemToObject(root, "networks", networks_array);
+    cJSON_AddNumberToObject(root, "count", network_count);
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(ssid) || (ssid->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing SSID");
+        return ESP_FAIL;
+    }
+
+    const char* pwd = (cJSON_IsString(password) && password->valuestring) ? password->valuestring : "";
+
+    ESP_LOGI(TAG, "WiFi connect request: SSID=%s", ssid->valuestring);
+    
+    // Save WiFi configuration
+    wifi_save_config(ssid->valuestring, pwd);
+    
+    // Attempt connection
+    wifi_connect_sta(ssid->valuestring, pwd);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}"));
+    return ESP_OK;
+}
+
+// System API Handlers
+static esp_err_t get_system_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // System uptime
+    uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t uptime_seconds = uptime_ms / 1000;
+    uint32_t hours = uptime_seconds / 3600;
+    uint32_t minutes = (uptime_seconds % 3600) / 60;
+    uint32_t seconds = uptime_seconds % 60;
+    
+    char uptime_str[32];
+    snprintf(uptime_str, sizeof(uptime_str), "%02ld:%02ld:%02ld", hours, minutes, seconds);
+    cJSON_AddStringToObject(root, "uptime", uptime_str);
+
+    // Free heap memory
+    uint32_t free_heap = esp_get_free_heap_size();
+    char heap_str[32];
+    snprintf(heap_str, sizeof(heap_str), "%ld KB", free_heap / 1024);
+    cJSON_AddStringToObject(root, "free_heap", heap_str);
+
+    // IP address
+    wifi_connection_info_t wifi_info = wifi_get_connection_info();
+    cJSON_AddStringToObject(root, "ip_address", wifi_info.ip_address);
+
+    // Firmware version
+    cJSON_AddStringToObject(root, "firmware_version", "v1.0.0");
+
+    // Additional system info
+    cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
+    cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_system_restart_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "System restart requested");
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"System restart initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"System restart initiated\"}"));
+
+    // Restart after a short delay to allow response to be sent
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+    
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -164,26 +337,66 @@ static const httpd_uri_t sip_test_uri = {
     .user_ctx  = NULL
 };
 
+// URI handlers
 static const httpd_uri_t root_uri = {
-    .uri       = "/",
-    .method    = HTTP_GET,
-    .handler   = index_handler,
-    .user_ctx  = NULL
+    .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_status_uri = {
+    .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_scan_uri = {
+    .uri = "/api/wifi/scan", .method = HTTP_POST, .handler = post_wifi_scan_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_connect_uri = {
+    .uri = "/api/wifi/connect", .method = HTTP_POST, .handler = post_wifi_connect_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_status_uri = {
+    .uri = "/api/system/status", .method = HTTP_GET, .handler = get_system_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_restart_uri = {
+    .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
 };
 
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    httpd_handle_t server = NULL;
+    config.max_uri_handlers = 16; // Increase handler limit
 
     if (httpd_start(&server, &config) == ESP_OK) {
+        // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
+        
+        // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);
         httpd_register_uri_handler(server, &sip_config_get_uri);
         httpd_register_uri_handler(server, &sip_config_post_uri);
         httpd_register_uri_handler(server, &sip_test_uri);
-        ESP_LOGI(TAG, "Web server started");
+        
+        // WiFi API endpoints
+        httpd_register_uri_handler(server, &wifi_status_uri);
+        httpd_register_uri_handler(server, &wifi_scan_uri);
+        httpd_register_uri_handler(server, &wifi_connect_uri);
+        
+        // System API endpoints
+        httpd_register_uri_handler(server, &system_status_uri);
+        httpd_register_uri_handler(server, &system_restart_uri);
+        
+        ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {
         ESP_LOGE(TAG, "Error starting web server!");
+    }
+}
+
+void web_server_stop(void)
+{
+    if (server) {
+        httpd_stop(server);
+        server = NULL;
+        ESP_LOGI(TAG, "Web server stopped");
     }
 }

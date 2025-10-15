@@ -50,33 +50,43 @@ static void sip_task(void *pvParameters)
                 buffer[len] = '\0';
                 ESP_LOGI(TAG, "SIP Nachricht empfangen:\n%s", buffer);
                 
-                // Vereinfachte SIP-Nachrichtenverarbeitung
+                // Enhanced SIP message processing with better error handling
                 if (strstr(buffer, "200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
-                        current_state = SIP_STATE_IDLE;
-                        ESP_LOGI(TAG, "SIP Registrierung erfolgreich");
+                        current_state = SIP_STATE_REGISTERED;
+                        ESP_LOGI(TAG, "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_CONNECTED;
-                        ESP_LOGI(TAG, "Anruf verbunden");
+                        ESP_LOGI(TAG, "Call connected");
                         audio_start_recording();
                         audio_start_playback();
                     }
                 } else if (strstr(buffer, "INVITE")) {
-                    ESP_LOGI(TAG, "Eingehender Anruf");
+                    ESP_LOGI(TAG, "Incoming call");
                     current_state = SIP_STATE_RINGING;
-                    // Automatisch annehmen
+                    // Auto-answer after short delay
+                    vTaskDelay(pdMS_TO_TICKS(1000));
                     sip_client_answer_call();
                 } else if (strstr(buffer, "BYE")) {
-                    ESP_LOGI(TAG, "Anruf beendet");
-                    current_state = SIP_STATE_IDLE;
+                    ESP_LOGI(TAG, "Call ended");
+                    current_state = SIP_STATE_REGISTERED;
                     audio_stop_recording();
                     audio_stop_playback();
                 } else if (strstr(buffer, "401 Unauthorized") || strstr(buffer, "403 Forbidden")) {
-                    ESP_LOGE(TAG, "SIP Authentifizierung fehlgeschlagen");
-                    current_state = SIP_STATE_ERROR;
+                    ESP_LOGE(TAG, "SIP authentication failed");
+                    current_state = SIP_STATE_AUTH_FAILED;
                 } else if (strstr(buffer, "404 Not Found")) {
-                    ESP_LOGE(TAG, "SIP Ziel nicht gefunden");
+                    ESP_LOGE(TAG, "SIP target not found");
                     current_state = SIP_STATE_ERROR;
+                } else if (strstr(buffer, "408 Request Timeout")) {
+                    ESP_LOGE(TAG, "SIP request timeout");
+                    current_state = SIP_STATE_TIMEOUT;
+                } else if (strstr(buffer, "486 Busy Here")) {
+                    ESP_LOGW(TAG, "SIP target busy");
+                    current_state = SIP_STATE_REGISTERED;
+                } else if (strstr(buffer, "487 Request Terminated")) {
+                    ESP_LOGI(TAG, "SIP request terminated");
+                    current_state = SIP_STATE_REGISTERED;
                 }
             }
         }
@@ -313,15 +323,39 @@ bool sip_client_test_connection(void)
 void sip_get_status(char* buffer, size_t buffer_size)
 {
     const char* state_names[] = {
-        "IDLE", "REGISTERING", "CALLING", "RINGING",
-        "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR"
+        "IDLE", "REGISTERING", "REGISTERED", "CALLING", "RINGING",
+        "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR",
+        "AUTH_FAILED", "NETWORK_ERROR", "TIMEOUT"
     };
 
     sip_state_t state = sip_client_get_state();
+    const char* state_name = (state < sizeof(state_names)/sizeof(state_names[0])) ? 
+                            state_names[state] : "UNKNOWN";
+
+    // Determine user-friendly status
+    const char* user_status;
+    if (state == SIP_STATE_REGISTERED || state == SIP_STATE_CONNECTED) {
+        user_status = "Registered";
+    } else if (state == SIP_STATE_REGISTERING) {
+        user_status = "Connecting";
+    } else if (state == SIP_STATE_AUTH_FAILED) {
+        user_status = "Authentication Failed";
+    } else if (state == SIP_STATE_NETWORK_ERROR) {
+        user_status = "Network Error";
+    } else if (state == SIP_STATE_TIMEOUT) {
+        user_status = "Connection Timeout";
+    } else if (state == SIP_STATE_ERROR) {
+        user_status = "Error";
+    } else if (!sip_config.configured) {
+        user_status = "Not Configured";
+    } else {
+        user_status = "Not Registered";
+    }
 
     const char* status_template =
         "{"
         "\"state\": \"%s\","
+        "\"status\": \"%s\","
         "\"state_code\": %d,"
         "\"configured\": %s,"
         "\"server\": \"%s\","
@@ -343,7 +377,8 @@ void sip_get_status(char* buffer, size_t buffer_size)
     strncpy(apt2, sip_config.apartment2_uri, sizeof(apt2) - 1);
 
     snprintf(buffer, buffer_size, status_template,
-             state < sizeof(state_names)/sizeof(state_names[0]) ? state_names[state] : "UNKNOWN",
+             state_name,
+             user_status,
              state,
              sip_config.configured ? "true" : "false",
              server,
@@ -425,9 +460,11 @@ sip_config_t sip_load_config(void)
 // Additional functions for web interface
 bool sip_is_registered(void)
 {
-    return (current_state != SIP_STATE_IDLE &&
-            current_state != SIP_STATE_DISCONNECTED &&
-            current_state != SIP_STATE_ERROR);
+    return (current_state == SIP_STATE_REGISTERED ||
+            current_state == SIP_STATE_CALLING ||
+            current_state == SIP_STATE_RINGING ||
+            current_state == SIP_STATE_CONNECTED ||
+            current_state == SIP_STATE_DTMF_SENDING);
 }
 
 const char* sip_get_server(void)
