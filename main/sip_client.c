@@ -15,6 +15,15 @@ static sip_config_t sip_config = {0};
 static int sip_socket = -1;
 static TaskHandle_t sip_task_handle = NULL;
 
+// SIP Log buffer for web interface
+#define SIP_LOG_MAX_ENTRIES 50
+#define SIP_LOG_MAX_MESSAGE_LEN 256
+
+static sip_log_entry_t sip_log_buffer[SIP_LOG_MAX_ENTRIES];
+static int sip_log_write_index = 0;
+static int sip_log_count = 0;
+static SemaphoreHandle_t sip_log_mutex = NULL;
+
 // Vereinfachte SIP-Nachrichten
 static const char* sip_register_template = 
 "REGISTER sip:%s SIP/2.0\r\n"
@@ -38,17 +47,54 @@ static const char* sip_invite_template =
 "Content-Type: application/sdp\r\n"
 "Content-Length: %d\r\n\r\n%s";
 
+// Helper function to add log entry (thread-safe)
+static void sip_add_log_entry(const char* type, const char* message)
+{
+    if (!sip_log_mutex) {
+        sip_log_mutex = xSemaphoreCreateMutex();
+    }
+    
+    if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sip_log_entry_t* entry = &sip_log_buffer[sip_log_write_index];
+        entry->timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        strncpy(entry->type, type, sizeof(entry->type) - 1);
+        entry->type[sizeof(entry->type) - 1] = '\0';
+        strncpy(entry->message, message, sizeof(entry->message) - 1);
+        entry->message[sizeof(entry->message) - 1] = '\0';
+        
+        sip_log_write_index = (sip_log_write_index + 1) % SIP_LOG_MAX_ENTRIES;
+        if (sip_log_count < SIP_LOG_MAX_ENTRIES) {
+            sip_log_count++;
+        }
+        
+        xSemaphoreGive(sip_log_mutex);
+    }
+}
+
+// SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
 static void sip_task(void *pvParameters)
 {
     char buffer[2048];
     int len;
     
+    ESP_LOGI(TAG, "SIP task started on core %d", xPortGetCoreID());
+    sip_add_log_entry("info", "SIP task started on Core 1");
+    
     while (1) {
+        // Longer delay to minimize CPU usage - SIP doesn't need fast polling
+        // 200ms is more than sufficient for SIP protocol
+        vTaskDelay(pdMS_TO_TICKS(200));
+        
         if (sip_socket >= 0) {
             len = recv(sip_socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
             if (len > 0) {
                 buffer[len] = '\0';
-                ESP_LOGI(TAG, "SIP Nachricht empfangen:\n%s", buffer);
+                ESP_LOGI(TAG, "SIP message received:\n%s", buffer);
+                
+                // Log received message (truncated for display)
+                char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
+                snprintf(log_msg, sizeof(log_msg), "%.200s%s", buffer, len > 200 ? "..." : "");
+                sip_add_log_entry("received", log_msg);
                 
                 // Enhanced SIP message processing with better error handling
                 if (strstr(buffer, "200 OK")) {
@@ -103,9 +149,10 @@ static void sip_task(void *pvParameters)
                 // In einer echten Implementierung würde hier RTP verwendet
             }
         }
-        
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
+    
+    ESP_LOGI(TAG, "SIP task ended");
+    vTaskDelete(NULL);
 }
 
 void sip_client_init(void)
@@ -129,8 +176,29 @@ void sip_client_init(void)
             return;
         }
 
-        // Task für SIP-Verarbeitung starten
-        xTaskCreate(sip_task, "sip_task", 4096, NULL, 5, &sip_task_handle);
+        // Create SIP task pinned to Core 1 (APP CPU)
+        // This isolates SIP from WiFi which runs on Core 0 (PRO CPU)
+        // Priority 3 is low enough to not interfere with system tasks
+        // Stack size 8KB to handle DNS resolution and SIP messages
+        BaseType_t result = xTaskCreatePinnedToCore(
+            sip_task,           // Task function
+            "sip_task",         // Task name
+            8192,               // Stack size (8KB - increased for DNS)
+            NULL,               // Parameters
+            3,                  // Priority (low)
+            &sip_task_handle,   // Task handle
+            1                   // Core 1 (APP CPU)
+        );
+        
+        if (result != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create SIP task");
+            close(sip_socket);
+            sip_socket = -1;
+            current_state = SIP_STATE_ERROR;
+            return;
+        }
+        
+        ESP_LOGI(TAG, "SIP task created on Core 1 (APP CPU)");
 
         // Set state to registering before attempting registration
         current_state = SIP_STATE_REGISTERING;
@@ -455,6 +523,32 @@ sip_config_t sip_load_config(void)
     }
     
     return config;
+}
+
+// Get log entries for web interface
+int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t since_timestamp)
+{
+    if (!sip_log_mutex || !entries) {
+        return 0;
+    }
+    
+    int count = 0;
+    
+    if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        int start_index = (sip_log_write_index - sip_log_count + SIP_LOG_MAX_ENTRIES) % SIP_LOG_MAX_ENTRIES;
+        
+        for (int i = 0; i < sip_log_count && count < max_entries; i++) {
+            int index = (start_index + i) % SIP_LOG_MAX_ENTRIES;
+            if (sip_log_buffer[index].timestamp > since_timestamp) {
+                memcpy(&entries[count], &sip_log_buffer[index], sizeof(sip_log_entry_t));
+                count++;
+            }
+        }
+        
+        xSemaphoreGive(sip_log_mutex);
+    }
+    
+    return count;
 }
 
 // Additional functions for web interface

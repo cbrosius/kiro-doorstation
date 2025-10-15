@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     char server[64];
@@ -55,5 +56,14 @@ void sip_set_password(const char* password);
 void sip_set_uri(const char* uri);
 void sip_reinit(void);
 bool sip_test_configuration(void);
+
+// Log management
+typedef struct {
+    uint32_t timestamp;
+    char type[16];
+    char message[256];
+} sip_log_entry_t;
+
+int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t since_timestamp);
 
 #endif
