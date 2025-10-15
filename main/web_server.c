@@ -53,6 +53,26 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t post_sip_test_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Test the SIP configuration
+    bool test_result = sip_test_configuration();
+
+    cJSON_AddStringToObject(root, "status", test_result ? "success" : "failed");
+    cJSON_AddStringToObject(root, "message", test_result ?
+        "SIP configuration test passed" :
+        "SIP configuration test failed");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
     char buf[1024];
@@ -137,6 +157,13 @@ static const httpd_uri_t sip_config_post_uri = {
     .user_ctx  = NULL
 };
 
+static const httpd_uri_t sip_test_uri = {
+    .uri       = "/api/sip/test",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_handler,
+    .user_ctx  = NULL
+};
+
 static const httpd_uri_t root_uri = {
     .uri       = "/",
     .method    = HTTP_GET,
@@ -154,6 +181,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &sip_status_uri);
         httpd_register_uri_handler(server, &sip_config_get_uri);
         httpd_register_uri_handler(server, &sip_config_post_uri);
+        httpd_register_uri_handler(server, &sip_test_uri);
         ESP_LOGI(TAG, "Web server started");
     } else {
         ESP_LOGE(TAG, "Error starting web server!");

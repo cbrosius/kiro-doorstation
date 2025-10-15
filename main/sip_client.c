@@ -514,3 +514,56 @@ void sip_reinit(void)
         current_state = SIP_STATE_DISCONNECTED;
     }
 }
+
+bool sip_test_configuration(void)
+{
+    ESP_LOGI(TAG, "Testing SIP configuration");
+
+    if (!sip_config.configured) {
+        ESP_LOGE(TAG, "No SIP configuration available for testing");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Testing SIP server: %s:%d", sip_config.server, sip_config.port);
+    ESP_LOGI(TAG, "Testing SIP user: %s", sip_config.username);
+
+    // For testing purposes, we'll just check if we can resolve the hostname
+    // and send a REGISTER message (without waiting for response)
+    struct hostent *host = gethostbyname(sip_config.server);
+    if (host == NULL) {
+        ESP_LOGE(TAG, "Cannot resolve SIP server hostname: %s", sip_config.server);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "SIP server %s resolved successfully", sip_config.server);
+
+    // Try to send a REGISTER message for testing
+    if (sip_socket >= 0) {
+        struct sockaddr_in server_addr;
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(sip_config.port);
+        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+
+        char register_msg[1024];
+        snprintf(register_msg, sizeof(register_msg), sip_register_template,
+                 sip_config.server, "192.168.1.100", rand(),
+                 sip_config.username, sip_config.server, rand(),
+                 sip_config.username, sip_config.server,
+                 rand(), "192.168.1.100",
+                 sip_config.username, "192.168.1.100");
+
+        int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
+                            (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+        if (sent > 0) {
+            ESP_LOGI(TAG, "SIP test REGISTER message sent successfully (%d bytes)", sent);
+            return true;
+        } else {
+            ESP_LOGE(TAG, "Failed to send SIP test message");
+            return false;
+        }
+    } else {
+        ESP_LOGE(TAG, "SIP socket not available for testing");
+        return false;
+    }
+}

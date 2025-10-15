@@ -50,5 +50,6 @@ void sip_set_username(const char* username);
 void sip_set_password(const char* password);
 void sip_set_uri(const char* uri);
 void sip_reinit(void);
+bool sip_test_configuration(void);
 
 #endif
