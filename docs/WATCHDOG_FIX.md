@@ -24,7 +24,51 @@ This blocked the HTTP handler thread, triggering the watchdog timer.
 
 ## Solution
 
-### 1. Simplified Test Function
+### 1. Delayed Auto-Registration
+
+**Problem:**
+```c
+void sip_client_init(void)
+{
+    // ...
+    sip_client_register(); // Called IMMEDIATELY - WiFi not ready!
+}
+```
+
+The SIP client was trying to register immediately on startup, before WiFi was fully connected. This caused:
+- Socket send failure (error -1)
+- DNS lookup blocking
+- Watchdog timer reset
+
+**Fix:**
+```c
+void sip_client_init(void)
+{
+    // ...
+    // Set timestamp for delayed auto-registration (5 seconds)
+    init_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    ESP_LOGI(TAG, "Auto-registration will start in 5000 ms");
+}
+
+static void sip_task(void *pvParameters)
+{
+    while (1) {
+        // Check if 5 seconds have passed since init
+        if (init_timestamp > 0 && 
+            (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >= 5000) {
+            init_timestamp = 0;
+            registration_requested = true; // Trigger registration
+        }
+    }
+}
+```
+
+Now registration happens automatically **5 seconds after initialization**, ensuring:
+- WiFi is fully connected and stable
+- Web server is running
+- DNS resolution will succeed
+
+### 2. Simplified Test Function
 
 **Before:**
 ```c
@@ -48,7 +92,7 @@ bool sip_test_configuration(void)
 }
 ```
 
-### 2. Non-Blocking Connection Request
+### 3. Non-Blocking Connection Request
 
 **Before:**
 ```c
@@ -70,7 +114,7 @@ bool sip_connect(void)
 }
 ```
 
-### 3. SIP Task Handles Registration
+### 4. SIP Task Handles Registration
 
 Added flag-based system:
 
@@ -226,3 +270,105 @@ For actual connectivity testing, use the "Connect to SIP" button and monitor the
 - ESP-IDF Task Watchdog Timer: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/wdts.html
 - FreeRTOS Task Communication: https://www.freertos.org/a00113.html
 - lwIP DNS: https://www.nongnu.org/lwip/2_1_x/group__dns.html
+
+
+## Watchdog Reset Calls
+
+### Additional Fix for Long DNS Lookups
+
+Even with delayed registration on Core 1, DNS lookups can still take 5-10 seconds in some cases, triggering the watchdog timer. Added explicit watchdog reset calls:
+
+```c
+#include "esp_task_wdt.h"
+
+bool sip_client_register(void)
+{
+    // Reset watchdog before potentially long DNS lookup
+    esp_task_wdt_reset();
+    
+    struct hostent *host = gethostbyname(sip_config.server);
+    
+    // Reset watchdog after DNS lookup
+    esp_task_wdt_reset();
+    
+    if (host == NULL) {
+        ESP_LOGE(TAG, "Cannot resolve hostname");
+        return false;
+    }
+    
+    // ... rest of registration ...
+}
+
+static void sip_task(void *pvParameters)
+{
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+        
+        // Reset watchdog every iteration to keep task alive
+        esp_task_wdt_reset();
+        
+        // ... task logic ...
+    }
+}
+```
+
+### Task Subscription
+
+The SIP task must be subscribed to the watchdog timer before it can reset it:
+
+```c
+void sip_client_init(void)
+{
+    // Create SIP task
+    xTaskCreatePinnedToCore(sip_task, "sip_task", 8192, NULL, 3, &sip_task_handle, 1);
+    
+    // Subscribe to watchdog timer
+    esp_task_wdt_add(sip_task_handle);
+    ESP_LOGI(TAG, "SIP task subscribed to watchdog timer");
+}
+
+void sip_client_deinit(void)
+{
+    // Unsubscribe before deleting task
+    esp_task_wdt_delete(sip_task_handle);
+    vTaskDelete(sip_task_handle);
+}
+```
+
+### Why This Works
+
+1. **Watchdog Timer**: ESP32 has a task watchdog that resets the system if a task doesn't yield for too long
+2. **Task Subscription**: Tasks must subscribe to watchdog before they can reset it
+3. **DNS Blocking**: `gethostbyname()` can block for 5-10 seconds
+4. **Reset Calls**: Explicitly resetting the watchdog tells the system "I'm still alive, just busy"
+5. **Safe Location**: Called from SIP task (Core 1), not HTTP handler
+
+### Expected Behavior
+
+**Before:**
+```
+I (5663) SIP: REGISTER message sent
+[9 second delay - DNS lookup]
+W (14668) boot: PRO CPU has been reset by WDT  ← CRASH!
+```
+
+**After:**
+```
+I (5663) SIP: Starting DNS lookup
+[Watchdog reset]
+[DNS lookup - may take 5-10 seconds]
+[Watchdog reset]
+I (10500) SIP: DNS lookup successful
+I (10505) SIP: REGISTER message sent successfully
+I (10650) SIP: SIP/2.0 200 OK received
+I (10651) SIP: SIP registration successful  ← SUCCESS!
+```
+
+### Summary of All Fixes
+
+1. ✅ **Delayed auto-registration** (5 seconds) - WiFi stability
+2. ✅ **Non-blocking test function** - No DNS in HTTP handler
+3. ✅ **Async connection request** - Flag-based communication
+4. ✅ **Watchdog reset calls** - Prevent timeout during DNS lookup
+
+All four fixes work together to ensure reliable SIP registration without system resets.

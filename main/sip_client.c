@@ -2,6 +2,7 @@
 #include "audio_handler.h"
 #include "dtmf_decoder.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
@@ -15,6 +16,8 @@ static sip_config_t sip_config = {0};
 static int sip_socket = -1;
 static TaskHandle_t sip_task_handle = NULL;
 static bool registration_requested = false;
+static uint32_t auto_register_delay_ms = 5000; // Wait 5 seconds after init
+static uint32_t init_timestamp = 0;
 
 // SIP Log buffer for web interface
 #define SIP_LOG_MAX_ENTRIES 50
@@ -86,7 +89,21 @@ static void sip_task(void *pvParameters)
         // 200ms is more than sufficient for SIP protocol
         vTaskDelay(pdMS_TO_TICKS(200));
         
-        // Check if registration was requested
+        // Reset watchdog to prevent timeout during long operations
+        esp_task_wdt_reset();
+        
+        // Auto-registration after delay (if configured and not already registered)
+        if (init_timestamp > 0 && 
+            current_state == SIP_STATE_IDLE && 
+            sip_config.configured &&
+            (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >= auto_register_delay_ms) {
+            init_timestamp = 0; // Clear flag so we only try once
+            ESP_LOGI(TAG, "Auto-registration triggered after %lu ms delay", auto_register_delay_ms);
+            sip_add_log_entry("info", "Auto-registration starting (WiFi stable)");
+            registration_requested = true;
+        }
+        
+        // Check if registration was requested (manual or auto)
         if (registration_requested && current_state != SIP_STATE_REGISTERED) {
             registration_requested = false;
             ESP_LOGI(TAG, "Processing registration request");
@@ -208,14 +225,19 @@ void sip_client_init(void)
         }
         
         ESP_LOGI(TAG, "SIP task created on Core 1 (APP CPU)");
+        
+        // Subscribe SIP task to watchdog timer
+        esp_task_wdt_add(sip_task_handle);
+        ESP_LOGI(TAG, "SIP task subscribed to watchdog timer");
 
-        // Set state to registering before attempting registration
-        current_state = SIP_STATE_REGISTERING;
-
-        // Registrierung versuchen
-        sip_client_register();
+        // Set timestamp for delayed auto-registration
+        // This gives WiFi time to stabilize before attempting registration
+        init_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        ESP_LOGI(TAG, "SIP client ready. Auto-registration will start in %lu ms", auto_register_delay_ms);
+        sip_add_log_entry("info", "SIP client ready. Auto-registration scheduled.");
     } else {
         ESP_LOGI(TAG, "No SIP configuration found");
+        sip_add_log_entry("info", "No SIP configuration found");
         current_state = SIP_STATE_DISCONNECTED;
     }
 
@@ -225,6 +247,8 @@ void sip_client_init(void)
 void sip_client_deinit(void)
 {
     if (sip_task_handle) {
+        // Unsubscribe from watchdog before deleting task
+        esp_task_wdt_delete(sip_task_handle);
         vTaskDelete(sip_task_handle);
         sip_task_handle = NULL;
     }
@@ -245,18 +269,30 @@ bool sip_client_register(void)
     }
 
     ESP_LOGI(TAG, "SIP registration with %s", sip_config.server);
+    sip_add_log_entry("info", "Starting DNS lookup");
     current_state = SIP_STATE_REGISTERING;
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(sip_config.port);
 
+    // Reset watchdog before potentially long DNS lookup
+    esp_task_wdt_reset();
+    
     struct hostent *host = gethostbyname(sip_config.server);
+    
+    // Reset watchdog after DNS lookup
+    esp_task_wdt_reset();
+    
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+        sip_add_log_entry("error", "DNS lookup failed");
         current_state = SIP_STATE_ERROR;
         return false;
     }
+    
+    ESP_LOGI(TAG, "DNS lookup successful");
+    sip_add_log_entry("info", "DNS lookup successful");
 
     memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
 
