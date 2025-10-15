@@ -59,12 +59,12 @@ bool sip_test_configuration(void);
 
 // Log management
 typedef struct {
-    uint32_t timestamp;
+    uint64_t timestamp;  // Changed to uint64_t to support NTP timestamps
     char type[16];
     char message[256];
 } sip_log_entry_t;
 
-int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t since_timestamp);
+int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint64_t since_timestamp);
 
 // Connection management
 bool sip_connect(void);

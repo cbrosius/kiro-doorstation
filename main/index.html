@@ -597,6 +597,12 @@
         // SIP Logging
         let lastLogTimestamp = 0;
         let logRefreshInterval = null;
+        let seenLogEntries = new Set(); // Track seen entries by hash
+
+        // Create a simple hash for log entry to detect duplicates
+        function logEntryHash(entry) {
+            return `${entry.timestamp}_${entry.type}_${entry.message.substring(0, 50)}`;
+        }
 
         async function refreshSipLog() {
             try {
@@ -611,7 +617,20 @@
                         logDiv.innerHTML = '';
                     }
                     
+                    // Track the highest timestamp in this batch
+                    let maxTimestamp = lastLogTimestamp;
+                    
                     data.entries.forEach(entry => {
+                        // Check if we've already seen this entry
+                        const hash = logEntryHash(entry);
+                        if (seenLogEntries.has(hash)) {
+                            return; // Skip duplicate
+                        }
+                        seenLogEntries.add(hash);
+                        
+                        // Track highest timestamp
+                        maxTimestamp = Math.max(maxTimestamp, entry.timestamp);
+                        
                         const entryDiv = document.createElement('div');
                         entryDiv.style.marginBottom = '5px';
                         
@@ -647,8 +666,13 @@
                         entryDiv.innerHTML = `<span style="color: #888;">[${timeStr}]</span> <span style="color: ${color};">[${entry.type.toUpperCase()}]</span> ${escapeHtml(entry.message)}`;
                         
                         logDiv.appendChild(entryDiv);
-                        lastLogTimestamp = Math.max(lastLogTimestamp, entry.timestamp + 1);
                     });
+                    
+                    // Update lastLogTimestamp after processing all entries
+                    // Add 1 to ensure we don't fetch the same timestamp again
+                    if (maxTimestamp > lastLogTimestamp) {
+                        lastLogTimestamp = maxTimestamp + 1;
+                    }
                     
                     // Auto-scroll to bottom
                     logDiv.scrollTop = logDiv.scrollHeight;
@@ -661,6 +685,7 @@
         function clearSipLogDisplay() {
             document.getElementById('sip-log').innerHTML = '<div style="color: #888;">Log cleared. Waiting for new entries...</div>';
             lastLogTimestamp = Date.now();
+            seenLogEntries.clear(); // Clear the seen entries set
         }
 
         function escapeHtml(text) {

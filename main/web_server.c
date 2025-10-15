@@ -85,12 +85,12 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     
     // Parse query parameter "since"
     char query[64];
-    uint32_t since_timestamp = 0;
+    uint64_t since_timestamp = 0;
     
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
         char param[32];
         if (httpd_query_key_value(query, "since", param, sizeof(param)) == ESP_OK) {
-            since_timestamp = atoi(param);
+            since_timestamp = strtoull(param, NULL, 10);  // Use strtoull for uint64_t
         }
     }
     
@@ -103,7 +103,8 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     
     for (int i = 0; i < count; i++) {
         cJSON *entry = cJSON_CreateObject();
-        cJSON_AddNumberToObject(entry, "timestamp", entries[i].timestamp);
+        // Use double for timestamp to preserve precision in JSON
+        cJSON_AddNumberToObject(entry, "timestamp", (double)entries[i].timestamp);
         cJSON_AddStringToObject(entry, "type", entries[i].type);
         cJSON_AddStringToObject(entry, "message", entries[i].message);
         cJSON_AddItemToArray(entries_array, entry);

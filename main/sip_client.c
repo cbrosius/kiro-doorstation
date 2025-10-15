@@ -594,7 +594,7 @@ sip_config_t sip_load_config(void)
 }
 
 // Get log entries for web interface
-int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t since_timestamp)
+int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint64_t since_timestamp)
 {
     if (!sip_log_mutex || !entries) {
         return 0;
@@ -607,6 +607,7 @@ int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint32_t sinc
         
         for (int i = 0; i < sip_log_count && count < max_entries; i++) {
             int index = (start_index + i) % SIP_LOG_MAX_ENTRIES;
+            // Use > to exclude entries at exactly since_timestamp (already seen)
             if (sip_log_buffer[index].timestamp > since_timestamp) {
                 memcpy(&entries[count], &sip_log_buffer[index], sizeof(sip_log_entry_t));
                 count++;
