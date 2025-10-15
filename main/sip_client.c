@@ -740,6 +740,9 @@ void sip_client_make_call(const char* uri)
         return;
     }
     
+    // Remember previous state to restore after call
+    sip_state_t previous_state = current_state;
+    
     NTP_LOGI(TAG, "Initiating call to %s", uri);
     sip_add_log_entry("info", "Initiating call");
     current_state = SIP_STATE_CALLING;
@@ -779,8 +782,9 @@ void sip_client_make_call(const char* uri)
     NTP_LOGW(TAG, "Call functionality not fully implemented - returning to ready state");
     sip_add_log_entry("info", "Call simulation complete (not fully implemented)");
     
-    // Reset state back to registered/idle after simulated call
-    current_state = (current_state == SIP_STATE_REGISTERED) ? SIP_STATE_REGISTERED : SIP_STATE_IDLE;
+    // Restore previous state (should be REGISTERED to maintain registration)
+    current_state = previous_state;
+    NTP_LOGI(TAG, "State restored to: %d", current_state);
 }
 
 void sip_client_hangup(void)
