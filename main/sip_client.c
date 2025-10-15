@@ -231,7 +231,8 @@ static void calculate_digest_response(
     char* response_out)
 {
     char ha1[33], ha2[33];
-    char ha1_input[256], ha2_input[256], response_input[512];
+    // Use static to avoid stack allocation (not thread-safe but only one SIP task)
+    static char ha1_input[256], ha2_input[256], response_input[512];
     
     // Calculate HA1 = MD5(username:realm:password)
     snprintf(ha1_input, sizeof(ha1_input), "%s:%s:%s", username, realm, password);
@@ -277,16 +278,20 @@ static bool get_local_ip(char* ip_str, size_t max_len)
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
 static void sip_task(void *pvParameters)
 {
-    char buffer[2048];
+    // Use static buffer to avoid stack allocation (moves to .bss section)
+    static char buffer[2048];
     int len;
     
     NTP_LOGI(TAG, "SIP task started on core %d", xPortGetCoreID());
     sip_add_log_entry("info", "SIP task started on Core 1");
     
+    // Add this task to the watchdog
+    esp_task_wdt_add(NULL);
+    
     while (1) {
         // Longer delay to minimize CPU usage - SIP doesn't need fast polling
-        // 200ms is more than sufficient for SIP protocol
-        vTaskDelay(pdMS_TO_TICKS(200));
+        // 500ms is more than sufficient for SIP protocol and reduces system load
+        vTaskDelay(pdMS_TO_TICKS(500));
         
         // Reset watchdog to prevent timeout during long operations
         esp_task_wdt_reset();
@@ -343,6 +348,9 @@ static void sip_task(void *pvParameters)
             sip_add_log_entry("info", "Starting SIP registration");
             sip_client_register();
         }
+        
+        // Yield to other tasks to prevent starving WiFi stack
+        taskYIELD();
         
         if (sip_socket >= 0) {
             len = recv(sip_socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
@@ -586,8 +594,8 @@ bool sip_client_register(void)
         ESP_LOGI(TAG, "Using local IP: %s", local_ip);
     }
 
-    // Create REGISTER message (simplified)
-    char register_msg[1024];
+    // Create REGISTER message (use static to avoid stack allocation)
+    static char register_msg[1024];
     snprintf(register_msg, sizeof(register_msg), sip_register_template,
              sip_config.server, local_ip, rand(),
              sip_config.username, sip_config.server, rand(),
@@ -659,8 +667,8 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         response
     );
 
-    // Build authenticated REGISTER message
-    char register_msg[2048];
+    // Build authenticated REGISTER message (use static to avoid stack allocation)
+    static char register_msg[2048];
     int call_id = rand();
     int tag = rand();
     int branch = rand();
@@ -753,14 +761,15 @@ void sip_client_make_call(const char* uri)
         strcpy(local_ip, "192.168.1.100"); // Fallback
     }
     
-    // Simplified INVITE message
+    // Simplified INVITE message (use static to avoid stack allocation)
     // In a real implementation, a complete SDP session description would be created here
-    char sdp[256];
+    static char sdp[256];
+    static char invite_msg[2048];
+    
     snprintf(sdp, sizeof(sdp), 
              "v=0\r\no=- 0 0 IN IP4 %s\r\ns=-\r\nc=IN IP4 %s\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
              local_ip, local_ip);
     
-    char invite_msg[2048];
     snprintf(invite_msg, sizeof(invite_msg), sip_invite_template,
              uri, local_ip, rand(),
              sip_config.username, sip_config.server, rand(),
