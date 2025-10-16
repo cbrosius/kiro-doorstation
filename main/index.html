@@ -1374,12 +1374,17 @@
       </div>
     </section>
 
-    <!-- SIP Settings Section -->
+    <!-- SIP Settings Section (Task 7) -->
     <section class="content-section" id="section-sip" hidden>
       <h2 tabindex="-1">SIP Settings</h2>
       
-      <!-- Example form demonstrating Task 4 functionality -->
+      <!-- Task 7.1: SIP Configuration Form -->
       <form class="config-form" id="sip-form" data-api="/api/sip/config">
+        <h3 style="margin-bottom: var(--spacing-md);">SIP Server Configuration</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Configure your SIP server connection and call targets. All fields marked with * are required.
+        </p>
+        
         <div class="form-group">
           <label for="sip-server">
             SIP Server
@@ -1411,6 +1416,7 @@
             data-error="Username must be at least 3 characters"
             placeholder="doorstation">
           <span class="error-message" hidden></span>
+          <span class="form-help">SIP account username for authentication</span>
         </div>
         
         <div class="form-group">
@@ -1427,6 +1433,7 @@
             data-error="Password must be at least 6 characters"
             placeholder="••••••••">
           <span class="error-message" hidden></span>
+          <span class="form-help">SIP account password for authentication</span>
         </div>
         
         <div class="form-group">
@@ -1443,6 +1450,7 @@
             data-error="Please enter a valid SIP URI (e.g., sip:user@domain.com)"
             placeholder="sip:apartment1@example.com">
           <span class="error-message" hidden></span>
+          <span class="form-help">SIP URI to call when doorbell button 1 is pressed</span>
         </div>
         
         <div class="form-group">
@@ -1457,7 +1465,7 @@
             data-error="Please enter a valid SIP URI (e.g., sip:user@domain.com)"
             placeholder="sip:apartment2@example.com">
           <span class="error-message" hidden></span>
-          <span class="form-help">Optional second target for dual apartment setup</span>
+          <span class="form-help">Optional second target for dual apartment setup (doorbell button 2)</span>
         </div>
         
         <div class="form-actions">
@@ -1469,21 +1477,76 @@
         </div>
       </form>
       
-      <div style="margin-top: var(--spacing-lg);">
-        <h3 style="margin-bottom: var(--spacing-md);">Connection Management</h3>
+      <!-- Task 7.2: Test Call Buttons -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <h3 style="margin-bottom: var(--spacing-md);">Test Calls</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Test your SIP configuration by initiating a test call to each target. Make sure you have saved your configuration first.
+        </p>
+        
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button class="btn btn-success" onclick="handleSIPConnect()">
-            <span>📞</span>
-            <span>Connect to SIP</span>
+          <button class="btn btn-info" onclick="handleTestCall(1)" id="test-call-target1">
+            <span class="btn-text">
+              <span>📞</span>
+              <span>Test Call Target 1</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button class="btn btn-warning" onclick="handleSIPDisconnect()">
-            <span>📴</span>
-            <span>Disconnect</span>
+          <button class="btn btn-info" onclick="handleTestCall(2)" id="test-call-target2">
+            <span class="btn-text">
+              <span>📞</span>
+              <span>Test Call Target 2</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button class="btn btn-info" onclick="handleSIPTest()">
-            <span>🧪</span>
-            <span>Test Configuration</span>
+        </div>
+        
+        <div id="test-call-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); display: none;">
+          <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+            <span id="test-call-icon" style="font-size: var(--font-size-xl);"></span>
+            <span id="test-call-message" style="font-size: var(--font-size-base); color: var(--color-text);"></span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 7.3: Connection Management -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <h3 style="margin-bottom: var(--spacing-md);">Connection Management</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Manage your SIP server connection. You must be connected to receive incoming calls.
+        </p>
+        
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg);">
+          <button class="btn btn-success" onclick="handleSIPConnectEnhanced()" id="sip-connect-btn">
+            <span class="btn-text">
+              <span>📞</span>
+              <span>Connect to SIP</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
           </button>
+          <button class="btn btn-warning" onclick="handleSIPDisconnectEnhanced()" id="sip-disconnect-btn">
+            <span class="btn-text">
+              <span>📴</span>
+              <span>Disconnect</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button class="btn btn-info" onclick="handleSIPTestEnhanced()" id="sip-test-btn">
+            <span class="btn-text">
+              <span>🧪</span>
+              <span>Test Configuration</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Connection Status Display -->
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+          <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Current Connection Status</div>
+          <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+            <span id="sip-connection-icon" style="font-size: var(--font-size-xl);">⏳</span>
+            <span id="sip-connection-status" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Checking...</span>
+          </div>
         </div>
       </div>
     </section>
@@ -1589,6 +1652,14 @@
       // Close mobile sidebar after navigation
       if (window.innerWidth < 768) {
         closeMobileSidebar();
+      }
+      
+      // Section-specific initialization (Task 7.3, 7.4)
+      if (sectionId === 'sip') {
+        // Load SIP configuration from server (Task 7.4)
+        loadSIPConfiguration();
+        // Update SIP connection status and button states
+        updateSIPConnectionStatus();
       }
     }
     
@@ -3455,6 +3526,267 @@
       initRecentActivity();
     }
     
+    // ===== Task 7: SIP Settings Section Functions =====
+    
+    // ===== Task 7.2: Test Call Buttons =====
+    
+    /**
+     * Handle test call to a specific target
+     * @param {number} targetNumber - Target number (1 or 2)
+     */
+    async function handleTestCall(targetNumber) {
+      const buttonId = `test-call-target${targetNumber}`;
+      const button = document.getElementById(buttonId);
+      if (!button) return;
+      
+      // Get target value from form
+      const targetInput = document.getElementById(`sip-target${targetNumber}`);
+      if (!targetInput || !targetInput.value) {
+        showToast(`Please configure Target ${targetNumber} first`, 'warning');
+        return;
+      }
+      
+      const target = targetInput.value;
+      
+      // Show loading state
+      setLoadingState(button, true);
+      
+      // Show feedback area
+      const feedbackDiv = document.getElementById('test-call-feedback');
+      const feedbackIcon = document.getElementById('test-call-icon');
+      const feedbackMessage = document.getElementById('test-call-message');
+      
+      if (feedbackDiv) {
+        feedbackDiv.style.display = 'block';
+        if (feedbackIcon) feedbackIcon.textContent = '⏳';
+        if (feedbackMessage) feedbackMessage.textContent = `Initiating test call to ${target}...`;
+      }
+      
+      try {
+        showToast(`Initiating test call to Target ${targetNumber}...`, 'info');
+        
+        const response = await apiRequest('/api/sip/testcall', {
+          method: 'POST',
+          body: JSON.stringify({ target: target })
+        });
+        
+        // Show success feedback
+        if (feedbackIcon) feedbackIcon.textContent = '✅';
+        if (feedbackMessage) {
+          feedbackMessage.textContent = response.message || `Test call to ${target} initiated successfully!`;
+          feedbackMessage.style.color = 'var(--color-success)';
+        }
+        
+        showToast(response.message || `Test call to Target ${targetNumber} successful!`, 'success');
+        
+      } catch (error) {
+        // Show error feedback
+        if (feedbackIcon) feedbackIcon.textContent = '❌';
+        if (feedbackMessage) {
+          feedbackMessage.textContent = error.message || `Test call to ${target} failed`;
+          feedbackMessage.style.color = 'var(--color-danger)';
+        }
+        // Error already shown by apiRequest
+      } finally {
+        // Reset button state
+        setLoadingState(button, false);
+        
+        // Hide feedback after 5 seconds
+        setTimeout(() => {
+          if (feedbackDiv) {
+            feedbackDiv.style.display = 'none';
+          }
+        }, 5000);
+      }
+    }
+    
+    // ===== Task 7.3: Connection Management =====
+    
+    /**
+     * Update SIP connection status display
+     */
+    async function updateSIPConnectionStatus() {
+      try {
+        const response = await apiRequest('/api/sip/status');
+        
+        const iconElement = document.getElementById('sip-connection-icon');
+        const statusElement = document.getElementById('sip-connection-status');
+        const connectBtn = document.getElementById('sip-connect-btn');
+        const disconnectBtn = document.getElementById('sip-disconnect-btn');
+        
+        if (response.status === 'registered') {
+          if (iconElement) iconElement.textContent = '✅';
+          if (statusElement) {
+            statusElement.textContent = `Registered (${response.state || 'IDLE'})`;
+            statusElement.style.color = 'var(--color-success)';
+          }
+          // Enable disconnect, disable connect
+          if (connectBtn) connectBtn.disabled = true;
+          if (disconnectBtn) disconnectBtn.disabled = false;
+          
+        } else if (response.status === 'connecting') {
+          if (iconElement) iconElement.textContent = '⏳';
+          if (statusElement) {
+            statusElement.textContent = 'Connecting...';
+            statusElement.style.color = 'var(--color-warning)';
+          }
+          // Disable both buttons while connecting
+          if (connectBtn) connectBtn.disabled = true;
+          if (disconnectBtn) disconnectBtn.disabled = true;
+          
+        } else {
+          if (iconElement) iconElement.textContent = '❌';
+          if (statusElement) {
+            statusElement.textContent = 'Disconnected';
+            statusElement.style.color = 'var(--color-danger)';
+          }
+          // Enable connect, disable disconnect
+          if (connectBtn) connectBtn.disabled = false;
+          if (disconnectBtn) disconnectBtn.disabled = true;
+        }
+        
+      } catch (error) {
+        console.error('Error updating SIP connection status:', error);
+        const iconElement = document.getElementById('sip-connection-icon');
+        const statusElement = document.getElementById('sip-connection-status');
+        const connectBtn = document.getElementById('sip-connect-btn');
+        const disconnectBtn = document.getElementById('sip-disconnect-btn');
+        
+        if (iconElement) iconElement.textContent = '❌';
+        if (statusElement) {
+          statusElement.textContent = 'Error';
+          statusElement.style.color = 'var(--color-danger)';
+        }
+        // On error, enable connect button, disable disconnect
+        if (connectBtn) connectBtn.disabled = false;
+        if (disconnectBtn) disconnectBtn.disabled = true;
+      }
+    }
+    
+    /**
+     * Enhanced SIP connect handler with status update
+     */
+    async function handleSIPConnectEnhanced() {
+      const button = document.getElementById('sip-connect-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Connecting to SIP server...', 'info');
+        const response = await apiRequest('/api/sip/connect', { method: 'POST' });
+        showToast(response.message || 'Connected to SIP server successfully!', 'success');
+        
+        // Update connection status
+        await updateSIPConnectionStatus();
+        
+      } catch (error) {
+        // Error already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Enhanced SIP disconnect handler with status update
+     */
+    async function handleSIPDisconnectEnhanced() {
+      const confirmed = await confirmSIPDisconnect();
+      if (!confirmed) return;
+      
+      const button = document.getElementById('sip-disconnect-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Disconnecting from SIP server...', 'info');
+        const response = await apiRequest('/api/sip/disconnect', { method: 'POST' });
+        showToast(response.message || 'Disconnected from SIP server', 'success');
+        
+        // Update connection status
+        await updateSIPConnectionStatus();
+        
+      } catch (error) {
+        // Error already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Enhanced SIP test handler with loading state
+     */
+    async function handleSIPTestEnhanced() {
+      const button = document.getElementById('sip-test-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Testing SIP configuration...', 'info');
+        const response = await apiRequest('/api/sip/test', { method: 'POST' });
+        showToast(response.message || 'SIP configuration test successful!', 'success');
+      } catch (error) {
+        // Error already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    // ===== Task 7.4: Load Existing SIP Configuration =====
+    
+    /**
+     * Load SIP configuration from server and populate form
+     */
+    async function loadSIPConfiguration() {
+      try {
+        const response = await apiRequest('/api/sip/config');
+        
+        // Populate form fields
+        const serverInput = document.getElementById('sip-server');
+        const usernameInput = document.getElementById('sip-username');
+        const passwordInput = document.getElementById('sip-password');
+        const target1Input = document.getElementById('sip-target1');
+        const target2Input = document.getElementById('sip-target2');
+        
+        if (serverInput && response.server) serverInput.value = response.server;
+        if (usernameInput && response.username) usernameInput.value = response.username;
+        if (passwordInput && response.password) passwordInput.value = response.password;
+        if (target1Input && response.target1) target1Input.value = response.target1;
+        if (target2Input && response.target2) target2Input.value = response.target2;
+        
+        // Save initial state for change tracking
+        const form = document.getElementById('sip-form');
+        if (form) {
+          saveFormInitialState(form);
+          trackFormChanges(form);
+        }
+        
+        console.log('SIP configuration loaded successfully');
+        
+      } catch (error) {
+        console.error('Error loading SIP configuration:', error);
+        // Don't show error toast on initial load - config might not exist yet
+      }
+    }
+    
+    /**
+     * Initialize SIP Settings section
+     */
+    function initSIPSettings() {
+      // Load existing configuration
+      loadSIPConfiguration();
+      
+      // Update connection status
+      updateSIPConnectionStatus();
+      
+      // Auto-refresh connection status every 10 seconds
+      setInterval(updateSIPConnectionStatus, 10000);
+    }
+    
+    /**
+     * Override global SIP handlers to use enhanced versions
+     * This ensures the handlers work from both Dashboard and SIP Settings sections
+     */
+    window.handleSIPConnect = handleSIPConnectEnhanced;
+    window.handleSIPDisconnect = handleSIPDisconnectEnhanced;
+    window.handleSIPTest = handleSIPTestEnhanced;
+    
     // ===== Initialization =====
     
     /**
@@ -3478,6 +3810,9 @@
       
       // Initialize Dashboard section
       initDashboard();
+      
+      // Initialize SIP Settings section
+      initSIPSettings();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
