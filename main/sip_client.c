@@ -1053,10 +1053,14 @@ const char* sip_get_password(void)
     return sip_config.password;
 }
 
-const char* sip_get_uri(void)
+const char* sip_get_target1(void)
 {
-    // Return apartment1_uri as the default URI
     return sip_config.apartment1_uri;
+}
+
+const char* sip_get_target2(void)
+{
+    return sip_config.apartment2_uri;
 }
 
 void sip_set_server(const char* server)
@@ -1086,11 +1090,20 @@ void sip_set_password(const char* password)
     }
 }
 
-void sip_set_uri(const char* uri)
+void sip_set_target1(const char* target)
 {
-    if (uri) {
-        strncpy(sip_config.apartment1_uri, uri, sizeof(sip_config.apartment1_uri) - 1);
+    if (target) {
+        strncpy(sip_config.apartment1_uri, target, sizeof(sip_config.apartment1_uri) - 1);
         sip_config.apartment1_uri[sizeof(sip_config.apartment1_uri) - 1] = '\0';
+        sip_config.configured = true;
+    }
+}
+
+void sip_set_target2(const char* target)
+{
+    if (target) {
+        strncpy(sip_config.apartment2_uri, target, sizeof(sip_config.apartment2_uri) - 1);
+        sip_config.apartment2_uri[sizeof(sip_config.apartment2_uri) - 1] = '\0';
         sip_config.configured = true;
     }
 }

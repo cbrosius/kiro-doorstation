@@ -49,11 +49,13 @@ bool sip_is_registered(void);
 const char* sip_get_server(void);
 const char* sip_get_username(void);
 const char* sip_get_password(void);
-const char* sip_get_uri(void);  // Returns apartment1_uri as default
+const char* sip_get_target1(void);  // Returns apartment1_uri
+const char* sip_get_target2(void);  // Returns apartment2_uri
 void sip_set_server(const char* server);
 void sip_set_username(const char* username);
 void sip_set_password(const char* password);
-void sip_set_uri(const char* uri);
+void sip_set_target1(const char* target);
+void sip_set_target2(const char* target);
 void sip_reinit(void);
 bool sip_test_configuration(void);
 

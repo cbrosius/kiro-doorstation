@@ -37,10 +37,20 @@ static void doorbell_task(void *arg)
             
             if (event.bell == DOORBELL_1) {
                 ESP_LOGI(TAG, "Doorbell 1 pressed");
-                sip_client_make_call("apartment1@example.com");
+                const char* target1 = sip_get_target1();
+                if (target1 && strlen(target1) > 0) {
+                    sip_client_make_call(target1);
+                } else {
+                    ESP_LOGW(TAG, "SIP-Target1 not configured");
+                }
             } else if (event.bell == DOORBELL_2) {
                 ESP_LOGI(TAG, "Doorbell 2 pressed");
-                sip_client_make_call("apartment2@example.com");
+                const char* target2 = sip_get_target2();
+                if (target2 && strlen(target2) > 0) {
+                    sip_client_make_call(target2);
+                } else {
+                    ESP_LOGW(TAG, "SIP-Target2 not configured");
+                }
             }
         }
     }

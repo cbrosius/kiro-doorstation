@@ -347,7 +347,8 @@
                 try {
                     const response = await fetch('/api/sip/config');
                     const data = await response.json();
-                    document.getElementById('uri').value = data.uri || '';
+                    document.getElementById('target1').value = data.target1 || '';
+                    document.getElementById('target2').value = data.target2 || '';
                     document.getElementById('server').value = data.server || '';
                     document.getElementById('username').value = data.username || '';
                     document.getElementById('password').value = data.password || '';
@@ -528,6 +529,48 @@
 
             testBtn.disabled = false;
             testBtn.textContent = 'Test SIP Configuration';
+        }
+
+        async function testCallTarget(targetNumber) {
+            const targetInput = document.getElementById(`target${targetNumber}`);
+            const target = targetInput.value.trim();
+            
+            if (!target) {
+                showToast(`Please enter SIP-Target${targetNumber} first`, 'error');
+                return;
+            }
+
+            // Log button press
+            addLocalLogEntry('user', `🔘 Test Call button pressed for Target${targetNumber}`);
+            
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Calling...';
+
+            try {
+                const response = await fetch('/api/sip/testcall', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: target })
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showToast(`📞 Test call initiated to Target${targetNumber}`, 'success');
+                    addLocalLogEntry('user', `Test call initiated to: ${target}`);
+                } else {
+                    showToast(data.message || 'Test call failed', 'error');
+                }
+
+            } catch (error) {
+                console.error('Error initiating test call:', error);
+                showToast('Error initiating test call', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
 
         async function restartSystem() {
@@ -1040,8 +1083,17 @@
         <div class="form-section">
             <h2>SIP Configuration</h2>
             <form id="sip-form">
-                <label for="uri">SIP URI (e.g., sip:user@domain.com):</label>
-                <input type="text" id="uri" name="uri" required>
+                <label for="target1">SIP-Target1 (Apartment 1, e.g., sip:apartment1@domain.com):</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="target1" name="target1" placeholder="sip:apartment1@domain.com" required style="flex: 1; margin-bottom: 0;">
+                    <button type="button" onclick="testCallTarget(1)" class="secondary" style="white-space: nowrap;">Test Call</button>
+                </div>
+
+                <label for="target2">SIP-Target2 (Apartment 2, e.g., sip:apartment2@domain.com):</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="target2" name="target2" placeholder="sip:apartment2@domain.com" required style="flex: 1; margin-bottom: 0;">
+                    <button type="button" onclick="testCallTarget(2)" class="secondary" style="white-space: nowrap;">Test Call</button>
+                </div>
 
                 <label for="server">SIP Server (e.g., sip.domain.com):</label>
                 <input type="text" id="server" name="server" required>
@@ -1086,8 +1138,8 @@
                 <div><strong>*1:</strong> Open Door (3 seconds)</div>
                 <div><strong>*2:</strong> Toggle Light</div>
                 <div><strong>#:</strong> End Call</div>
-                <div><strong>Bell 1:</strong> GPIO 21 (Apartment 1)</div>
-                <div><strong>Bell 2:</strong> GPIO 4 (Apartment 2)</div>
+                <div><strong>Bell 1:</strong> GPIO 21 (Calls SIP-Target1)</div>
+                <div><strong>Bell 2:</strong> GPIO 4 (Calls SIP-Target2)</div>
                 <div><strong>Door Relay:</strong> GPIO 5</div>
                 <div><strong>Light Relay:</strong> GPIO 6</div>
             </div>
@@ -1098,10 +1150,10 @@
             <h2>🧪 Testing</h2>
             <div class="system-info">
                 <div><strong>BOOT Button:</strong> GPIO 0 (Press to simulate doorbell)</div>
-                <div><strong>Function:</strong> Triggers SIP call to apartment1@example.com</div>
+                <div><strong>Function:</strong> Triggers SIP call to SIP-Target1</div>
             </div>
             <p style="color: #666; margin-top: 10px; font-size: 14px;">
-                Press the physical BOOT button on your ESP32-S3 to simulate a doorbell press and initiate a SIP call.
+                Press the physical BOOT button on your ESP32-S3 to simulate a doorbell press and initiate a SIP call to the first apartment.
             </p>
         </div>
     </div>

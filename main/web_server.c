@@ -42,12 +42,14 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
 
     // Get SIP configuration values, handling null returns
-    const char* uri = sip_get_uri();
+    const char* target1 = sip_get_target1();
+    const char* target2 = sip_get_target2();
     const char* server = sip_get_server();
     const char* username = sip_get_username();
     const char* password = sip_get_password();
 
-    cJSON_AddStringToObject(root, "uri", uri ? uri : "");
+    cJSON_AddStringToObject(root, "target1", target1 ? target1 : "");
+    cJSON_AddStringToObject(root, "target2", target2 ? target2 : "");
     cJSON_AddStringToObject(root, "server", server ? server : "");
     cJSON_AddStringToObject(root, "username", username ? username : "");
     cJSON_AddStringToObject(root, "password", password ? password : "");
@@ -75,6 +77,62 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
     const char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
     free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *target = cJSON_GetObjectItem(root, "target");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsString(target) || (target->valuestring == NULL) || strlen(target->valuestring) == 0) {
+        cJSON_AddStringToObject(response, "status", "failed");
+        cJSON_AddStringToObject(response, "message", "Invalid or missing target");
+    } else {
+        // Check if registered before making call
+        if (!sip_is_registered()) {
+            cJSON_AddStringToObject(response, "status", "failed");
+            cJSON_AddStringToObject(response, "message", "Not registered to SIP server. Please connect first.");
+        } else {
+            // Initiate test call
+            ESP_LOGI(TAG, "Test call initiated to: %s", target->valuestring);
+            sip_client_make_call(target->valuestring);
+            
+            cJSON_AddStringToObject(response, "status", "success");
+            cJSON_AddStringToObject(response, "message", "Test call initiated");
+        }
+    }
+
+    const char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(response);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -188,13 +246,17 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    const cJSON *uri = cJSON_GetObjectItem(root, "uri");
+    const cJSON *target1 = cJSON_GetObjectItem(root, "target1");
+    const cJSON *target2 = cJSON_GetObjectItem(root, "target2");
     const cJSON *server = cJSON_GetObjectItem(root, "server");
     const cJSON *username = cJSON_GetObjectItem(root, "username");
     const cJSON *password = cJSON_GetObjectItem(root, "password");
 
-    if (cJSON_IsString(uri) && (uri->valuestring != NULL)) {
-        sip_set_uri(uri->valuestring);
+    if (cJSON_IsString(target1) && (target1->valuestring != NULL)) {
+        sip_set_target1(target1->valuestring);
+    }
+    if (cJSON_IsString(target2) && (target2->valuestring != NULL)) {
+        sip_set_target2(target2->valuestring);
     }
     if (cJSON_IsString(server) && (server->valuestring != NULL)) {
         sip_set_server(server->valuestring);
@@ -210,7 +272,7 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 
     // Save the updated configuration to NVS
     sip_save_config(sip_get_server(), sip_get_username(), sip_get_password(),
-                   sip_get_uri(), "", 5060); // Using default port
+                   sip_get_target1(), sip_get_target2(), 5060); // Using default port
 
     sip_reinit(); // Re-initialize SIP client with new settings
 
@@ -525,6 +587,13 @@ static const httpd_uri_t sip_test_uri = {
     .user_ctx  = NULL
 };
 
+static const httpd_uri_t sip_test_call_uri = {
+    .uri       = "/api/sip/testcall",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_call_handler,
+    .user_ctx  = NULL
+};
+
 static const httpd_uri_t sip_log_uri = {
     .uri       = "/api/sip/log",
     .method    = HTTP_GET,
@@ -601,6 +670,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &sip_config_get_uri);
         httpd_register_uri_handler(server, &sip_config_post_uri);
         httpd_register_uri_handler(server, &sip_test_uri);
+        httpd_register_uri_handler(server, &sip_test_call_uri);
         httpd_register_uri_handler(server, &sip_log_uri);
         httpd_register_uri_handler(server, &sip_connect_uri);
         httpd_register_uri_handler(server, &sip_disconnect_uri);
