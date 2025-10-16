@@ -11,43 +11,66 @@
   - Add callback function pointer type for telephone-events
   - _Requirements: 1.1, 8.1_
 
-- [ ] 2. Implement RFC 4733 packet parsing in RTP handler
-- [ ] 2.1 Add telephone-event callback registration
+- [x] 2. Implement RFC 4733 packet parsing in RTP handler
+
+
+
+
+
+- [x] 2.1 Add telephone-event callback registration
+
+
   - Implement `rtp_set_telephone_event_callback()` function
   - Store callback pointer in static variable
   - _Requirements: 1.1, 8.1_
 
-- [ ] 2.2 Modify rtp_receive_audio() to route by payload type
+- [x] 2.2 Modify rtp_receive_audio() to route by payload type
+
+
   - Extract payload type from RTP header
   - Route payload type 101 to telephone-event parser
   - Route payload type 0/8 to existing audio decoder
   - _Requirements: 1.1, 8.5_
 
-- [ ] 2.3 Implement telephone-event packet parser
+- [x] 2.3 Implement telephone-event packet parser
+
+
   - Create `rtp_process_telephone_event()` function
   - Parse event code, end bit, volume, and duration fields
   - Extract end bit from e_r_volume field (bit 7)
   - Validate packet size (minimum 4 bytes)
   - _Requirements: 8.1, 8.4_
 
-- [ ] 2.4 Add event deduplication logic
+- [x] 2.4 Add event deduplication logic
+
+
   - Track last processed RTP timestamp
   - Compare incoming timestamp with last processed
   - Only invoke callback when end bit is set and timestamp is new
   - _Requirements: 8.3_
 
-- [ ] 2.5 Map event codes to DTMF characters
+- [x] 2.5 Map event codes to DTMF characters
+
+
   - Create mapping function for codes 0-15 to characters 0-9, *, #, A-D
   - Invoke callback with mapped character when end bit detected
   - _Requirements: 1.1, 8.2_
 
-- [ ]* 2.6 Add error handling for malformed packets
+- [x] 2.6 Add error handling for malformed packets
+
+
+
+
+
+
   - Check packet size before parsing
   - Log errors for invalid packets
   - Continue processing without crashing
   - _Requirements: 8.4_
 
-- [ ] 3. Enhance DTMF decoder with security features
+- [-] 3. Enhance DTMF decoder with security features
+
+
 - [ ] 3.1 Define security configuration structures
   - Create dtmf_security_config_t structure
   - Create dtmf_command_state_t structure

@@ -16,6 +16,16 @@ static uint32_t timestamp = 0;
 static uint32_t ssrc = 0;
 static bool session_active = false;
 
+// Telephone-event callback
+static telephone_event_callback_t telephone_event_callback = NULL;
+
+// Track last processed telephone-event timestamp for deduplication
+static uint32_t last_telephone_event_timestamp = 0;
+
+// Forward declarations
+static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_t* payload, size_t payload_size);
+static char rtp_map_event_to_char(uint8_t event_code);
+
 // G.711 μ-law encoding table (simplified)
 static const int16_t mulaw_decode_table[256] = {
     -32124,-31100,-30076,-29052,-28028,-27004,-25980,-24956,
@@ -222,20 +232,125 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
         return 0;
     }
     
-    // Parse RTP header (skip header validation for now)
-    uint8_t* payload = buffer + sizeof(rtp_header_t);
+    // Parse RTP header
+    const rtp_header_t* header = (const rtp_header_t*)buffer;
+    const uint8_t* payload = buffer + sizeof(rtp_header_t);
     size_t payload_size = received - sizeof(rtp_header_t);
     
-    // Decode μ-law to linear PCM
-    size_t sample_count = (payload_size < max_samples) ? payload_size : max_samples;
-    for (size_t i = 0; i < sample_count; i++) {
-        samples[i] = mulaw_decode_table[payload[i]];
-    }
+    // Extract payload type from RTP header
+    uint8_t payload_type = header->payload_type;
     
-    return sample_count;
+    // Route by payload type
+    if (payload_type == 101) {
+        // RFC 4733 telephone-event
+        rtp_process_telephone_event(header, payload, payload_size);
+        return 0; // No audio samples to return
+    } else if (payload_type == 0 || payload_type == 8) {
+        // Audio payload (PCMU=0, PCMA=8)
+        // Decode μ-law to linear PCM
+        size_t sample_count = (payload_size < max_samples) ? payload_size : max_samples;
+        for (size_t i = 0; i < sample_count; i++) {
+            samples[i] = mulaw_decode_table[payload[i]];
+        }
+        return sample_count;
+    } else {
+        // Unknown payload type
+        ESP_LOGW(TAG, "Unknown RTP payload type: %d", payload_type);
+        return 0;
+    }
 }
 
 bool rtp_is_active(void)
 {
     return session_active;
+}
+
+void rtp_set_telephone_event_callback(telephone_event_callback_t callback)
+{
+    telephone_event_callback = callback;
+    ESP_LOGI(TAG, "Telephone-event callback %s", callback ? "registered" : "unregistered");
+}
+
+// Map RFC 4733 event code to DTMF character
+static char rtp_map_event_to_char(uint8_t event_code)
+{
+    // RFC 4733 event codes 0-15 map to DTMF digits
+    switch (event_code) {
+        case DTMF_EVENT_0: return '0';
+        case DTMF_EVENT_1: return '1';
+        case DTMF_EVENT_2: return '2';
+        case DTMF_EVENT_3: return '3';
+        case DTMF_EVENT_4: return '4';
+        case DTMF_EVENT_5: return '5';
+        case DTMF_EVENT_6: return '6';
+        case DTMF_EVENT_7: return '7';
+        case DTMF_EVENT_8: return '8';
+        case DTMF_EVENT_9: return '9';
+        case DTMF_EVENT_STAR: return '*';
+        case DTMF_EVENT_HASH: return '#';
+        case DTMF_EVENT_A: return 'A';
+        case DTMF_EVENT_B: return 'B';
+        case DTMF_EVENT_C: return 'C';
+        case DTMF_EVENT_D: return 'D';
+        default: return '\0'; // Invalid event code
+    }
+}
+
+// Internal: Parse and process telephone-event packet
+static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_t* payload, size_t payload_size)
+{
+    // Check packet size before parsing (minimum 4 bytes for RFC 4733)
+    if (payload_size < sizeof(rtp_telephone_event_t)) {
+        ESP_LOGE(TAG, "Malformed telephone-event: packet too small (%d bytes, expected %d)", 
+                 payload_size, sizeof(rtp_telephone_event_t));
+        return; // Continue processing without crashing
+    }
+    
+    // Validate header pointer
+    if (header == NULL || payload == NULL) {
+        ESP_LOGE(TAG, "Malformed telephone-event: NULL pointer (header=%p, payload=%p)", 
+                 header, payload);
+        return; // Continue processing without crashing
+    }
+    
+    // Parse telephone-event structure
+    const rtp_telephone_event_t* event = (const rtp_telephone_event_t*)payload;
+    
+    // Validate event code is within valid range (0-15 for DTMF)
+    if (event->event > DTMF_EVENT_D) {
+        ESP_LOGE(TAG, "Malformed telephone-event: invalid event code %d (valid range: 0-15)", 
+                 event->event);
+        return; // Continue processing without crashing
+    }
+    
+    // Extract end bit from e_r_volume field (bit 7)
+    bool end_bit = (event->e_r_volume & 0x80) != 0;
+    uint8_t volume = event->e_r_volume & 0x3F; // Lower 6 bits
+    uint16_t duration = ntohs(event->duration);
+    
+    // Get RTP timestamp
+    uint32_t rtp_timestamp = ntohl(header->timestamp);
+    
+    ESP_LOGD(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
+             event->event, end_bit, volume, duration, rtp_timestamp);
+    
+    // Only process when end bit is set and timestamp is new (deduplication)
+    if (end_bit && rtp_timestamp != last_telephone_event_timestamp) {
+        last_telephone_event_timestamp = rtp_timestamp;
+        
+        // Map event code to DTMF character
+        char dtmf_char = rtp_map_event_to_char(event->event);
+        
+        if (dtmf_char != '\0') {
+            ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d)", dtmf_char, event->event);
+            
+            // Invoke callback if registered
+            if (telephone_event_callback) {
+                telephone_event_callback(event->event);
+            }
+        } else {
+            ESP_LOGE(TAG, "Malformed telephone-event: failed to map event code %d to character", 
+                     event->event);
+        }
+    }
 }

@@ -64,4 +64,7 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples);
 // Check if RTP session is active
 bool rtp_is_active(void);
 
+// Register callback for telephone-events
+void rtp_set_telephone_event_callback(telephone_event_callback_t callback);
+
 #endif // RTP_HANDLER_H
