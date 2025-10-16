@@ -265,8 +265,14 @@
   - Register URI handler in web_server_start()
   - _Requirements: 4.5, 6.5_
 
-- [ ] 7. Verify and fix SDP negotiation for RFC 4733
-- [ ] 7.1 Add missing a=fmtp line to incoming call 200 OK response
+- [x] 7. Verify and fix SDP negotiation for RFC 4733
+
+
+
+
+- [x] 7.1 Add missing a=fmtp line to incoming call 200 OK response
+
+
   - Locate SDP generation for incoming call 200 OK (around line 750 in sip_client.c)
   - Add "a=fmtp:101 0-15\r\n" after "a=rtpmap:101 telephone-event/8000\r\n"
   - Verify outgoing INVITE already has complete SDP (line ~1242)
