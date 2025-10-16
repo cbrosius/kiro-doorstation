@@ -537,7 +537,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         
                         // Send ACK
                         struct sockaddr_in server_addr;
-                        if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+                        if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
                             sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
                                   (struct sockaddr*)&server_addr, sizeof(server_addr));
                             sip_add_log_entry("sent", "ACK sent");
@@ -796,7 +796,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     // Send 200 OK
                     struct sockaddr_in server_addr;
                     
-                    if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+                    if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
                         int sent = sendto(sip_socket, response, strlen(response), 0,
                                          (struct sockaddr*)&server_addr, sizeof(server_addr));
                         if (sent > 0) {
@@ -876,7 +876,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             call_id, cseq_num);
                     
                     struct sockaddr_in server_addr;
-                    if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+                    if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
                         sendto(sip_socket, bye_response, strlen(bye_response), 0,
                               (struct sockaddr*)&server_addr, sizeof(server_addr));
                         sip_add_log_entry("sent", "200 OK response to BYE");
@@ -1030,7 +1030,7 @@ bool sip_client_register(void)
     struct sockaddr_in server_addr;
 
     // DNS lookup (no watchdog needed - SIP task not monitored)
-    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+    if (!resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
         sip_add_log_entry("error", "DNS lookup failed");
         current_state = SIP_STATE_ERROR;
         return false;
@@ -1083,7 +1083,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
 
     struct sockaddr_in server_addr;
 
-    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+    if (!resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
         current_state = SIP_STATE_ERROR;
         return false;
     }
@@ -1268,7 +1268,7 @@ void sip_client_make_call(const char* uri)
     // Resolve server address
     struct sockaddr_in server_addr;
     
-    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+    if (!resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
         sip_add_log_entry("error", "DNS lookup failed for call");
         current_state = SIP_STATE_ERROR;
         return;
@@ -1331,7 +1331,7 @@ void sip_client_hangup(void)
             
             // Send BYE
             struct sockaddr_in server_addr;
-            if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
+            if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
                 int sent = sendto(sip_socket, bye_msg, strlen(bye_msg), 0,
                                  (struct sockaddr*)&server_addr, sizeof(server_addr));
                 if (sent > 0) {
@@ -1399,7 +1399,7 @@ bool sip_client_test_connection(void)
 
     // For testing purposes, we'll just check if we can resolve the hostname
     struct sockaddr_in test_addr;
-    if (!resolve_hostname(sip_config.server, &test_addr, sip_config.port)) {
+    if (!resolve_hostname(sip_config.server, &test_addr, (uint16_t)sip_config.port)) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         return false;
     }
