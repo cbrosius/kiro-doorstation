@@ -798,7 +798,16 @@ void sip_client_make_call(const char* uri)
     
     // Restore previous state (should be REGISTERED to maintain registration)
     current_state = previous_state;
-    NTP_LOGI(TAG, "State restored to: %d", current_state);
+    
+    static const char* state_names[] = {
+        "IDLE", "REGISTERING", "REGISTERED", "CALLING", "RINGING",
+        "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR",
+        "AUTH_FAILED", "NETWORK_ERROR", "TIMEOUT"
+    };
+    const char* state_name = (current_state < 12) ? state_names[current_state] : "UNKNOWN";
+    
+    NTP_LOGI(TAG, "State restored to: %s (%d)", state_name, current_state);
+    sip_add_log_entry("info", "Ready for next call");
 }
 
 void sip_client_hangup(void)
