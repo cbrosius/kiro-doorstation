@@ -37,19 +37,19 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
     // Get SIP configuration values, handling null returns
     const char* target1 = sip_get_target1();
     const char* target2 = sip_get_target2();
-    const char* server = sip_get_server();
+    const char* sip_server = sip_get_server();
     const char* username = sip_get_username();
     const char* password = sip_get_password();
 
     cJSON_AddStringToObject(root, "target1", target1 ? target1 : "");
     cJSON_AddStringToObject(root, "target2", target2 ? target2 : "");
-    cJSON_AddStringToObject(root, "server", server ? server : "");
+    cJSON_AddStringToObject(root, "server", sip_server ? sip_server : "");
     cJSON_AddStringToObject(root, "username", username ? username : "");
     cJSON_AddStringToObject(root, "password", password ? password : "");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -67,9 +67,9 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
         "SIP configuration test passed" :
         "SIP configuration test failed");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -77,7 +77,8 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
 static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 {
     char buf[256];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -122,9 +123,9 @@ static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
         }
     }
 
-    const char *json_string = cJSON_Print(response);
+    char *json_string = cJSON_Print(response);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(response);
     cJSON_Delete(root);
     return ESP_OK;
@@ -170,9 +171,9 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "entries", entries_array);
     cJSON_AddNumberToObject(root, "count", count);
     
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     free(entries);  // Free heap-allocated entries
     return ESP_OK;
@@ -190,9 +191,9 @@ static esp_err_t post_sip_connect_handler(httpd_req_t *req)
         "SIP connection initiated" :
         "SIP connection failed - check configuration");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -207,9 +208,9 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "status", "success");
     cJSON_AddStringToObject(root, "message", "SIP disconnected");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -217,7 +218,8 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
     char buf[1024];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -241,7 +243,7 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 
     const cJSON *target1 = cJSON_GetObjectItem(root, "target1");
     const cJSON *target2 = cJSON_GetObjectItem(root, "target2");
-    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *sip_server = cJSON_GetObjectItem(root, "server");
     const cJSON *username = cJSON_GetObjectItem(root, "username");
     const cJSON *password = cJSON_GetObjectItem(root, "password");
 
@@ -251,8 +253,8 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
     if (cJSON_IsString(target2) && (target2->valuestring != NULL)) {
         sip_set_target2(target2->valuestring);
     }
-    if (cJSON_IsString(server) && (server->valuestring != NULL)) {
-        sip_set_server(server->valuestring);
+    if (cJSON_IsString(sip_server) && (sip_server->valuestring != NULL)) {
+        sip_set_server(sip_server->valuestring);
     }
     if (cJSON_IsString(username) && (username->valuestring != NULL)) {
         sip_set_username(username->valuestring);
@@ -293,9 +295,9 @@ static esp_err_t get_wifi_status_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "rssi", info.rssi);
     }
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -326,9 +328,9 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "networks", networks_array);
     cJSON_AddNumberToObject(root, "count", network_count);
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -336,7 +338,8 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 {
     char buf[512];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -419,9 +422,9 @@ static esp_err_t get_system_status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
     cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -454,15 +457,15 @@ static esp_err_t get_ntp_status_handler(httpd_req_t *req)
         char time_str[64];
         ntp_get_time_string(time_str, sizeof(time_str));
         cJSON_AddStringToObject(root, "current_time", time_str);
-        cJSON_AddNumberToObject(root, "timestamp_ms", ntp_get_timestamp_ms());
+        cJSON_AddNumberToObject(root, "timestamp_ms", (double)ntp_get_timestamp_ms());
     }
     
     cJSON_AddStringToObject(root, "server", ntp_get_server());
     cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -475,9 +478,9 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "server", ntp_get_server());
     cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -485,7 +488,8 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 {
     char buf[512];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -507,10 +511,10 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *ntp_server = cJSON_GetObjectItem(root, "server");
     const cJSON *timezone = cJSON_GetObjectItem(root, "timezone");
 
-    if (!cJSON_IsString(server) || (server->valuestring == NULL)) {
+    if (!cJSON_IsString(ntp_server) || (ntp_server->valuestring == NULL)) {
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing server");
         return ESP_FAIL;
@@ -519,10 +523,10 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
     const char* tz = (cJSON_IsString(timezone) && timezone->valuestring) ? 
                      timezone->valuestring : NTP_DEFAULT_TIMEZONE;
 
-    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", server->valuestring, tz);
+    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", ntp_server->valuestring, tz);
     
     // Update NTP configuration
-    ntp_set_config(server->valuestring, tz);
+    ntp_set_config(ntp_server->valuestring, tz);
 
     cJSON_Delete(root);
 
@@ -559,9 +563,9 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "timeout_ms", config.timeout_ms);
     cJSON_AddNumberToObject(root, "max_attempts", config.max_attempts);
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -569,7 +573,8 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 {
     char buf[512];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -732,9 +737,9 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "logs", logs_array);
     cJSON_AddNumberToObject(root, "count", count);
     
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     free(entries);
     return ESP_OK;
@@ -743,7 +748,7 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    const size_t index_html_size = (index_html_end - index_html_start);
+    const size_t index_html_size = (uintptr_t)index_html_end - (uintptr_t)index_html_start;
     httpd_resp_send(req, (const char *)index_html_start, index_html_size);
     return ESP_OK;
 }
