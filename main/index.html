@@ -532,6 +532,74 @@
       z-index: 1100;
     }
     
+    .search-result {
+      display: flex;
+      flex-direction: column;
+      padding: var(--spacing-md);
+      cursor: pointer;
+      border-bottom: 1px solid var(--color-border-light);
+      transition: background-color var(--transition-fast);
+    }
+    
+    .search-result:last-child {
+      border-bottom: none;
+    }
+    
+    .search-result:hover,
+    .search-result.selected {
+      background-color: var(--color-hover);
+    }
+    
+    .search-result.selected {
+      background-color: var(--color-primary);
+      color: var(--color-text-inverse);
+    }
+    
+    .result-label {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      color: var(--color-text);
+      margin-bottom: var(--spacing-xs);
+    }
+    
+    .search-result.selected .result-label {
+      color: var(--color-text-inverse);
+    }
+    
+    .result-section {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    
+    .search-result.selected .result-section {
+      color: var(--color-text-inverse);
+      opacity: 0.9;
+    }
+    
+    .search-no-results {
+      padding: var(--spacing-lg);
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    
+    .search-highlight {
+      background-color: var(--color-warning);
+      color: var(--color-text);
+      padding: 2px 4px;
+      border-radius: var(--border-radius-sm);
+      animation: highlight-fade 2s ease-out;
+    }
+    
+    @keyframes highlight-fade {
+      0% {
+        background-color: var(--color-warning);
+      }
+      100% {
+        background-color: transparent;
+      }
+    }
+    
     /* ===== Form Styles (Task 4) ===== */
     
     .config-form {
@@ -845,10 +913,6 @@
         font-size: var(--font-size-base);
       }
       
-      .global-search {
-        display: none;
-      }
-      
       .version {
         display: none;
       }
@@ -900,6 +964,13 @@
         left: var(--spacing-sm);
         right: var(--spacing-sm);
         width: auto;
+        top: var(--header-height);
+      }
+      
+      .global-search {
+        display: block;
+        width: 100%;
+        max-width: 200px;
       }
       
       /* Touch-friendly button sizes (minimum 44x44px) */
@@ -2344,6 +2415,367 @@
       });
     }
     
+    // ===== Task 5.1: Global Search Index =====
+    
+    /**
+     * Search index containing all searchable settings
+     * Each entry includes: label, section, field (element ID), and keywords for matching
+     */
+    const searchIndex = [
+      // Dashboard Section
+      { label: 'System Restart', section: 'dashboard', field: 'system-restart-btn', keywords: ['restart', 'reboot', 'system', 'reset'] },
+      { label: 'Factory Reset', section: 'dashboard', field: 'factory-reset-btn', keywords: ['factory', 'reset', 'erase', 'default', 'clear'] },
+      { label: 'Quick Actions', section: 'dashboard', field: 'quick-actions', keywords: ['actions', 'quick', 'dashboard'] },
+      
+      // SIP Settings Section
+      { label: 'SIP Server', section: 'sip', field: 'sip-server', keywords: ['sip', 'server', 'domain', 'host', 'address', 'voip'] },
+      { label: 'SIP Username', section: 'sip', field: 'sip-username', keywords: ['sip', 'username', 'user', 'login', 'account', 'auth'] },
+      { label: 'SIP Password', section: 'sip', field: 'sip-password', keywords: ['sip', 'password', 'pass', 'auth', 'authentication', 'credentials'] },
+      { label: 'SIP Target 1', section: 'sip', field: 'sip-target1', keywords: ['sip', 'target', 'apartment', 'destination', 'call', 'uri', 'apartment1'] },
+      { label: 'SIP Target 2', section: 'sip', field: 'sip-target2', keywords: ['sip', 'target', 'apartment', 'destination', 'call', 'uri', 'apartment2'] },
+      { label: 'SIP Connection', section: 'sip', field: 'sip-connection', keywords: ['sip', 'connect', 'disconnect', 'connection', 'register'] },
+      { label: 'Test SIP Configuration', section: 'sip', field: 'sip-test', keywords: ['sip', 'test', 'verify', 'check', 'configuration'] },
+      
+      // Network Settings Section
+      { label: 'WiFi SSID', section: 'network', field: 'wifi-ssid', keywords: ['wifi', 'ssid', 'network', 'wireless', 'name'] },
+      { label: 'WiFi Password', section: 'network', field: 'wifi-password', keywords: ['wifi', 'password', 'pass', 'wireless', 'key'] },
+      { label: 'WiFi Scan', section: 'network', field: 'wifi-scan', keywords: ['wifi', 'scan', 'search', 'networks', 'available'] },
+      { label: 'IP Configuration', section: 'network', field: 'ip-config', keywords: ['ip', 'address', 'network', 'configuration', 'dhcp', 'static'] },
+      { label: 'DHCP Mode', section: 'network', field: 'dhcp-mode', keywords: ['dhcp', 'automatic', 'dynamic', 'ip', 'mode'] },
+      { label: 'Static IP Address', section: 'network', field: 'static-ip', keywords: ['static', 'ip', 'address', 'manual', 'fixed'] },
+      { label: 'Subnet Mask', section: 'network', field: 'subnet-mask', keywords: ['subnet', 'mask', 'netmask', 'network'] },
+      { label: 'Gateway', section: 'network', field: 'gateway', keywords: ['gateway', 'router', 'default', 'route'] },
+      { label: 'DNS Server', section: 'network', field: 'dns-server', keywords: ['dns', 'server', 'nameserver', 'resolver'] },
+      { label: 'NTP Server', section: 'network', field: 'ntp-server', keywords: ['ntp', 'time', 'server', 'sync', 'clock'] },
+      { label: 'Timezone', section: 'network', field: 'timezone', keywords: ['timezone', 'time', 'zone', 'region', 'location'] },
+      { label: 'NTP Sync', section: 'network', field: 'ntp-sync', keywords: ['ntp', 'sync', 'synchronize', 'time', 'update'] },
+      
+      // Hardware Settings Section
+      { label: 'Hardware Information', section: 'hardware', field: 'hardware-info', keywords: ['hardware', 'info', 'chip', 'esp32', 'model', 'specs'] },
+      { label: 'Chip Model', section: 'hardware', field: 'chip-model', keywords: ['chip', 'model', 'esp32', 'processor', 'cpu'] },
+      { label: 'Flash Size', section: 'hardware', field: 'flash-size', keywords: ['flash', 'storage', 'memory', 'size'] },
+      { label: 'Free Heap', section: 'hardware', field: 'free-heap', keywords: ['heap', 'memory', 'ram', 'free', 'available'] },
+      { label: 'GPIO Pins', section: 'hardware', field: 'gpio-pins', keywords: ['gpio', 'pins', 'io', 'input', 'output'] },
+      { label: 'Doorbell Button', section: 'hardware', field: 'doorbell-button', keywords: ['doorbell', 'button', 'bell', 'input', 'gpio'] },
+      { label: 'Door Relay', section: 'hardware', field: 'door-relay', keywords: ['door', 'relay', 'opener', 'output', 'gpio'] },
+      { label: 'Light Relay', section: 'hardware', field: 'light-relay', keywords: ['light', 'relay', 'output', 'gpio', 'lamp'] },
+      { label: 'DTMF Codes', section: 'hardware', field: 'dtmf-codes', keywords: ['dtmf', 'codes', 'tones', 'commands', 'control'] },
+      { label: 'BOOT Button', section: 'hardware', field: 'boot-button', keywords: ['boot', 'button', 'gpio0', 'programming'] },
+      
+      // Security Settings Section
+      { label: 'DTMF PIN', section: 'security', field: 'dtmf-pin', keywords: ['dtmf', 'pin', 'code', 'security', 'password', 'access'] },
+      { label: 'PIN Enable', section: 'security', field: 'pin-enable', keywords: ['pin', 'enable', 'security', 'protection', 'dtmf'] },
+      { label: 'PIN Timeout', section: 'security', field: 'pin-timeout', keywords: ['pin', 'timeout', 'duration', 'time', 'security'] },
+      { label: 'Max PIN Attempts', section: 'security', field: 'max-attempts', keywords: ['pin', 'attempts', 'tries', 'maximum', 'security', 'lockout'] },
+      { label: 'Security Configuration', section: 'security', field: 'security-config', keywords: ['security', 'config', 'settings', 'protection'] },
+      
+      // System Logs Section
+      { label: 'SIP Logs', section: 'logs', field: 'sip-logs', keywords: ['sip', 'logs', 'history', 'messages', 'connection'] },
+      { label: 'DTMF Logs', section: 'logs', field: 'dtmf-logs', keywords: ['dtmf', 'logs', 'security', 'history', 'events'] },
+      { label: 'Log Filter', section: 'logs', field: 'log-filter', keywords: ['log', 'filter', 'search', 'find'] },
+      { label: 'Log Export', section: 'logs', field: 'log-export', keywords: ['log', 'export', 'download', 'save'] },
+      { label: 'Clear Logs', section: 'logs', field: 'clear-logs', keywords: ['log', 'clear', 'delete', 'remove'] },
+      { label: 'Auto Refresh Logs', section: 'logs', field: 'auto-refresh', keywords: ['log', 'auto', 'refresh', 'update', 'automatic'] },
+      
+      // Hardware Testing Section
+      { label: 'Test Doorbell', section: 'testing', field: 'test-doorbell', keywords: ['test', 'doorbell', 'button', 'bell', 'simulate'] },
+      { label: 'Test Door Opener', section: 'testing', field: 'test-door', keywords: ['test', 'door', 'opener', 'relay', 'trigger'] },
+      { label: 'Test Light', section: 'testing', field: 'test-light', keywords: ['test', 'light', 'relay', 'toggle', 'lamp'] },
+      { label: 'Hardware Testing', section: 'testing', field: 'hardware-testing', keywords: ['test', 'hardware', 'testing', 'diagnostic'] },
+      
+      // Email Reports Section
+      { label: 'SMTP Server', section: 'email', field: 'smtp-server', keywords: ['smtp', 'server', 'email', 'mail', 'host'] },
+      { label: 'SMTP Port', section: 'email', field: 'smtp-port', keywords: ['smtp', 'port', 'email', 'mail'] },
+      { label: 'SMTP Username', section: 'email', field: 'smtp-username', keywords: ['smtp', 'username', 'email', 'mail', 'login'] },
+      { label: 'SMTP Password', section: 'email', field: 'smtp-password', keywords: ['smtp', 'password', 'email', 'mail', 'auth'] },
+      { label: 'Email Sender', section: 'email', field: 'email-sender', keywords: ['email', 'sender', 'from', 'address'] },
+      { label: 'Email Recipient', section: 'email', field: 'email-recipient', keywords: ['email', 'recipient', 'to', 'address', 'destination'] },
+      { label: 'Report Schedule', section: 'email', field: 'report-schedule', keywords: ['report', 'schedule', 'frequency', 'daily', 'weekly', 'monthly'] },
+      { label: 'Test Email', section: 'email', field: 'test-email', keywords: ['test', 'email', 'send', 'verify'] },
+      { label: 'Send Report Now', section: 'email', field: 'send-report', keywords: ['send', 'report', 'email', 'now', 'manual'] },
+      
+      // OTA Update Section
+      { label: 'Firmware Version', section: 'ota', field: 'firmware-version', keywords: ['firmware', 'version', 'build', 'software'] },
+      { label: 'OTA Update', section: 'ota', field: 'ota-update', keywords: ['ota', 'update', 'upgrade', 'firmware', 'flash'] },
+      { label: 'Upload Firmware', section: 'ota', field: 'upload-firmware', keywords: ['upload', 'firmware', 'file', 'binary', 'bin'] },
+      { label: 'Update Progress', section: 'ota', field: 'update-progress', keywords: ['update', 'progress', 'status', 'uploading'] },
+      
+      // Documentation Section
+      { label: 'Quick Start Guide', section: 'docs', field: 'quick-start', keywords: ['quick', 'start', 'guide', 'setup', 'getting started', 'help'] },
+      { label: 'Hardware Reference', section: 'docs', field: 'hardware-ref', keywords: ['hardware', 'reference', 'pinout', 'wiring', 'specs'] },
+      { label: 'SIP Configuration Guide', section: 'docs', field: 'sip-guide', keywords: ['sip', 'guide', 'configuration', 'setup', 'help'] },
+      { label: 'DTMF Commands', section: 'docs', field: 'dtmf-commands', keywords: ['dtmf', 'commands', 'codes', 'reference', 'control'] },
+      { label: 'Network Guide', section: 'docs', field: 'network-guide', keywords: ['network', 'guide', 'wifi', 'setup', 'help'] },
+      { label: 'API Reference', section: 'docs', field: 'api-reference', keywords: ['api', 'reference', 'endpoints', 'rest', 'integration'] },
+      { label: 'Troubleshooting', section: 'docs', field: 'troubleshooting', keywords: ['troubleshooting', 'problems', 'issues', 'help', 'fix'] },
+      { label: 'FAQ', section: 'docs', field: 'faq', keywords: ['faq', 'questions', 'answers', 'help'] },
+      { label: 'Documentation', section: 'docs', field: 'documentation', keywords: ['documentation', 'docs', 'help', 'manual', 'guide'] }
+    ];
+    
+    // ===== Task 5.2: Implement Search Functionality =====
+    
+    let selectedSearchResultIndex = -1;
+    let currentSearchResults = [];
+    
+    /**
+     * Perform search across all settings
+     * @param {string} query - Search query string
+     * @returns {Array} Array of matching search results
+     */
+    function performSearch(query) {
+      if (!query || query.trim().length === 0) {
+        return [];
+      }
+      
+      const searchText = query.toLowerCase().trim();
+      const results = [];
+      
+      // Search through index
+      searchIndex.forEach(item => {
+        let score = 0;
+        
+        // Check label (highest priority)
+        if (item.label.toLowerCase().includes(searchText)) {
+          score += 10;
+        }
+        
+        // Check keywords
+        const matchingKeywords = item.keywords.filter(kw => kw.includes(searchText));
+        score += matchingKeywords.length * 5;
+        
+        // Check section name
+        if (item.section.toLowerCase().includes(searchText)) {
+          score += 3;
+        }
+        
+        // If any match found, add to results
+        if (score > 0) {
+          results.push({ ...item, score });
+        }
+      });
+      
+      // Sort by score (highest first)
+      results.sort((a, b) => b.score - a.score);
+      
+      // Limit to top 10 results
+      return results.slice(0, 10);
+    }
+    
+    /**
+     * Display search results in dropdown
+     * @param {Array} results - Array of search results
+     */
+    function displaySearchResults(results) {
+      const resultsContainer = document.getElementById('search-results');
+      
+      if (results.length === 0) {
+        resultsContainer.innerHTML = '<div class="search-no-results">No results found</div>';
+        resultsContainer.hidden = false;
+        return;
+      }
+      
+      resultsContainer.innerHTML = '';
+      
+      results.forEach((result, index) => {
+        const resultElement = document.createElement('div');
+        resultElement.className = 'search-result';
+        resultElement.setAttribute('role', 'option');
+        resultElement.setAttribute('data-index', index);
+        resultElement.setAttribute('data-section', result.section);
+        resultElement.setAttribute('data-field', result.field);
+        
+        // Get section display name
+        const sectionNames = {
+          'dashboard': 'Dashboard',
+          'sip': 'SIP Settings',
+          'network': 'Network',
+          'hardware': 'Hardware',
+          'security': 'Security',
+          'logs': 'System Logs',
+          'testing': 'Hardware Testing',
+          'email': 'Email Reports',
+          'ota': 'OTA Update',
+          'docs': 'Documentation'
+        };
+        
+        resultElement.innerHTML = `
+          <span class="result-label">${result.label}</span>
+          <span class="result-section">${sectionNames[result.section] || result.section}</span>
+        `;
+        
+        // Click handler
+        resultElement.addEventListener('click', () => {
+          navigateToSearchResult(result.section, result.field);
+          hideSearchResults();
+        });
+        
+        resultsContainer.appendChild(resultElement);
+      });
+      
+      resultsContainer.hidden = false;
+      currentSearchResults = results;
+      selectedSearchResultIndex = -1;
+    }
+    
+    /**
+     * Hide search results dropdown
+     */
+    function hideSearchResults() {
+      const resultsContainer = document.getElementById('search-results');
+      resultsContainer.hidden = true;
+      resultsContainer.innerHTML = '';
+      currentSearchResults = [];
+      selectedSearchResultIndex = -1;
+    }
+    
+    /**
+     * Select a search result by index
+     * @param {number} index - Index of result to select
+     */
+    function selectSearchResult(index) {
+      const resultsContainer = document.getElementById('search-results');
+      const resultElements = resultsContainer.querySelectorAll('.search-result');
+      
+      // Remove previous selection
+      resultElements.forEach(el => el.classList.remove('selected'));
+      
+      // Add selection to new index
+      if (index >= 0 && index < resultElements.length) {
+        resultElements[index].classList.add('selected');
+        resultElements[index].scrollIntoView({ block: 'nearest' });
+        selectedSearchResultIndex = index;
+      }
+    }
+    
+    /**
+     * Initialize global search functionality
+     */
+    function initGlobalSearch() {
+      const searchInput = document.getElementById('global-search');
+      if (!searchInput) return;
+      
+      // Search on input
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value;
+        
+        if (query.trim().length === 0) {
+          hideSearchResults();
+          return;
+        }
+        
+        const results = performSearch(query);
+        displaySearchResults(results);
+      });
+      
+      // Keyboard navigation in search input
+      searchInput.addEventListener('keydown', (e) => {
+        const resultsContainer = document.getElementById('search-results');
+        
+        if (resultsContainer.hidden) {
+          // Ctrl+K or / to focus search (handled globally below)
+          return;
+        }
+        
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const nextIndex = selectedSearchResultIndex + 1;
+          if (nextIndex < currentSearchResults.length) {
+            selectSearchResult(nextIndex);
+          }
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prevIndex = selectedSearchResultIndex - 1;
+          if (prevIndex >= 0) {
+            selectSearchResult(prevIndex);
+          }
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (selectedSearchResultIndex >= 0 && selectedSearchResultIndex < currentSearchResults.length) {
+            const result = currentSearchResults[selectedSearchResultIndex];
+            navigateToSearchResult(result.section, result.field);
+            hideSearchResults();
+            searchInput.blur();
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hideSearchResults();
+          searchInput.blur();
+        }
+      });
+      
+      // Close search results when clicking outside
+      document.addEventListener('click', (e) => {
+        const resultsContainer = document.getElementById('search-results');
+        if (!searchInput.contains(e.target) && !resultsContainer.contains(e.target)) {
+          hideSearchResults();
+        }
+      });
+      
+      // Global keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        // Ctrl+K or / to focus search
+        if ((e.ctrlKey && e.key === 'k') || e.key === '/') {
+          // Don't trigger if user is typing in an input
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            if (e.key === '/') return; // Allow / in inputs
+          }
+          
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+        
+        // Escape to close search
+        if (e.key === 'Escape') {
+          const resultsContainer = document.getElementById('search-results');
+          if (!resultsContainer.hidden) {
+            hideSearchResults();
+          }
+        }
+      });
+    }
+    
+    // ===== Task 5.3: Implement Navigation to Search Results =====
+    
+    /**
+     * Navigate to a search result and highlight the target element
+     * @param {string} section - Section ID to navigate to
+     * @param {string} field - Field ID to highlight
+     */
+    function navigateToSearchResult(section, field) {
+      // Navigate to the section
+      navigateToSection(section);
+      
+      // Wait for section to render and transition
+      setTimeout(() => {
+        const element = document.getElementById(field);
+        
+        if (element) {
+          // Scroll element into view
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // Add highlight class
+          element.classList.add('search-highlight');
+          
+          // Focus the element if it's focusable
+          if (element.tagName === 'INPUT' || 
+              element.tagName === 'SELECT' || 
+              element.tagName === 'TEXTAREA' || 
+              element.tagName === 'BUTTON') {
+            element.focus();
+          }
+          
+          // Remove highlight after 2 seconds
+          setTimeout(() => {
+            element.classList.remove('search-highlight');
+          }, 2000);
+        } else {
+          // If specific field not found, just navigate to section
+          console.warn(`Field "${field}" not found in section "${section}"`);
+        }
+      }, 300);
+    }
+    
     // ===== Example Action Handlers (demonstrating confirmation dialogs) =====
     
     /**
@@ -2447,6 +2879,9 @@
       
       // Initialize forms
       initForms();
+      
+      // Initialize global search
+      initGlobalSearch();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
