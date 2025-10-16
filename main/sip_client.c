@@ -586,7 +586,6 @@ static void sip_task(void *pvParameters)
                             // Send authenticated REGISTER
                             sip_client_register_auth(&last_auth_challenge);
                         } else {
-                            ESP_LOGE(TAG, "Failed to parse authentication challenge");
                             sip_add_log_entry("error", "Failed to parse auth challenge");
                             current_state = SIP_STATE_AUTH_FAILED;
                             sip_add_log_entry("error", "State changed to AUTH_FAILED");
@@ -596,7 +595,6 @@ static void sip_task(void *pvParameters)
                     // Provisional response, just log it
                     sip_add_log_entry("info", "Server processing request (100 Trying)");
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
-                    ESP_LOGE(TAG, "SIP forbidden");
                     sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         call_start_timestamp = 0; // Clear timeout
@@ -605,7 +603,6 @@ static void sip_task(void *pvParameters)
                         current_state = SIP_STATE_AUTH_FAILED;
                     }
                 } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
-                    ESP_LOGE(TAG, "SIP target not found");
                     sip_add_log_entry("error", "SIP target not found");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         call_start_timestamp = 0; // Clear timeout
@@ -614,7 +611,6 @@ static void sip_task(void *pvParameters)
                         current_state = SIP_STATE_ERROR;
                     }
                 } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
-                    ESP_LOGE(TAG, "SIP request timeout");
                     sip_add_log_entry("error", "SIP request timeout");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         call_start_timestamp = 0; // Clear timeout
@@ -623,7 +619,6 @@ static void sip_task(void *pvParameters)
                         current_state = SIP_STATE_TIMEOUT;
                     }
                 } else if (strstr(buffer, "SIP/2.0 486 Busy Here")) {
-                    ESP_LOGW(TAG, "SIP target busy");
                     sip_add_log_entry("info", "SIP target busy");
                     call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
@@ -635,13 +630,182 @@ static void sip_task(void *pvParameters)
                     sip_add_log_entry("info", "Call declined by remote party");
                     call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
-                } else if (strncmp(buffer, "INVITE sip:", 11) == 0) {
+                } else if (strncmp(buffer, "INVITE ", 7) == 0) {
                     // Check for INVITE request (not response)
-                    sip_add_log_entry("info", "Incoming call - State: RINGING");
-                    current_state = SIP_STATE_RINGING;
-                    // Auto-answer after short delay
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                    sip_client_answer_call();
+                    sip_add_log_entry("info", "Incoming INVITE detected");
+                    
+                    // Only accept if we're in IDLE or REGISTERED state
+                    if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED) {
+                        const char* state_name = (current_state < sizeof(state_names)/sizeof(state_names[0])) ? 
+                                                state_names[current_state] : "UNKNOWN";
+                        char log_msg[128];
+                        snprintf(log_msg, sizeof(log_msg), "Busy - cannot accept call (state: %s)", state_name);
+                        sip_add_log_entry("error", log_msg);
+                        // TODO: Send 486 Busy Here response
+                        continue;
+                    }
+                    
+                    sip_add_log_entry("info", "Processing incoming call");
+                    
+                    // Extract headers for response
+                    static char call_id[128] = {0};
+                    static char from_header[256] = {0};
+                    static char to_header[256] = {0};
+                    static char via_header[256] = {0};
+                    int cseq_num = 1;
+                    
+                    // Extract Call-ID
+                    char* callid_start = strstr(buffer, "Call-ID:");
+                    if (callid_start) {
+                        callid_start += 8;
+                        while (*callid_start == ' ') callid_start++;
+                        char* callid_end = strstr(callid_start, "\r\n");
+                        if (callid_end) {
+                            int len = callid_end - callid_start;
+                            if (len < sizeof(call_id) - 1) {
+                                strncpy(call_id, callid_start, len);
+                                call_id[len] = '\0';
+                            }
+                        }
+                    }
+                    
+                    // Extract From
+                    char* from_start = strstr(buffer, "From:");
+                    if (from_start) {
+                        from_start += 5;
+                        while (*from_start == ' ') from_start++;
+                        char* from_end = strstr(from_start, "\r\n");
+                        if (from_end) {
+                            int len = from_end - from_start;
+                            if (len < sizeof(from_header) - 1) {
+                                strncpy(from_header, from_start, len);
+                                from_header[len] = '\0';
+                            }
+                        }
+                    }
+                    
+                    // Extract To
+                    char* to_start = strstr(buffer, "To:");
+                    if (to_start) {
+                        to_start += 3;
+                        while (*to_start == ' ') to_start++;
+                        char* to_end = strstr(to_start, "\r\n");
+                        if (to_end) {
+                            int len = to_end - to_start;
+                            if (len < sizeof(to_header) - 1) {
+                                strncpy(to_header, to_start, len);
+                                to_header[len] = '\0';
+                            }
+                        }
+                    }
+                    
+                    // Extract Via
+                    char* via_start = strstr(buffer, "Via:");
+                    if (via_start) {
+                        via_start += 4;
+                        while (*via_start == ' ') via_start++;
+                        char* via_end = strstr(via_start, "\r\n");
+                        if (via_end) {
+                            int len = via_end - via_start;
+                            if (len < sizeof(via_header) - 1) {
+                                strncpy(via_header, via_start, len);
+                                via_header[len] = '\0';
+                            }
+                        }
+                    }
+                    
+                    // Extract CSeq
+                    char* cseq_start = strstr(buffer, "CSeq:");
+                    if (cseq_start) {
+                        cseq_start += 5;
+                        while (*cseq_start == ' ') cseq_start++;
+                        cseq_num = atoi(cseq_start);
+                    }
+                    
+                    // Get local IP
+                    char local_ip[16];
+                    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+                        strcpy(local_ip, "192.168.1.100");
+                    }
+                    
+                    // Create SDP for response
+                    static char sdp[256];
+                    snprintf(sdp, sizeof(sdp), 
+                             "v=0\r\n"
+                             "o=- %d 0 IN IP4 %s\r\n"
+                             "s=ESP32 Doorbell\r\n"
+                             "c=IN IP4 %s\r\n"
+                             "t=0 0\r\n"
+                             "m=audio 5004 RTP/AVP 0 8 101\r\n"
+                             "a=rtpmap:0 PCMU/8000\r\n"
+                             "a=rtpmap:8 PCMA/8000\r\n"
+                             "a=rtpmap:101 telephone-event/8000\r\n"
+                             "a=sendrecv\r\n",
+                             rand(), local_ip, local_ip);
+                    
+                    // Add tag to To header if not present
+                    char to_with_tag[300];
+                    if (strstr(to_header, "tag=") == NULL) {
+                        snprintf(to_with_tag, sizeof(to_with_tag), "%s;tag=%d", to_header, rand());
+                    } else {
+                        strncpy(to_with_tag, to_header, sizeof(to_with_tag) - 1);
+                        to_with_tag[sizeof(to_with_tag) - 1] = '\0';
+                    }
+                    
+                    // Build 200 OK response
+                    static char response[1536];
+                    snprintf(response, sizeof(response),
+                             "SIP/2.0 200 OK\r\n"
+                             "Via: %s\r\n"
+                             "From: %s\r\n"
+                             "To: %s\r\n"
+                             "Call-ID: %s\r\n"
+                             "CSeq: %d INVITE\r\n"
+                             "Contact: <sip:%s@%s:5060>\r\n"
+                             "Content-Type: application/sdp\r\n"
+                             "Content-Length: %d\r\n\r\n%s",
+                             via_header,
+                             from_header,
+                             to_with_tag,
+                             call_id,
+                             cseq_num,
+                             sip_config.username, local_ip,
+                             strlen(sdp), sdp);
+                    
+                    // Send 200 OK
+                    struct sockaddr_in server_addr;
+                    server_addr.sin_family = AF_INET;
+                    server_addr.sin_port = htons(sip_config.port);
+                    
+                    struct hostent *host = gethostbyname(sip_config.server);
+                    if (host) {
+                        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                        int sent = sendto(sip_socket, response, strlen(response), 0,
+                                         (struct sockaddr*)&server_addr, sizeof(server_addr));
+                        if (sent > 0) {
+                            sip_add_log_entry("sent", "200 OK response to INVITE");
+                            
+                            // Start RTP session
+                            char remote_ip[64];
+                            strncpy(remote_ip, sip_config.server, sizeof(remote_ip) - 1);
+                            remote_ip[sizeof(remote_ip) - 1] = '\0';
+                            
+                            if (rtp_start_session(remote_ip, 5004, 5004)) {
+                                sip_add_log_entry("info", "RTP session started");
+                            }
+                            
+                            // Update state
+                            current_state = SIP_STATE_CONNECTED;
+                            call_start_timestamp = 0;
+                            sip_add_log_entry("info", "Incoming call answered - State: CONNECTED");
+                            audio_start_recording();
+                            audio_start_playback();
+                        } else {
+                            sip_add_log_entry("error", "Failed to send 200 OK");
+                        }
+                    } else {
+                        sip_add_log_entry("error", "DNS lookup failed");
+                    }
                 } else if (strncmp(buffer, "BYE sip:", 8) == 0 || strncmp(buffer, "BYE ", 4) == 0) {
                     // Check for BYE request (not response)
                     sip_add_log_entry("info", "Call ended by remote party");
@@ -1119,8 +1283,9 @@ void sip_client_make_call(const char* uri)
         return;
     }
     
-    sip_add_log_entry("sent", "INVITE message sent");
-    ESP_LOGI(TAG, "INVITE sent to %s (%d bytes)", uri, sent);
+    // Reuse log_msg buffer for INVITE sent message
+    snprintf(log_msg, sizeof(log_msg), "INVITE sent to %s (%d bytes)", uri, sent);
+    sip_add_log_entry("sent", log_msg);
 }
 
 void sip_client_hangup(void)
@@ -1192,12 +1357,12 @@ void sip_client_hangup(void)
 
 void sip_client_answer_call(void)
 {
-    if (current_state == SIP_STATE_RINGING) {
-        ESP_LOGI(TAG, "Answering call");
-        sip_add_log_entry("info", "Answering call - State: CONNECTED");
-        current_state = SIP_STATE_CONNECTED;
-        audio_start_recording();
-        audio_start_playback();
+    // This function is now a placeholder - incoming calls are answered automatically
+    // in the SIP task when INVITE is received
+    if (current_state == SIP_STATE_RINGING || current_state == SIP_STATE_CONNECTED) {
+        ESP_LOGI(TAG, "Call already answered or in progress");
+    } else {
+        ESP_LOGW(TAG, "No incoming call to answer");
     }
 }
 
