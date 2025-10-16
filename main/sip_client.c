@@ -4,7 +4,6 @@
 #include "ntp_sync.h"
 #include "ntp_log.h"
 #include "esp_log.h"
-#include "esp_task_wdt.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -91,7 +90,7 @@ static void sip_add_log_entry(const char* type, const char* message)
     } else if (strcmp(type, "info") == 0) {
         NTP_LOGI(TAG, "%s", message);
     } else if (strcmp(type, "sent") == 0 || strcmp(type, "received") == 0) {
-        NTP_LOGD(TAG, "[%s] %s", type, message);
+        NTP_LOGI(TAG, "[%s] %s", type, message);  // Changed from LOGD to LOGI for visibility
     } else {
         NTP_LOGI(TAG, "[%s] %s", type, message);
     }
@@ -557,8 +556,6 @@ void sip_client_init(void)
 void sip_client_deinit(void)
 {
     if (sip_task_handle) {
-        // Unsubscribe from watchdog before deleting task
-        esp_task_wdt_delete(sip_task_handle);
         vTaskDelete(sip_task_handle);
         sip_task_handle = NULL;
     }
@@ -585,13 +582,8 @@ bool sip_client_register(void)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(sip_config.port);
 
-    // Reset watchdog before potentially long DNS lookup
-    esp_task_wdt_reset();
-    
+    // DNS lookup (no watchdog needed - SIP task not monitored)
     struct hostent *host = gethostbyname(sip_config.server);
-    
-    // Reset watchdog after DNS lookup
-    esp_task_wdt_reset();
     
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
