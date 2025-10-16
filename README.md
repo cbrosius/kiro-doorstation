@@ -105,3 +105,10 @@ Access web interface at http://192.168.4.1 for SIP configuration.
 - **ESP32 Chips**: ESP32, ESP32-S3
 - **SIP Servers**: Asterisk, FreeSWITCH, Kamailio, 3CX, and most RFC 3261 compliant servers
 - **Authentication**: MD5 Digest (RFC 2617)
+
+
+After the first start, a WiFi-Hotspot "ESP32-Doorbell" is created
+
+Initial Password: doorstation123
+
+Webinterface: http://192.168.4.1 for Wifi-Configuration
