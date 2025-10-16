@@ -703,6 +703,9 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
             case CMD_LIGHT_TOGGLE:
                 type_str = "light_toggle";
                 break;
+            case CMD_CONFIG_CHANGE:
+                type_str = "config_change";
+                break;
             case CMD_INVALID:
             default:
                 type_str = "invalid";

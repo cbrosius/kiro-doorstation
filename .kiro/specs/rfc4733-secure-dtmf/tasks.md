@@ -292,7 +292,9 @@
   - Verify deduplication works
   - _Requirements: 8.1, 8.2, 8.3_
 
-- [ ]* 8.2 Test command execution with PIN
+- [x]* 8.2 Test command execution with PIN
+
+
   - Configure PIN code via web interface
   - Make test call and send *[PIN]#
   - Verify door opener activates

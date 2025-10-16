@@ -45,6 +45,11 @@ static dtmf_command_state_t command_state = {
     .last_event_ts = 0
 };
 
+// Forward declarations
+static void dtmf_add_security_log(dtmf_command_type_t type, bool success, 
+                                   const char* command, const char* caller_id, 
+                                   const char* reason);
+
 // Load security configuration from NVS
 void dtmf_load_security_config(void)
 {
@@ -159,6 +164,17 @@ void dtmf_save_security_config(const dtmf_security_config_t* config)
         ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(err));
     } else {
         ESP_LOGI(TAG, "Security config saved successfully");
+        
+        // Create log entry for configuration change
+        char config_details[64];
+        snprintf(config_details, sizeof(config_details), 
+                 "PIN:%s timeout:%lums attempts:%d",
+                 config->pin_enabled ? "enabled" : "disabled",
+                 config->timeout_ms,
+                 config->max_attempts);
+        
+        dtmf_add_security_log(CMD_CONFIG_CHANGE, true, "config_update", "web_interface", config_details);
+        
         // Update runtime configuration
         memcpy(&security_config, config, sizeof(dtmf_security_config_t));
     }
@@ -681,9 +697,6 @@ int dtmf_get_security_logs(dtmf_security_log_t* entries, int max_entries, uint64
         }
 
         xSemaphoreGive(security_log_mutex);
-        
-        ESP_LOGI(TAG, "Retrieved %d security log entries (since timestamp %llu)", 
-                 count, since_timestamp);
     } else {
         ESP_LOGE(TAG, "Failed to acquire security log mutex for retrieval");
     }

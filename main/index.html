@@ -965,6 +965,131 @@
             syncBtn.textContent = 'Force Sync Now';
         }
 
+        // DTMF Security Functions
+        let lastDtmfLogTimestamp = 0;
+        let seenDtmfLogEntries = new Set();
+
+        function logDtmfEntryHash(entry) {
+            return `${entry.timestamp}_${entry.type}_${entry.command}`;
+        }
+
+        async function fetchDtmfSecurityConfig() {
+            try {
+                const response = await fetch('/api/dtmf/security');
+                const data = await response.json();
+                
+                // Update display
+                document.getElementById('dtmf-pin-enabled').innerHTML = data.pin_enabled ? '&#x2705; Yes' : '&#x274C; No';
+                document.getElementById('dtmf-pin-code').textContent = data.pin_enabled ? '****' : 'Disabled';
+                document.getElementById('dtmf-timeout').textContent = `${data.timeout_ms} ms`;
+                document.getElementById('dtmf-max-attempts').textContent = data.max_attempts;
+                
+                // Update form inputs
+                document.getElementById('dtmf-pin-enabled-input').checked = data.pin_enabled;
+                document.getElementById('dtmf-pin-code-input').value = data.pin_code;
+                document.getElementById('dtmf-timeout-input').value = data.timeout_ms;
+                document.getElementById('dtmf-max-attempts-input').value = data.max_attempts;
+            } catch (error) {
+                console.error('Error fetching DTMF security config:', error);
+            }
+        }
+
+        async function refreshDtmfLogs() {
+            try {
+                const response = await fetch(`/api/dtmf/logs?since=${lastDtmfLogTimestamp}`);
+                const data = await response.json();
+                
+                if (data.logs && data.logs.length > 0) {
+                    const logDiv = document.getElementById('dtmf-log');
+                    
+                    // Clear "waiting" message on first entry
+                    if (lastDtmfLogTimestamp === 0) {
+                        logDiv.innerHTML = '';
+                    }
+                    
+                    let maxTimestamp = lastDtmfLogTimestamp;
+                    
+                    data.logs.forEach(entry => {
+                        const hash = logDtmfEntryHash(entry);
+                        if (seenDtmfLogEntries.has(hash)) {
+                            return;
+                        }
+                        seenDtmfLogEntries.add(hash);
+                        
+                        maxTimestamp = Math.max(maxTimestamp, entry.timestamp);
+                        
+                        const entryDiv = document.createElement('div');
+                        entryDiv.style.marginBottom = '5px';
+                        
+                        // Color code and icon by type and success
+                        let color, icon;
+                        if (entry.type === 'config_change') {
+                            color = '#dcdcaa';  // Yellow for config changes
+                            icon = '⚙️';
+                        } else {
+                            color = entry.success ? '#4ec9b0' : '#f48771';
+                            icon = entry.success ? '✅' : '❌';
+                        }
+                        
+                        // Format timestamp
+                        let timeStr;
+                        if (entry.timestamp > 946684800000) {
+                            const date = new Date(entry.timestamp);
+                            timeStr = date.toLocaleString('en-GB', { 
+                                year: 'numeric', 
+                                month: '2-digit', 
+                                day: '2-digit',
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit',
+                                hour12: false 
+                            });
+                        } else {
+                            const totalSeconds = Math.floor(entry.timestamp / 1000);
+                            const hours = Math.floor(totalSeconds / 3600);
+                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                            const seconds = totalSeconds % 60;
+                            timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                        }
+                        
+                        // Format message based on type
+                        let message;
+                        if (entry.type === 'config_change') {
+                            message = `${icon} Configuration updated: ${entry.reason || entry.command}`;
+                            if (entry.caller) {
+                                message += ` by ${entry.caller}`;
+                            }
+                        } else {
+                            message = `${icon} ${entry.command} → ${entry.action || entry.type}`;
+                            if (entry.caller) {
+                                message += ` (${entry.caller})`;
+                            }
+                            if (!entry.success && entry.reason) {
+                                message += ` - ${entry.reason}`;
+                            }
+                        }
+                        
+                        entryDiv.innerHTML = `<span style="color: #888;">[${timeStr}]</span> <span style="color: ${color};">${escapeHtml(message)}</span>`;
+                        logDiv.appendChild(entryDiv);
+                    });
+                    
+                    if (maxTimestamp > lastDtmfLogTimestamp) {
+                        lastDtmfLogTimestamp = maxTimestamp + 1;
+                    }
+                    
+                    logDiv.scrollTop = logDiv.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error fetching DTMF logs:', error);
+            }
+        }
+
+        function clearDtmfLogDisplay() {
+            document.getElementById('dtmf-log').innerHTML = '<div style="color: #888;">Log cleared. Waiting for new entries...</div>';
+            lastDtmfLogTimestamp = Date.now();
+            seenDtmfLogEntries.clear();
+        }
+
         // Auto-refresh log
         document.addEventListener('DOMContentLoaded', () => {
             const autoRefreshCheckbox = document.getElementById('auto-refresh-log');
@@ -1001,6 +1126,46 @@
             
             // Refresh NTP status every 5 seconds
             setInterval(fetchNtpStatus, 5000);
+            
+            // Load DTMF security configuration
+            fetchDtmfSecurityConfig();
+            
+            // Refresh DTMF logs every 5 seconds (reduced from 2 to minimize log spam)
+            setInterval(refreshDtmfLogs, 5000);
+            refreshDtmfLogs();
+            
+            // DTMF Security form submission
+            const dtmfSecurityForm = document.getElementById('dtmf-security-form');
+            dtmfSecurityForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(dtmfSecurityForm);
+                const data = {
+                    pin_enabled: document.getElementById('dtmf-pin-enabled-input').checked,
+                    pin_code: formData.get('pin_code'),
+                    timeout_ms: parseInt(formData.get('timeout_ms')),
+                    max_attempts: parseInt(formData.get('max_attempts'))
+                };
+
+                try {
+                    const response = await fetch('/api/dtmf/security', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        showToast('DTMF security configuration saved!', 'success');
+                        setTimeout(fetchDtmfSecurityConfig, 500);
+                    } else {
+                        const errorText = await response.text();
+                        showToast(`Failed to save: ${errorText}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error saving DTMF security config:', error);
+                    showToast('Error saving DTMF security configuration', 'error');
+                }
+            });
             
             // NTP form submission
             const ntpForm = document.getElementById('ntp-form');
@@ -1087,6 +1252,55 @@
                     <button type="button" onclick="syncNtpTime()" class="secondary">Force Sync Now</button>
                 </div>
             </form>
+        </div>
+
+        <!-- DTMF Security Configuration -->
+        <div class="form-section">
+            <h2>DTMF Security Configuration</h2>
+            <div class="system-info" style="margin-bottom: 15px;">
+                <div><strong>PIN Enabled:</strong> <span id="dtmf-pin-enabled">Loading...</span></div>
+                <div><strong>Current PIN:</strong> <span id="dtmf-pin-code">****</span></div>
+                <div><strong>Timeout:</strong> <span id="dtmf-timeout">Loading...</span></div>
+                <div><strong>Max Attempts:</strong> <span id="dtmf-max-attempts">Loading...</span></div>
+            </div>
+            <form id="dtmf-security-form">
+                <label style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <input type="checkbox" id="dtmf-pin-enabled-input" name="pin_enabled" style="margin-right: 10px;">
+                    <strong>Enable PIN Protection</strong>
+                </label>
+
+                <label for="dtmf-pin-code">PIN Code (1-8 digits):</label>
+                <input type="text" id="dtmf-pin-code-input" name="pin_code" placeholder="1234" pattern="[0-9]{1,8}" maxlength="8" required>
+                <small style="color: #666; margin-bottom: 10px; display: block;">
+                    When enabled, door opener requires: *[PIN]# (e.g., *1234#). When disabled, legacy *1# works.
+                </small>
+
+                <label for="dtmf-timeout">Command Timeout (ms):</label>
+                <input type="number" id="dtmf-timeout-input" name="timeout_ms" placeholder="10000" min="5000" max="30000" step="1000" required>
+                <small style="color: #666; margin-bottom: 10px; display: block;">
+                    Time allowed to complete command sequence (5000-30000 ms)
+                </small>
+
+                <label for="dtmf-max-attempts">Max Failed Attempts:</label>
+                <input type="number" id="dtmf-max-attempts-input" name="max_attempts" placeholder="3" min="1" max="10" required>
+                <small style="color: #666; margin-bottom: 10px; display: block;">
+                    Number of failed attempts before rate limiting (per call)
+                </small>
+
+                <button type="submit">Save Security Configuration</button>
+            </form>
+        </div>
+
+        <!-- DTMF Security Logs -->
+        <div class="form-section">
+            <h2>DTMF Security Logs</h2>
+            <div class="button-group">
+                <button onclick="refreshDtmfLogs()" class="secondary">Refresh Logs</button>
+                <button onclick="clearDtmfLogDisplay()" class="secondary">Clear Display</button>
+            </div>
+            <div id="dtmf-log" style="background-color: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; margin-top: 10px;">
+                <div style="color: #888;">Waiting for DTMF security log entries...</div>
+            </div>
         </div>
 
         <!-- WiFi Configuration -->

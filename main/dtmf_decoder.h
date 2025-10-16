@@ -47,6 +47,7 @@ typedef struct {
 typedef enum {
     CMD_DOOR_OPEN,      // *[PIN]# or *1# (legacy)
     CMD_LIGHT_TOGGLE,   // *2#
+    CMD_CONFIG_CHANGE,  // Security configuration changed
     CMD_INVALID
 } dtmf_command_type_t;
 
