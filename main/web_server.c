@@ -19,20 +19,12 @@ extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 static esp_err_t get_sip_status_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
-    cJSON *root = cJSON_CreateObject();
-
-    // Get registration status
-    bool is_registered = sip_is_registered();
-    cJSON_AddStringToObject(root, "status", is_registered ? "Registered" : "Not Registered");
-
-    // Add current state
-    sip_state_t state = sip_client_get_state();
-    cJSON_AddNumberToObject(root, "state_code", state);
-
-    const char *json_string = cJSON_Print(root);
-    httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
-    cJSON_Delete(root);
+    
+    // Use sip_get_status which returns complete status including state name
+    char status_buffer[512];
+    sip_get_status(status_buffer, sizeof(status_buffer));
+    
+    httpd_resp_send(req, status_buffer, strlen(status_buffer));
     return ESP_OK;
 }
 

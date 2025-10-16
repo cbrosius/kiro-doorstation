@@ -1,6 +1,7 @@
 #include "sip_client.h"
 #include "audio_handler.h"
 #include "dtmf_decoder.h"
+#include "rtp_handler.h"
 #include "ntp_sync.h"
 #include "ntp_log.h"
 #include "esp_log.h"
@@ -20,8 +21,11 @@ static sip_config_t sip_config = {0};
 static int sip_socket = -1;
 static TaskHandle_t sip_task_handle = NULL;
 static bool registration_requested = false;
+static bool reinit_requested = false;
 static uint32_t auto_register_delay_ms = 5000; // Wait 5 seconds after init
 static uint32_t init_timestamp = 0;
+static uint32_t call_start_timestamp = 0;
+static uint32_t call_timeout_ms = 30000; // 30 second call timeout
 
 // State names for logging (global to avoid stack issues)
 static const char* state_names[] = {
@@ -69,16 +73,7 @@ static sip_auth_challenge_t last_auth_challenge = {0};
 // Forward declaration
 static bool sip_client_register_auth(sip_auth_challenge_t* challenge);
 
-static const char* sip_invite_template = 
-"INVITE %s SIP/2.0\r\n"
-"Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
-"From: <sip:%s@%s>;tag=%d\r\n"
-"To: <%s>\r\n"
-"Call-ID: %d@%s\r\n"
-"CSeq: 1 INVITE\r\n"
-"Contact: <sip:%s@%s:5060>\r\n"
-"Content-Type: application/sdp\r\n"
-"Content-Length: %d\r\n\r\n%s";
+// SIP INVITE template removed - built inline in sip_client_make_call()
 
 // Helper function to add log entry (thread-safe, synchronous with yielding)
 // Logs to both serial console and web interface
@@ -325,6 +320,80 @@ static void sip_task(void *pvParameters)
         // Yield to WiFi and other high-priority tasks
         taskYIELD();
         
+        // Handle reinitialization request (from web interface)
+        if (reinit_requested) {
+            reinit_requested = false;
+            sip_add_log_entry("info", "Processing reinitialization request");
+            
+            // Close socket if open
+            if (sip_socket >= 0) {
+                close(sip_socket);
+                sip_socket = -1;
+                sip_add_log_entry("info", "SIP socket closed for reinit");
+            }
+            
+            // Stop RTP if active
+            if (rtp_is_active()) {
+                rtp_stop_session();
+                sip_add_log_entry("info", "RTP session stopped for reinit");
+            }
+            
+            // Reload configuration from NVS
+            sip_config = sip_load_config();
+            
+            if (sip_config.configured) {
+                char log_msg[128];
+                snprintf(log_msg, sizeof(log_msg), "Configuration reloaded: %s@%s", 
+                         sip_config.username, sip_config.server);
+                sip_add_log_entry("info", log_msg);
+                
+                // Create new socket
+                sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                if (sip_socket >= 0) {
+                    // Bind socket to port 5060
+                    struct sockaddr_in local_addr;
+                    memset(&local_addr, 0, sizeof(local_addr));
+                    local_addr.sin_family = AF_INET;
+                    local_addr.sin_addr.s_addr = INADDR_ANY;
+                    local_addr.sin_port = htons(5060);
+                    
+                    if (bind(sip_socket, (struct sockaddr*)&local_addr, sizeof(local_addr)) == 0) {
+                        sip_add_log_entry("info", "SIP socket recreated and bound");
+                        current_state = SIP_STATE_IDLE;
+                        
+                        // Trigger auto-registration after delay
+                        init_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                        sip_add_log_entry("info", "Auto-registration scheduled");
+                    } else {
+                        sip_add_log_entry("error", "Failed to bind socket after reinit");
+                        close(sip_socket);
+                        sip_socket = -1;
+                        current_state = SIP_STATE_ERROR;
+                    }
+                } else {
+                    sip_add_log_entry("error", "Failed to create socket after reinit");
+                    current_state = SIP_STATE_ERROR;
+                }
+            } else {
+                sip_add_log_entry("info", "No configuration found after reinit");
+                current_state = SIP_STATE_DISCONNECTED;
+            }
+        }
+        
+        // Check for call timeout
+        if ((current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) && 
+            call_start_timestamp > 0) {
+            uint32_t elapsed = xTaskGetTickCount() * portTICK_PERIOD_MS - call_start_timestamp;
+            if (elapsed >= call_timeout_ms) {
+                sip_add_log_entry("error", "Call timeout - no response from server");
+                call_start_timestamp = 0;
+                current_state = SIP_STATE_REGISTERED;
+                audio_stop_recording();
+                audio_stop_playback();
+                rtp_stop_session();
+            }
+        }
+        
         // Auto-registration after delay (if configured and not already registered)
         if (init_timestamp > 0 && 
             current_state == SIP_STATE_IDLE && 
@@ -393,11 +462,118 @@ static void sip_task(void *pvParameters)
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
                         sip_add_log_entry("info", "SIP registration successful");
-                    } else if (current_state == SIP_STATE_CALLING) {
+                    } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        // Call accepted - send ACK and start audio
+                        sip_add_log_entry("info", "Call accepted (200 OK)");
+                        
+                        // Extract To tag for ACK
+                        char to_tag[32] = {0};
+                        char* to_header = strstr(buffer, "To:");
+                        if (to_header) {
+                            char* tag_start = strstr(to_header, "tag=");
+                            if (tag_start) {
+                                tag_start += 4;
+                                char* tag_end = strpbrk(tag_start, ";\r\n ");
+                                if (tag_end) {
+                                    int tag_len = tag_end - tag_start;
+                                    if (tag_len < sizeof(to_tag)) {
+                                        strncpy(to_tag, tag_start, tag_len);
+                                        to_tag[tag_len] = '\0';
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Send ACK to complete call setup
+                        static char ack_msg[768];  // Increased buffer size
+                        char local_ip[16];
+                        if (!get_local_ip(local_ip, sizeof(local_ip))) {
+                            strcpy(local_ip, "192.168.1.100");
+                        }
+                        
+                        // Extract Call-ID and CSeq for ACK
+                        char call_id[128] = {0};  // Increased buffer size
+                        char* callid_start = strstr(buffer, "Call-ID:");
+                        if (callid_start) {
+                            callid_start += 8;
+                            while (*callid_start == ' ') callid_start++;
+                            char* callid_end = strstr(callid_start, "\r\n");
+                            if (callid_end) {
+                                int len = callid_end - callid_start;
+                                if (len < sizeof(call_id) - 1) {
+                                    strncpy(call_id, callid_start, len);
+                                    call_id[len] = '\0';
+                                }
+                            }
+                        }
+                        
+                        // Build ACK message
+                        snprintf(ack_msg, sizeof(ack_msg),
+                                "ACK sip:%s@%s SIP/2.0\r\n"
+                                "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+                                "From: <sip:%s@%s>;tag=%d\r\n"
+                                "To: <sip:%s@%s>;tag=%s\r\n"
+                                "Call-ID: %s\r\n"
+                                "CSeq: 1 ACK\r\n"
+                                "Max-Forwards: 70\r\n"
+                                "Content-Length: 0\r\n\r\n",
+                                sip_config.username, sip_config.server,
+                                local_ip, rand(),
+                                sip_config.username, sip_config.server, rand(),
+                                sip_config.username, sip_config.server, to_tag,
+                                call_id);
+                        
+                        // Send ACK
+                        struct sockaddr_in server_addr;
+                        server_addr.sin_family = AF_INET;
+                        server_addr.sin_port = htons(sip_config.port);
+                        struct hostent *host = gethostbyname(sip_config.server);
+                        if (host) {
+                            memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                            sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
+                                  (struct sockaddr*)&server_addr, sizeof(server_addr));
+                            sip_add_log_entry("sent", "ACK sent");
+                        }
+                        
+                        // Extract remote RTP port from SDP (simplified - assumes port 5004)
+                        // In a full implementation, parse the SDP m= line
+                        uint16_t remote_rtp_port = 5004;
+                        char* sdp_start = strstr(buffer, "\r\n\r\n");
+                        if (sdp_start) {
+                            char* m_line = strstr(sdp_start, "m=audio ");
+                            if (m_line) {
+                                m_line += 8;
+                                remote_rtp_port = atoi(m_line);
+                            }
+                        }
+                        
+                        // Get remote IP from SIP server (use first 15 chars to fit in buffer)
+                        char remote_ip[64];  // Increased buffer size to match server field
+                        strncpy(remote_ip, sip_config.server, sizeof(remote_ip) - 1);
+                        remote_ip[sizeof(remote_ip) - 1] = '\0';
+                        
+                        // Start RTP session
+                        if (rtp_start_session(remote_ip, remote_rtp_port, 5004)) {
+                            sip_add_log_entry("info", "RTP session started");
+                        } else {
+                            sip_add_log_entry("error", "Failed to start RTP session");
+                        }
+                        
+                        // Start audio
                         current_state = SIP_STATE_CONNECTED;
+                        call_start_timestamp = 0; // Clear timeout
                         sip_add_log_entry("info", "Call connected - State: CONNECTED");
                         audio_start_recording();
                         audio_start_playback();
+                    }
+                } else if (strstr(buffer, "SIP/2.0 180 Ringing")) {
+                    if (current_state == SIP_STATE_CALLING) {
+                        current_state = SIP_STATE_RINGING;
+                        sip_add_log_entry("info", "Call ringing (180 Ringing)");
+                    }
+                } else if (strstr(buffer, "SIP/2.0 183 Session Progress")) {
+                    if (current_state == SIP_STATE_CALLING) {
+                        sip_add_log_entry("info", "Session progress (183)");
                     }
                 } else if (strstr(buffer, "SIP/2.0 401 Unauthorized")) {
                     if (current_state == SIP_STATE_REGISTERING) {
@@ -418,25 +594,46 @@ static void sip_task(void *pvParameters)
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
                     // Provisional response, just log it
-                    sip_add_log_entry("info", "Server processing request");
+                    sip_add_log_entry("info", "Server processing request (100 Trying)");
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
                     ESP_LOGE(TAG, "SIP forbidden");
                     sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
-                    current_state = SIP_STATE_AUTH_FAILED;
+                    if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        call_start_timestamp = 0; // Clear timeout
+                        current_state = SIP_STATE_REGISTERED; // Return to registered state
+                    } else {
+                        current_state = SIP_STATE_AUTH_FAILED;
+                    }
                 } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
                     ESP_LOGE(TAG, "SIP target not found");
-                    sip_add_log_entry("error", "SIP target not found - State: ERROR");
-                    current_state = SIP_STATE_ERROR;
+                    sip_add_log_entry("error", "SIP target not found");
+                    if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        call_start_timestamp = 0; // Clear timeout
+                        current_state = SIP_STATE_REGISTERED; // Return to registered state
+                    } else {
+                        current_state = SIP_STATE_ERROR;
+                    }
                 } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
                     ESP_LOGE(TAG, "SIP request timeout");
-                    sip_add_log_entry("error", "SIP request timeout - State: TIMEOUT");
-                    current_state = SIP_STATE_TIMEOUT;
+                    sip_add_log_entry("error", "SIP request timeout");
+                    if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        call_start_timestamp = 0; // Clear timeout
+                        current_state = SIP_STATE_REGISTERED; // Return to registered state
+                    } else {
+                        current_state = SIP_STATE_TIMEOUT;
+                    }
                 } else if (strstr(buffer, "SIP/2.0 486 Busy Here")) {
                     ESP_LOGW(TAG, "SIP target busy");
-                    sip_add_log_entry("info", "SIP target busy - State: REGISTERED");
+                    sip_add_log_entry("info", "SIP target busy");
+                    call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
-                    sip_add_log_entry("info", "SIP request terminated - State: REGISTERED");
+                    sip_add_log_entry("info", "SIP request terminated");
+                    call_start_timestamp = 0; // Clear timeout
+                    current_state = SIP_STATE_REGISTERED;
+                } else if (strstr(buffer, "SIP/2.0 603 Decline")) {
+                    sip_add_log_entry("info", "Call declined by remote party");
+                    call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strncmp(buffer, "INVITE sip:", 11) == 0) {
                     // Check for INVITE request (not response)
@@ -445,26 +642,94 @@ static void sip_task(void *pvParameters)
                     // Auto-answer after short delay
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     sip_client_answer_call();
-                } else if (strncmp(buffer, "BYE sip:", 8) == 0) {
+                } else if (strncmp(buffer, "BYE sip:", 8) == 0 || strncmp(buffer, "BYE ", 4) == 0) {
                     // Check for BYE request (not response)
-                    sip_add_log_entry("info", "Call ended - State: REGISTERED");
+                    sip_add_log_entry("info", "Call ended by remote party");
+                    
+                    // Send 200 OK response to BYE
+                    static char bye_response[768];  // Increased buffer size
+                    char local_ip[16];
+                    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+                        strcpy(local_ip, "192.168.1.100");
+                    }
+                    
+                    // Extract Call-ID and CSeq for response
+                    char call_id[128] = {0};  // Increased buffer size
+                    int cseq_num = 1;
+                    char* callid_start = strstr(buffer, "Call-ID:");
+                    if (callid_start) {
+                        callid_start += 8;
+                        while (*callid_start == ' ') callid_start++;
+                        char* callid_end = strstr(callid_start, "\r\n");
+                        if (callid_end) {
+                            int len = callid_end - callid_start;
+                            if (len < sizeof(call_id)) {
+                                strncpy(call_id, callid_start, len);
+                                call_id[len] = '\0';
+                            }
+                        }
+                    }
+                    
+                    char* cseq_start = strstr(buffer, "CSeq:");
+                    if (cseq_start) {
+                        cseq_start += 5;
+                        while (*cseq_start == ' ') cseq_start++;
+                        cseq_num = atoi(cseq_start);
+                    }
+                    
+                    snprintf(bye_response, sizeof(bye_response),
+                            "SIP/2.0 200 OK\r\n"
+                            "Via: SIP/2.0/UDP %s:5060\r\n"
+                            "From: <sip:%s@%s>\r\n"
+                            "To: <sip:%s@%s>\r\n"
+                            "Call-ID: %s\r\n"
+                            "CSeq: %d BYE\r\n"
+                            "Content-Length: 0\r\n\r\n",
+                            local_ip,
+                            sip_config.username, sip_config.server,
+                            sip_config.username, sip_config.server,
+                            call_id, cseq_num);
+                    
+                    struct sockaddr_in server_addr;
+                    server_addr.sin_family = AF_INET;
+                    server_addr.sin_port = htons(sip_config.port);
+                    struct hostent *host = gethostbyname(sip_config.server);
+                    if (host) {
+                        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                        sendto(sip_socket, bye_response, strlen(bye_response), 0,
+                              (struct sockaddr*)&server_addr, sizeof(server_addr));
+                        sip_add_log_entry("sent", "200 OK response to BYE");
+                    }
+                    
                     current_state = SIP_STATE_REGISTERED;
+                    call_start_timestamp = 0; // Clear timeout
                     audio_stop_recording();
                     audio_stop_playback();
+                    rtp_stop_session();
+                    sip_add_log_entry("info", "RTP session stopped");
                 }
             }
         }
         
-        // Audio-Verarbeitung während eines Anrufs
-        if (current_state == SIP_STATE_CONNECTED) {
-            int16_t audio_buffer[160]; // 20ms bei 8kHz
-            size_t samples_read = audio_read(audio_buffer, 160);
+        // Audio processing during active call
+        if (current_state == SIP_STATE_CONNECTED && rtp_is_active()) {
+            // Send audio (20ms frames at 8kHz = 160 samples)
+            int16_t tx_buffer[160];
+            size_t samples_read = audio_read(tx_buffer, 160);
             if (samples_read > 0) {
-                // DTMF-Erkennung
-                dtmf_process_audio(audio_buffer, samples_read);
+                // DTMF detection
+                dtmf_process_audio(tx_buffer, samples_read);
                 
-                // Audio über RTP senden (vereinfacht)
-                // In einer echten Implementierung würde hier RTP verwendet
+                // Send audio via RTP
+                rtp_send_audio(tx_buffer, samples_read);
+            }
+            
+            // Receive audio
+            int16_t rx_buffer[160];
+            int samples_received = rtp_receive_audio(rx_buffer, 160);
+            if (samples_received > 0) {
+                // Play received audio
+                audio_write(rx_buffer, samples_received);
             }
         }
     }
@@ -477,6 +742,9 @@ static void sip_task(void *pvParameters)
 void sip_client_init(void)
 {
     sip_add_log_entry("info", "Initializing SIP client");
+
+    // Initialize RTP handler
+    rtp_init();
 
     // Set initial state
     current_state = SIP_STATE_IDLE;
@@ -753,11 +1021,30 @@ void sip_client_make_call(const char* uri)
         return;
     }
     
-    // Remember previous state to restore after call
-    sip_state_t previous_state = current_state;
+    if (sip_socket < 0) {
+        sip_add_log_entry("error", "Cannot make call - socket not available");
+        return;
+    }
     
-    sip_add_log_entry("info", "Initiating call - State: CALLING");
+    // Format URI if needed (add sip: prefix if missing)
+    static char formatted_uri[128];
+    if (strncmp(uri, "sip:", 4) != 0) {
+        // URI doesn't have sip: prefix, add it
+        if (strchr(uri, '@') != NULL) {
+            // Has @ symbol, use as-is with sip: prefix
+            snprintf(formatted_uri, sizeof(formatted_uri), "sip:%s", uri);
+        } else {
+            // No @ symbol, add @server
+            snprintf(formatted_uri, sizeof(formatted_uri), "sip:%s@%s", uri, sip_config.server);
+        }
+        uri = formatted_uri;
+    }
+    
+    char log_msg[256];  // Increased buffer size to accommodate full URI
+    snprintf(log_msg, sizeof(log_msg), "Initiating call to %s", uri);
+    sip_add_log_entry("info", log_msg);
     current_state = SIP_STATE_CALLING;
+    call_start_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     
     // Get local IP address
     char local_ip[16];
@@ -765,52 +1052,141 @@ void sip_client_make_call(const char* uri)
         strcpy(local_ip, "192.168.1.100"); // Fallback
     }
     
-    // Simplified INVITE message (use static to avoid stack allocation)
-    // In a real implementation, a complete SDP session description would be created here
+    // Create SDP session description
     static char sdp[256];
-    static char invite_msg[1536];  // Reduced from 2048 to 1536
-    
     snprintf(sdp, sizeof(sdp), 
-             "v=0\r\no=- 0 0 IN IP4 %s\r\ns=-\r\nc=IN IP4 %s\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
-             local_ip, local_ip);
+             "v=0\r\n"
+             "o=- %d 0 IN IP4 %s\r\n"
+             "s=ESP32 Doorbell Call\r\n"
+             "c=IN IP4 %s\r\n"
+             "t=0 0\r\n"
+             "m=audio 5004 RTP/AVP 0 8 101\r\n"
+             "a=rtpmap:0 PCMU/8000\r\n"
+             "a=rtpmap:8 PCMA/8000\r\n"
+             "a=rtpmap:101 telephone-event/8000\r\n"
+             "a=fmtp:101 0-15\r\n"
+             "a=sendrecv\r\n",
+             rand(), local_ip, local_ip);
     
-    snprintf(invite_msg, sizeof(invite_msg), sip_invite_template,
-             uri, local_ip, rand(),
-             sip_config.username, sip_config.server, rand(),
-             uri, rand(), local_ip,
+    // Create INVITE message
+    static char invite_msg[1536];
+    int call_id = rand();
+    int tag = rand();
+    int branch = rand();
+    
+    snprintf(invite_msg, sizeof(invite_msg),
+             "INVITE %s SIP/2.0\r\n"
+             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+             "Max-Forwards: 70\r\n"
+             "From: <sip:%s@%s>;tag=%d\r\n"
+             "To: <%s>\r\n"
+             "Call-ID: %d@%s\r\n"
+             "CSeq: 1 INVITE\r\n"
+             "Contact: <sip:%s@%s:5060>\r\n"
+             "Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
+             "User-Agent: ESP32-Doorbell/1.0\r\n"
+             "Content-Type: application/sdp\r\n"
+             "Content-Length: %d\r\n\r\n%s",
+             uri, local_ip, branch,
+             sip_config.username, sip_config.server, tag,
+             uri,
+             call_id, local_ip,
              sip_config.username, local_ip,
              strlen(sdp), sdp);
     
-    sip_add_log_entry("sent", "INVITE message prepared");
+    // Resolve server address
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(sip_config.port);
     
-    // TODO: Send INVITE message via socket
-    // For now, just log and reset state after a delay
-    // In a full implementation, this would:
-    // 1. Send INVITE via UDP socket
-    // 2. Wait for 100 Trying, 180 Ringing, 200 OK responses
-    // 3. Send ACK
-    // 4. Establish RTP audio stream
+    struct hostent *host = gethostbyname(sip_config.server);
+    if (host == NULL) {
+        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+        sip_add_log_entry("error", "DNS lookup failed for call");
+        current_state = SIP_STATE_ERROR;
+        return;
+    }
+    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
     
-    sip_add_log_entry("info", "Call functionality not fully implemented - returning to ready state");
+    // Send INVITE message
+    int sent = sendto(sip_socket, invite_msg, strlen(invite_msg), 0,
+                      (struct sockaddr*)&server_addr, sizeof(server_addr));
     
-    // Restore previous state (should be REGISTERED to maintain registration)
-    current_state = previous_state;
+    if (sent < 0) {
+        ESP_LOGE(TAG, "Error sending INVITE message: %d", sent);
+        sip_add_log_entry("error", "Failed to send INVITE");
+        current_state = SIP_STATE_ERROR;
+        return;
+    }
     
-    const char* state_name = (current_state < 12) ? state_names[current_state] : "UNKNOWN";
-    
-    char log_msg[64];
-    snprintf(log_msg, sizeof(log_msg), "State restored to: %s", state_name);
-    sip_add_log_entry("info", log_msg);
+    sip_add_log_entry("sent", "INVITE message sent");
+    ESP_LOGI(TAG, "INVITE sent to %s (%d bytes)", uri, sent);
 }
 
 void sip_client_hangup(void)
 {
-    if (current_state == SIP_STATE_CONNECTED || current_state == SIP_STATE_CALLING) {
+    if (current_state == SIP_STATE_CONNECTED || current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
         ESP_LOGI(TAG, "Ending call");
-        sip_add_log_entry("info", "Ending call - State: IDLE");
-        current_state = SIP_STATE_IDLE;
+        sip_add_log_entry("info", "Sending BYE to end call");
+        
+        // Stop audio and RTP first
         audio_stop_recording();
         audio_stop_playback();
+        rtp_stop_session();
+        
+        // Send BYE message if we have an active call
+        if (current_state == SIP_STATE_CONNECTED && sip_socket >= 0) {
+            static char bye_msg[512];
+            char local_ip[16];
+            if (!get_local_ip(local_ip, sizeof(local_ip))) {
+                strcpy(local_ip, "192.168.1.100");
+            }
+            
+            int call_id = rand();
+            int tag = rand();
+            int branch = rand();
+            
+            snprintf(bye_msg, sizeof(bye_msg),
+                    "BYE sip:%s@%s SIP/2.0\r\n"
+                    "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+                    "Max-Forwards: 70\r\n"
+                    "From: <sip:%s@%s>;tag=%d\r\n"
+                    "To: <sip:%s@%s>\r\n"
+                    "Call-ID: %d@%s\r\n"
+                    "CSeq: 2 BYE\r\n"
+                    "User-Agent: ESP32-Doorbell/1.0\r\n"
+                    "Content-Length: 0\r\n\r\n",
+                    sip_config.username, sip_config.server,
+                    local_ip, branch,
+                    sip_config.username, sip_config.server, tag,
+                    sip_config.username, sip_config.server,
+                    call_id, local_ip);
+            
+            // Send BYE
+            struct sockaddr_in server_addr;
+            server_addr.sin_family = AF_INET;
+            server_addr.sin_port = htons(sip_config.port);
+            struct hostent *host = gethostbyname(sip_config.server);
+            if (host) {
+                memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                int sent = sendto(sip_socket, bye_msg, strlen(bye_msg), 0,
+                                 (struct sockaddr*)&server_addr, sizeof(server_addr));
+                if (sent > 0) {
+                    sip_add_log_entry("sent", "BYE message sent");
+                } else {
+                    sip_add_log_entry("error", "Failed to send BYE");
+                }
+            }
+        } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+            // Send CANCEL for calls that haven't been answered yet
+            sip_add_log_entry("info", "Canceling outgoing call");
+            // TODO: Implement CANCEL message
+        }
+        
+        // Return to registered state
+        current_state = SIP_STATE_REGISTERED;
+        call_start_timestamp = 0; // Clear timeout
+        sip_add_log_entry("info", "Call ended - State: REGISTERED");
     }
 }
 
@@ -1110,30 +1486,12 @@ void sip_set_target2(const char* target)
 
 void sip_reinit(void)
 {
-    ESP_LOGI(TAG, "Reinitializing SIP client");
-
-    // Stop current SIP task if running
-    if (sip_task_handle) {
-        vTaskDelete(sip_task_handle);
-        sip_task_handle = NULL;
-    }
-
-    // Close socket if open
-    if (sip_socket >= 0) {
-        close(sip_socket);
-        sip_socket = -1;
-    }
-
-    // Reload configuration
-    sip_config = sip_load_config();
-
-    if (sip_config.configured) {
-        // Reinitialize with new config
-        sip_client_init();
-    } else {
-        ESP_LOGI(TAG, "No SIP configuration found after reinit");
-        current_state = SIP_STATE_DISCONNECTED;
-    }
+    ESP_LOGI(TAG, "SIP reinitialization requested");
+    sip_add_log_entry("info", "SIP reinitialization requested");
+    
+    // Set flag to trigger reinit from SIP task context (has more stack)
+    // Don't do heavy operations from HTTP handler context
+    reinit_requested = true;
 }
 
 bool sip_test_configuration(void)
