@@ -64,10 +64,8 @@ typedef void (*dtmf_callback_t)(dtmf_tone_t tone);
 
 void dtmf_decoder_init(void);
 void dtmf_set_callback(dtmf_callback_t callback);
-dtmf_tone_t dtmf_decode_buffer(const int16_t *buffer, size_t length);
-void dtmf_process_audio(const int16_t *buffer, size_t length);
 
-// New security-enhanced functions
+// RFC 4733 telephone-event processing functions
 void dtmf_process_telephone_event(uint8_t event);
 void dtmf_load_security_config(void);
 void dtmf_save_security_config(const dtmf_security_config_t* config);

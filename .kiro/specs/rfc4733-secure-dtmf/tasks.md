@@ -149,6 +149,8 @@
 
 - [x] 4. Implement security audit logging
 
+- [x] 9. Create SECURITY.md documentation (COMPLETED - file already exists with comprehensive documentation)
+
 
 
 
@@ -192,107 +194,89 @@
   - Thread-safe access with mutex
   - _Requirements: 4.5_
 
-- [ ] 5. Remove audio DTMF processing
-- [ ] 5.1 Remove audio DTMF processing from SIP client
-  - Locate `dtmf_process_audio(tx_buffer, samples_read)` call in sip_client.c
+- [x] 5. Remove audio DTMF processing and integrate RFC 4733
+
+
+
+
+
+
+
+- [x] 5.1 Remove audio DTMF processing from SIP client
+
+
+
+
+  - Locate `dtmf_process_audio(tx_buffer, samples_read)` call in sip_client.c (line ~891)
   - Remove the function call
   - Verify audio still transmitted via RTP normally
   - _Requirements: 1.3, 1.4_
 
-- [ ] 5.2 Update dtmf_decoder to remove audio functions
-  - Remove `dtmf_decode_buffer()` function
-  - Remove `dtmf_process_audio()` function
-  - Keep dtmf_decoder_init() and update to load security config
-  - Update dtmf_decoder.h to remove audio function declarations
-  - _Requirements: 1.3, 1.4_
+- [x] 5.2 Register telephone-event callback during initialization
 
-- [ ] 6. Integrate telephone-event callback with DTMF decoder
-- [ ] 6.1 Register callback during initialization
-  - Call `rtp_set_telephone_event_callback()` from dtmf_decoder_init()
-  - Pass `dtmf_process_telephone_event` as callback
+
+  - Add `#include "rtp_handler.h"` to dtmf_decoder.c if not present
+  - Call `rtp_set_telephone_event_callback(dtmf_process_telephone_event)` from dtmf_decoder_init()
+  - Verify callback is registered before any calls are made
   - _Requirements: 1.1, 1.2_
 
-- [ ] 6.2 Add call state management
-  - Call `dtmf_reset_call_state()` when call connects
-  - Call `dtmf_reset_call_state()` when call ends
-  - Integrate with existing SIP state machine in sip_client.c
+- [x] 5.3 Add call state management in SIP client
+
+
+  - Call `dtmf_reset_call_state()` when call connects (SIP_STATE_CONNECTED)
+  - Call `dtmf_reset_call_state()` when call ends (state changes from CONNECTED)
+  - Add `#include "dtmf_decoder.h"` to sip_client.c if not present
   - _Requirements: 2.5, 3.5_
 
-- [ ] 7. Add web interface endpoints for security configuration
-- [ ] 7.1 Implement GET /api/dtmf/security endpoint
+- [ ] 6. Add web interface endpoints for security configuration
+- [ ] 6.1 Implement GET /api/dtmf/security endpoint
+  - Add handler function `get_dtmf_security_handler()` in web_server.c
   - Return current security configuration as JSON
   - Include pin_enabled, pin_code, timeout_ms, max_attempts
+  - Register URI handler in web_server_start()
   - _Requirements: 5.5, 6.5_
 
-- [ ] 7.2 Implement POST /api/dtmf/security endpoint
-  - Accept security configuration updates
+- [ ] 6.2 Implement POST /api/dtmf/security endpoint
+  - Add handler function `post_dtmf_security_handler()` in web_server.c
+  - Accept security configuration updates via JSON
   - Validate PIN format (digits only, 1-8 chars)
   - Validate timeout range (5000-30000 ms)
-  - Save to NVS and update runtime configuration
+  - Call dtmf_save_security_config() to persist changes
+  - Register URI handler in web_server_start()
   - _Requirements: 5.5, 6.5_
 
-- [ ] 7.3 Implement GET /api/dtmf/logs endpoint
+- [ ] 6.3 Implement GET /api/dtmf/logs endpoint
+  - Add handler function `get_dtmf_logs_handler()` in web_server.c
   - Return security log entries as JSON array
-  - Support optional since_timestamp parameter
-  - Include timestamp, type, command, action, caller, reason
+  - Support optional since_timestamp query parameter
+  - Call dtmf_get_security_logs() to retrieve entries
+  - Include timestamp, type, command, action, caller, reason in response
+  - Register URI handler in web_server_start()
   - _Requirements: 4.5, 6.5_
 
-- [ ] 8. Update SDP negotiation for RFC 4733
-- [ ] 8.1 Verify SDP includes RFC 4733 attributes
-  - Confirm "a=rtpmap:101 telephone-event/8000" is present
-  - Confirm "a=fmtp:101 0-15" is present
-  - Check both INVITE and 200 OK responses
+- [ ] 7. Verify and fix SDP negotiation for RFC 4733
+- [ ] 7.1 Add missing a=fmtp line to incoming call 200 OK response
+  - Locate SDP generation for incoming call 200 OK (around line 750 in sip_client.c)
+  - Add "a=fmtp:101 0-15\r\n" after "a=rtpmap:101 telephone-event/8000\r\n"
+  - Verify outgoing INVITE already has complete SDP (line ~1242)
   - _Requirements: 7.1, 7.2, 7.5_
 
-- [ ] 8.2 Add SDP response validation
-  - Parse remote SDP for payload type 101 support
-  - Log warning if remote party doesn't support RFC 4733
-  - Continue call even without RFC 4733 support
-  - _Requirements: 7.3, 7.4_
-
-- [ ] 9. Create SECURITY.md documentation
-- [ ] 9.1 Document audio DTMF replay attack vulnerability
-  - Explain how audio DTMF can be replayed at the door
-  - Describe the security risk of unauthorized access
-  - Explain why audio DTMF processing was removed
-  - _Requirements: 6.1, 6.2_
-
-- [ ] 9.2 Document RFC 4733 compatibility
-  - List supported devices (DECT bases, IP phones, softphones)
-  - Explain that RFC 4733 is standard since 2006
-  - State that all modern devices support it
-  - _Requirements: 6.3_
-
-- [ ] 9.3 Document legacy device guidance
-  - Provide options for users with old equipment
-  - Suggest firmware updates or device replacement
-  - List compatible replacement devices
-  - _Requirements: 6.4_
-
-- [ ] 9.4 Document security features
-  - Explain PIN code protection
-  - Describe command timeout mechanism
-  - Describe rate limiting
-  - Explain audit logging
-  - Provide configuration examples
-  - _Requirements: 6.5_
-
-- [ ] 10. Integration and system testing
-- [ ] 10.1 Test RFC 4733 packet parsing
+- [ ]* 8. Integration and system testing
+- [ ]* 8.1 Test RFC 4733 packet parsing
   - Send test telephone-event packets
   - Verify correct event code extraction
   - Verify end bit detection
   - Verify deduplication works
   - _Requirements: 8.1, 8.2, 8.3_
 
-- [ ] 10.2 Test command execution with PIN
+- [ ]* 8.2 Test command execution with PIN
   - Configure PIN code via web interface
   - Make test call and send *[PIN]#
   - Verify door opener activates
   - Verify security log entry created
   - _Requirements: 5.1, 5.2, 4.1_
 
-- [ ] 10.3 Test command timeout
+- [ ]* 8.3 Test command timeout
   - Send partial command sequence
   - Wait for timeout period
   - Verify buffer cleared
@@ -300,7 +284,7 @@
   - Verify successful execution
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 10.4 Test rate limiting
+- [ ]* 8.4 Test rate limiting
   - Send 3 invalid commands
   - Verify rate limit triggered
   - Attempt valid command
@@ -309,14 +293,14 @@
   - Verify rate limit reset
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 10.5 Test audio DTMF removal
+- [ ]* 8.5 Test audio DTMF removal
   - Play DTMF tones at doorstation microphone
   - Verify no command execution
   - Verify audio still transmitted normally
   - Verify no security log entries created
   - _Requirements: 1.3, 1.4_
 
-- [ ] 10.6 Test with real SIP devices
+- [ ]* 8.6 Test with real SIP devices
   - Test with DECT phone (Gigaset or Yealink)
   - Test with IP phone
   - Test with softphone (Linphone)

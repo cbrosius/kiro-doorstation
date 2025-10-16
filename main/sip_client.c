@@ -563,6 +563,10 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         current_state = SIP_STATE_CONNECTED;
                         call_start_timestamp = 0; // Clear timeout
                         sip_add_log_entry("info", "Call connected - State: CONNECTED");
+                        
+                        // Reset DTMF decoder state for new call
+                        dtmf_reset_call_state();
+                        
                         audio_start_recording();
                         audio_start_playback();
                     }
@@ -804,6 +808,10 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             current_state = SIP_STATE_CONNECTED;
                             call_start_timestamp = 0;
                             sip_add_log_entry("info", "Incoming call answered - State: CONNECTED");
+                            
+                            // Reset DTMF decoder state for new call
+                            dtmf_reset_call_state();
+                            
                             audio_start_recording();
                             audio_start_playback();
                         } else {
@@ -873,6 +881,10 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     
                     current_state = SIP_STATE_REGISTERED;
                     call_start_timestamp = 0; // Clear timeout
+                    
+                    // Reset DTMF decoder state when call ends
+                    dtmf_reset_call_state();
+                    
                     audio_stop_recording();
                     audio_stop_playback();
                     rtp_stop_session();
@@ -887,9 +899,6 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             int16_t tx_buffer[160];
             size_t samples_read = audio_read(tx_buffer, 160);
             if (samples_read > 0) {
-                // DTMF detection
-                dtmf_process_audio(tx_buffer, samples_read);
-                
                 // Send audio via RTP
                 rtp_send_audio(tx_buffer, samples_read);
             }
@@ -1354,6 +1363,10 @@ void sip_client_hangup(void)
         // Return to registered state
         current_state = SIP_STATE_REGISTERED;
         call_start_timestamp = 0; // Clear timeout
+        
+        // Reset DTMF decoder state when call ends
+        dtmf_reset_call_state();
+        
         sip_add_log_entry("info", "Call ended - State: REGISTERED");
     }
 }

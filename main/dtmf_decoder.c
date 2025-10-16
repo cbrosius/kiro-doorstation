@@ -1,6 +1,7 @@
 #include "dtmf_decoder.h"
 #include "gpio_handler.h"
 #include "ntp_sync.h"
+#include "rtp_handler.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -42,14 +43,6 @@ static dtmf_command_state_t command_state = {
     .failed_attempts = 0,
     .rate_limited = false,
     .last_event_ts = 0
-};
-
-// DTMF character matrix
-static const char dtmf_chars[4][4] = {
-    {'1', '2', '3', 'A'},
-    {'4', '5', '6', 'B'},
-    {'7', '8', '9', 'C'},
-    {'*', '0', '#', 'D'}
 };
 
 // Load security configuration from NVS
@@ -598,45 +591,16 @@ void dtmf_decoder_init(void)
     // Load security configuration from NVS
     dtmf_load_security_config();
     
+    // Register telephone-event callback with RTP handler
+    rtp_set_telephone_event_callback(dtmf_process_telephone_event);
+    ESP_LOGI(TAG, "Telephone-event callback registered");
+    
     ESP_LOGI(TAG, "DTMF Decoder initialized");
 }
 
 void dtmf_set_callback(dtmf_callback_t callback)
 {
     dtmf_callback = callback;
-}
-
-dtmf_tone_t dtmf_decode_buffer(const int16_t *buffer, size_t length)
-{
-    // Simplified DTMF detection using Goertzel algorithm
-    // In a real implementation, FFT or Goertzel filters
-    // would be used for each DTMF frequency
-    
-    float max_magnitude = 0;
-    int detected_low = -1, detected_high = -1;
-    
-    // Here the actual frequency analysis would take place
-    // For this example we use simplified detection
-    
-    // Threshold for DTMF detection
-    const float threshold = 1000.0f;
-    
-    if (max_magnitude > threshold) {
-        if (detected_low >= 0 && detected_low < 4 && 
-            detected_high >= 0 && detected_high < 4) {
-            return dtmf_chars[detected_low][detected_high];
-        }
-    }
-    
-    return DTMF_NONE;
-}
-
-void dtmf_process_audio(const int16_t *buffer, size_t length)
-{
-    dtmf_tone_t tone = dtmf_decode_buffer(buffer, length);
-    if (tone != DTMF_NONE && dtmf_callback) {
-        dtmf_callback(tone);
-    }
 }
 
 // Reset call state for new call
