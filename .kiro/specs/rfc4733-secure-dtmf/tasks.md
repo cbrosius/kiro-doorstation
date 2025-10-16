@@ -278,7 +278,13 @@
   - Verify outgoing INVITE already has complete SDP (line ~1242)
   - _Requirements: 7.1, 7.2, 7.5_
 
-- [ ]* 8. Integration and system testing
+- [x] 8. Integration and system testing
+
+
+
+
+
+
 - [ ]* 8.1 Test RFC 4733 packet parsing
   - Send test telephone-event packets
   - Verify correct event code extraction
