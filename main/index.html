@@ -2497,7 +2497,213 @@
     <!-- Email Reports Section -->
     <section class="content-section" id="section-email" hidden>
       <h2 tabindex="-1">Email Reports</h2>
-      <p>Email configuration will be implemented here.</p>
+      
+      <!-- Status Panel: Last Report Status (Task 13.3) -->
+      <div class="status-panel">
+        <div class="status-content">
+          <div style="padding: var(--spacing-lg);">
+            <h3 style="font-size: var(--font-size-lg); margin-bottom: var(--spacing-md);">Last Report Status</h3>
+            <div id="last-report-status" style="display: flex; gap: var(--spacing-lg); flex-wrap: wrap;">
+              <div class="dashboard-info-card" style="flex: 1; min-width: 200px;">
+                <div class="dashboard-info-label">Last Send Time</div>
+                <div class="dashboard-info-value" id="last-report-time">Never</div>
+              </div>
+              <div class="dashboard-info-card" style="flex: 1; min-width: 200px;">
+                <div class="dashboard-info-label">Status</div>
+                <div class="dashboard-info-value" id="last-report-status-value">
+                  <span style="color: var(--color-text-secondary);">No reports sent</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- SMTP Configuration Form (Task 13.1) -->
+      <form class="config-form" id="email-smtp-form" data-api="/api/email/config">
+        <h3 style="font-size: var(--font-size-lg); margin-bottom: var(--spacing-md);">SMTP Server Configuration</h3>
+        
+        <div class="form-group">
+          <label for="smtp-server">SMTP Server <span class="required">*</span></label>
+          <input type="text" 
+                 id="smtp-server" 
+                 name="smtp_server" 
+                 required
+                 placeholder="smtp.gmail.com"
+                 data-error="Please enter a valid SMTP server address">
+          <span class="error-message" hidden></span>
+          <span class="form-help">SMTP server hostname or IP address</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="smtp-port">SMTP Port <span class="required">*</span></label>
+          <input type="number" 
+                 id="smtp-port" 
+                 name="smtp_port" 
+                 required
+                 min="1"
+                 max="65535"
+                 value="587"
+                 placeholder="587"
+                 data-error="Please enter a valid port number (1-65535)">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Common ports: 25 (unencrypted), 587 (STARTTLS), 465 (SSL)</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="smtp-username">SMTP Username <span class="required">*</span></label>
+          <input type="text" 
+                 id="smtp-username" 
+                 name="smtp_username" 
+                 required
+                 placeholder="user@example.com"
+                 data-error="Please enter your SMTP username">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="smtp-password">SMTP Password <span class="required">*</span></label>
+          <input type="password" 
+                 id="smtp-password" 
+                 name="smtp_password" 
+                 required
+                 placeholder="••••••••"
+                 data-error="Please enter your SMTP password">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Your SMTP password or app-specific password</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="smtp-sender">Sender Email <span class="required">*</span></label>
+          <input type="email" 
+                 id="smtp-sender" 
+                 name="smtp_sender" 
+                 required
+                 placeholder="doorstation@example.com"
+                 data-error="Please enter a valid email address">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Email address that will appear as sender</span>
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" class="btn btn-info" id="test-email-btn" onclick="handleTestEmail()">
+            <span class="btn-text">Send Test Email</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="submit" class="btn btn-primary" disabled>
+            <span class="btn-text">Save SMTP Configuration</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Reset</button>
+        </div>
+      </form>
+      
+      <!-- Report Configuration Form (Task 13.2) -->
+      <form class="config-form" id="email-report-form" data-api="/api/email/config">
+        <h3 style="font-size: var(--font-size-lg); margin-bottom: var(--spacing-md);">Report Configuration</h3>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="reports-enabled" name="reports_enabled" checked>
+            Enable Automated Reports
+          </label>
+          <span class="form-help">Automatically send scheduled reports via email</span>
+        </div>
+        
+        <div id="report-config-fields">
+          <div class="form-group">
+            <label for="report-recipient">Recipient Email <span class="required">*</span></label>
+            <input type="email" 
+                   id="report-recipient" 
+                   name="report_recipient" 
+                   required
+                   placeholder="admin@example.com"
+                   data-error="Please enter a valid email address">
+            <span class="error-message" hidden></span>
+            <span class="form-help">Email address to receive reports</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="report-schedule">Report Schedule <span class="required">*</span></label>
+            <select id="report-schedule" name="report_schedule" required>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <span class="error-message" hidden></span>
+          </div>
+          
+          <div class="form-group">
+            <label for="report-time">Report Time <span class="required">*</span></label>
+            <input type="time" 
+                   id="report-time" 
+                   name="report_time" 
+                   required
+                   value="08:00"
+                   data-error="Please select a time">
+            <span class="error-message" hidden></span>
+            <span class="form-help">Time to send the report (24-hour format)</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="report-day">Day of Week (for Weekly)</label>
+            <select id="report-day" name="report_day">
+              <option value="1">Monday</option>
+              <option value="2">Tuesday</option>
+              <option value="3">Wednesday</option>
+              <option value="4">Thursday</option>
+              <option value="5">Friday</option>
+              <option value="6">Saturday</option>
+              <option value="0">Sunday</option>
+            </select>
+            <span class="form-help">Only applies to weekly reports</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="report-day-of-month">Day of Month (for Monthly)</label>
+            <input type="number" 
+                   id="report-day-of-month" 
+                   name="report_day_of_month" 
+                   min="1"
+                   max="31"
+                   value="1"
+                   placeholder="1">
+            <span class="form-help">Only applies to monthly reports (1-31)</span>
+          </div>
+          
+          <div class="form-group">
+            <label style="font-weight: var(--font-weight-medium); margin-bottom: var(--spacing-sm); display: block;">Report Content</label>
+            <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+              <label>
+                <input type="checkbox" id="include-status" name="include_status" checked>
+                Include System Status Summary
+              </label>
+              <label>
+                <input type="checkbox" id="include-logs" name="include_logs" checked>
+                Include Activity Logs
+              </label>
+              <label>
+                <input type="checkbox" id="include-backup" name="include_backup" checked>
+                Include Configuration Backup
+              </label>
+            </div>
+            <span class="form-help">Select what to include in the report</span>
+          </div>
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" class="btn btn-success" id="send-report-now-btn" onclick="handleSendReportNow()">
+            <span class="btn-text">Send Report Now</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="submit" class="btn btn-primary" disabled>
+            <span class="btn-text">Save Report Configuration</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Reset</button>
+        </div>
+      </form>
+      
     </section>
 
     <!-- OTA Update Section -->
@@ -2586,6 +2792,9 @@
       } else if (sectionId === 'logs') {
         // Initialize System Logs section (Task 11)
         initLogsSection();
+      } else if (sectionId === 'email') {
+        // Load Email Reports configuration (Task 13.5)
+        loadEmailConfiguration();
       }
     }
     
@@ -6318,6 +6527,324 @@
       console.log('Hardware Testing section initialized');
     }
     
+    // ===== Task 13: Email Reports Section Functions =====
+    
+    /**
+     * Task 13.5: Load existing email configuration
+     */
+    async function loadEmailConfiguration() {
+      try {
+        const response = await apiRequest('/api/email/config');
+        
+        // Populate SMTP form fields
+        const smtpServer = document.getElementById('smtp-server');
+        const smtpPort = document.getElementById('smtp-port');
+        const smtpUsername = document.getElementById('smtp-username');
+        const smtpPassword = document.getElementById('smtp-password');
+        const smtpSender = document.getElementById('smtp-sender');
+        
+        if (response.smtp) {
+          if (smtpServer && response.smtp.server) smtpServer.value = response.smtp.server;
+          if (smtpPort && response.smtp.port) smtpPort.value = response.smtp.port;
+          if (smtpUsername && response.smtp.username) smtpUsername.value = response.smtp.username;
+          if (smtpPassword && response.smtp.password) smtpPassword.value = response.smtp.password;
+          if (smtpSender && response.smtp.sender) smtpSender.value = response.smtp.sender;
+        }
+        
+        // Populate report configuration fields
+        const reportsEnabled = document.getElementById('reports-enabled');
+        const reportRecipient = document.getElementById('report-recipient');
+        const reportSchedule = document.getElementById('report-schedule');
+        const reportTime = document.getElementById('report-time');
+        const reportDay = document.getElementById('report-day');
+        const reportDayOfMonth = document.getElementById('report-day-of-month');
+        const includeStatus = document.getElementById('include-status');
+        const includeLogs = document.getElementById('include-logs');
+        const includeBackup = document.getElementById('include-backup');
+        
+        if (response.reports) {
+          if (reportsEnabled) reportsEnabled.checked = response.reports.enabled !== false;
+          if (reportRecipient && response.reports.recipient) reportRecipient.value = response.reports.recipient;
+          if (reportSchedule && response.reports.schedule) reportSchedule.value = response.reports.schedule;
+          if (reportTime && response.reports.time) reportTime.value = response.reports.time;
+          if (reportDay && response.reports.day !== undefined) reportDay.value = response.reports.day;
+          if (reportDayOfMonth && response.reports.day_of_month) reportDayOfMonth.value = response.reports.day_of_month;
+          if (includeStatus) includeStatus.checked = response.reports.include_status !== false;
+          if (includeLogs) includeLogs.checked = response.reports.include_logs !== false;
+          if (includeBackup) includeBackup.checked = response.reports.include_backup !== false;
+        }
+        
+        // Update last report status (Task 13.3)
+        if (response.last_report) {
+          const lastReportTime = document.getElementById('last-report-time');
+          const lastReportStatusValue = document.getElementById('last-report-status-value');
+          
+          if (lastReportTime && response.last_report.timestamp) {
+            const date = new Date(response.last_report.timestamp * 1000);
+            lastReportTime.textContent = date.toLocaleString();
+          }
+          
+          if (lastReportStatusValue) {
+            if (response.last_report.success) {
+              lastReportStatusValue.innerHTML = '<span style="color: var(--color-success);">✅ Success</span>';
+            } else {
+              lastReportStatusValue.innerHTML = '<span style="color: var(--color-danger);">❌ Failed</span>';
+              if (response.last_report.error) {
+                lastReportStatusValue.innerHTML += `<br><span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">${response.last_report.error}</span>`;
+              }
+            }
+          }
+        }
+        
+        // Toggle report config fields based on enabled checkbox
+        toggleReportConfigFields();
+        
+        // Save initial state for change tracking
+        const smtpForm = document.getElementById('email-smtp-form');
+        const reportForm = document.getElementById('email-report-form');
+        if (smtpForm) {
+          saveFormInitialState(smtpForm);
+          trackFormChanges(smtpForm);
+        }
+        if (reportForm) {
+          saveFormInitialState(reportForm);
+          trackFormChanges(reportForm);
+        }
+        
+        console.log('Email configuration loaded successfully');
+        
+      } catch (error) {
+        console.error('Error loading email configuration:', error);
+        // Don't show error toast on initial load - config might not exist yet
+      }
+    }
+    
+    /**
+     * Toggle report configuration fields based on enabled checkbox
+     */
+    function toggleReportConfigFields() {
+      const reportsEnabled = document.getElementById('reports-enabled');
+      const reportConfigFields = document.getElementById('report-config-fields');
+      
+      if (reportsEnabled && reportConfigFields) {
+        reportConfigFields.style.display = reportsEnabled.checked ? 'block' : 'none';
+        
+        // Update required state of fields
+        const requiredFields = reportConfigFields.querySelectorAll('input[required], select[required]');
+        requiredFields.forEach(field => {
+          field.disabled = !reportsEnabled.checked;
+        });
+      }
+    }
+    
+    /**
+     * Task 13.1: Handle test email button
+     */
+    async function handleTestEmail() {
+      const button = document.getElementById('test-email-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        // First save the SMTP configuration
+        const form = document.getElementById('email-smtp-form');
+        if (!validateForm(form)) {
+          showToast('Please fix the errors in the SMTP configuration', 'error');
+          return;
+        }
+        
+        const formData = new FormData(form);
+        const smtpConfig = {
+          smtp: {
+            server: formData.get('smtp_server'),
+            port: parseInt(formData.get('smtp_port')),
+            username: formData.get('smtp_username'),
+            password: formData.get('smtp_password'),
+            sender: formData.get('smtp_sender')
+          }
+        };
+        
+        // Save configuration first
+        await apiRequest('/api/email/config', {
+          method: 'POST',
+          body: JSON.stringify(smtpConfig)
+        });
+        
+        // Send test email
+        showToast('Sending test email...', 'info');
+        const response = await apiRequest('/api/email/test', { method: 'POST' });
+        
+        if (response.status === 'success') {
+          showToast('Test email sent successfully! Check your inbox.', 'success', 5000);
+        } else {
+          showToast(response.message || 'Failed to send test email', 'error');
+        }
+        
+      } catch (error) {
+        console.error('Error sending test email:', error);
+        // Error toast already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Task 13.4: Handle send report now button
+     */
+    async function handleSendReportNow() {
+      const button = document.getElementById('send-report-now-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        // Validate both forms
+        const smtpForm = document.getElementById('email-smtp-form');
+        const reportForm = document.getElementById('email-report-form');
+        
+        if (!validateForm(smtpForm)) {
+          showToast('Please fix the errors in the SMTP configuration', 'error');
+          return;
+        }
+        
+        if (!validateForm(reportForm)) {
+          showToast('Please fix the errors in the report configuration', 'error');
+          return;
+        }
+        
+        // Save configurations first
+        await saveEmailConfiguration();
+        
+        // Send report now
+        showToast('Generating and sending report...', 'info');
+        const response = await apiRequest('/api/email/send-report', { method: 'POST' });
+        
+        if (response.status === 'success') {
+          showToast('Report sent successfully!', 'success', 5000);
+          
+          // Reload configuration to update last report status
+          setTimeout(() => loadEmailConfiguration(), 1000);
+        } else {
+          showToast(response.message || 'Failed to send report', 'error');
+        }
+        
+      } catch (error) {
+        console.error('Error sending report:', error);
+        // Error toast already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Save email configuration (both SMTP and report settings)
+     */
+    async function saveEmailConfiguration() {
+      const smtpForm = document.getElementById('email-smtp-form');
+      const reportForm = document.getElementById('email-report-form');
+      
+      const smtpData = new FormData(smtpForm);
+      const reportData = new FormData(reportForm);
+      
+      const config = {
+        smtp: {
+          server: smtpData.get('smtp_server'),
+          port: parseInt(smtpData.get('smtp_port')),
+          username: smtpData.get('smtp_username'),
+          password: smtpData.get('smtp_password'),
+          sender: smtpData.get('smtp_sender')
+        },
+        reports: {
+          enabled: reportData.get('reports_enabled') === 'on',
+          recipient: reportData.get('report_recipient'),
+          schedule: reportData.get('report_schedule'),
+          time: reportData.get('report_time'),
+          day: parseInt(reportData.get('report_day')),
+          day_of_month: parseInt(reportData.get('report_day_of_month')),
+          include_status: reportData.get('include_status') === 'on',
+          include_logs: reportData.get('include_logs') === 'on',
+          include_backup: reportData.get('include_backup') === 'on'
+        }
+      };
+      
+      await apiRequest('/api/email/config', {
+        method: 'POST',
+        body: JSON.stringify(config)
+      });
+    }
+    
+    /**
+     * Initialize Email Reports section
+     */
+    function initEmailReports() {
+      // Load existing configuration
+      loadEmailConfiguration();
+      
+      // Setup reports enabled checkbox handler
+      const reportsEnabled = document.getElementById('reports-enabled');
+      if (reportsEnabled) {
+        reportsEnabled.addEventListener('change', toggleReportConfigFields);
+      }
+      
+      // Setup form submit handlers
+      const smtpForm = document.getElementById('email-smtp-form');
+      if (smtpForm) {
+        smtpForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          if (!validateForm(smtpForm)) {
+            showToast('Please fix the errors in the form', 'error');
+            return;
+          }
+          
+          const submitBtn = smtpForm.querySelector('button[type="submit"]');
+          if (submitBtn) setLoadingState(submitBtn, true);
+          
+          try {
+            await saveEmailConfiguration();
+            showToast('SMTP configuration saved successfully!', 'success');
+            
+            // Update initial state
+            saveFormInitialState(smtpForm);
+            trackFormChanges(smtpForm);
+            
+          } catch (error) {
+            console.error('Error saving SMTP configuration:', error);
+          } finally {
+            if (submitBtn) setLoadingState(submitBtn, false);
+          }
+        });
+      }
+      
+      const reportForm = document.getElementById('email-report-form');
+      if (reportForm) {
+        reportForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          if (!validateForm(reportForm)) {
+            showToast('Please fix the errors in the form', 'error');
+            return;
+          }
+          
+          const submitBtn = reportForm.querySelector('button[type="submit"]');
+          if (submitBtn) setLoadingState(submitBtn, true);
+          
+          try {
+            await saveEmailConfiguration();
+            showToast('Report configuration saved successfully!', 'success');
+            
+            // Update initial state
+            saveFormInitialState(reportForm);
+            trackFormChanges(reportForm);
+            
+          } catch (error) {
+            console.error('Error saving report configuration:', error);
+          } finally {
+            if (submitBtn) setLoadingState(submitBtn, false);
+          }
+        });
+      }
+      
+      console.log('Email Reports section initialized');
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -6353,6 +6880,9 @@
       
       // Initialize Hardware Testing section
       initHardwareTesting();
+      
+      // Initialize Email Reports section
+      initEmailReports();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
