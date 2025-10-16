@@ -18,6 +18,34 @@ typedef struct {
     uint32_t ssrc;          // Synchronization source
 } __attribute__((packed)) rtp_header_t;
 
+// RFC 4733 telephone-event packet structure
+typedef struct {
+    uint8_t event;        // Event code (0-15 for DTMF)
+    uint8_t e_r_volume;   // E(1bit) R(1bit) Volume(6bits)
+    uint16_t duration;    // Duration in timestamp units
+} __attribute__((packed)) rtp_telephone_event_t;
+
+// DTMF event codes (RFC 4733 Section 3.2)
+#define DTMF_EVENT_0    0
+#define DTMF_EVENT_1    1
+#define DTMF_EVENT_2    2
+#define DTMF_EVENT_3    3
+#define DTMF_EVENT_4    4
+#define DTMF_EVENT_5    5
+#define DTMF_EVENT_6    6
+#define DTMF_EVENT_7    7
+#define DTMF_EVENT_8    8
+#define DTMF_EVENT_9    9
+#define DTMF_EVENT_STAR 10  // *
+#define DTMF_EVENT_HASH 11  // #
+#define DTMF_EVENT_A    12
+#define DTMF_EVENT_B    13
+#define DTMF_EVENT_C    14
+#define DTMF_EVENT_D    15
+
+// Callback function pointer type for telephone-events
+typedef void (*telephone_event_callback_t)(uint8_t event);
+
 // Initialize RTP handler
 void rtp_init(void);
 

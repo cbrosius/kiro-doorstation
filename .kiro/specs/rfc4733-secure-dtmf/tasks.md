@@ -1,6 +1,11 @@
 # Implementation Plan
 
-- [ ] 1. Define RFC 4733 data structures and constants
+- [x] 1. Define RFC 4733 data structures and constants
+
+
+
+
+
   - Create telephone-event packet structure in rtp_handler.h
   - Define DTMF event code constants (0-15)
   - Add callback function pointer type for telephone-events
