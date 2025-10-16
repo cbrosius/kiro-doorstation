@@ -532,6 +532,307 @@
       z-index: 1100;
     }
     
+    /* ===== Form Styles (Task 4) ===== */
+    
+    .config-form {
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-lg);
+      margin-bottom: var(--spacing-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .form-group {
+      margin-bottom: var(--spacing-lg);
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      color: var(--color-text);
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .form-group label .required {
+      color: var(--color-danger);
+      margin-left: var(--spacing-xs);
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="password"],
+    .form-group input[type="url"],
+    .form-group input[type="tel"],
+    .form-group input[type="number"],
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-md);
+      font-size: var(--font-size-base);
+      font-family: var(--font-family);
+      color: var(--color-text);
+      background-color: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-sm);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+    }
+    
+    .form-group input.invalid,
+    .form-group select.invalid,
+    .form-group textarea.invalid {
+      border-color: var(--color-danger);
+    }
+    
+    .form-group input.invalid:focus,
+    .form-group select.invalid:focus,
+    .form-group textarea.invalid:focus {
+      box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+    }
+    
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    
+    .form-group input[type="checkbox"],
+    .form-group input[type="radio"] {
+      width: auto;
+      margin-right: var(--spacing-sm);
+    }
+    
+    .error-message {
+      display: block;
+      font-size: var(--font-size-sm);
+      color: var(--color-danger);
+      margin-top: var(--spacing-xs);
+    }
+    
+    .form-help {
+      display: block;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--spacing-xs);
+    }
+    
+    .form-actions {
+      display: flex;
+      gap: var(--spacing-md);
+      margin-top: var(--spacing-xl);
+      padding-top: var(--spacing-lg);
+      border-top: 1px solid var(--color-border);
+    }
+    
+    /* ===== Button Styles ===== */
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-lg);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      font-family: var(--font-family);
+      color: var(--color-text-inverse);
+      background-color: var(--color-primary);
+      border: none;
+      border-radius: var(--border-radius-sm);
+      cursor: pointer;
+      transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+      user-select: none;
+      min-height: 40px;
+    }
+    
+    .btn:hover:not(:disabled) {
+      background-color: var(--color-primary-dark);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+    
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .btn:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
+    }
+    
+    .btn-primary {
+      background-color: var(--color-primary);
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--color-primary-dark);
+    }
+    
+    .btn-secondary {
+      background-color: var(--color-text-secondary);
+      color: var(--color-text-inverse);
+    }
+    
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--color-text);
+    }
+    
+    .btn-danger {
+      background-color: var(--color-danger);
+    }
+    
+    .btn-danger:hover:not(:disabled) {
+      background-color: #c82333;
+    }
+    
+    .btn-warning {
+      background-color: var(--color-warning);
+      color: var(--color-text);
+    }
+    
+    .btn-warning:hover:not(:disabled) {
+      background-color: #e0a800;
+    }
+    
+    .btn-info {
+      background-color: var(--color-info);
+    }
+    
+    .btn-info:hover:not(:disabled) {
+      background-color: #138496;
+    }
+    
+    .btn-success {
+      background-color: var(--color-success);
+    }
+    
+    .btn-success:hover:not(:disabled) {
+      background-color: #218838;
+    }
+    
+    .btn-spinner {
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    
+    .btn-sm {
+      padding: var(--spacing-xs) var(--spacing-md);
+      font-size: var(--font-size-sm);
+      min-height: 32px;
+    }
+    
+    .btn-lg {
+      padding: var(--spacing-md) var(--spacing-xl);
+      font-size: var(--font-size-lg);
+      min-height: 48px;
+    }
+    
+    /* ===== Dialog Styles (Task 4.4) ===== */
+    
+    .dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      opacity: 0;
+      transition: opacity var(--transition-base);
+    }
+    
+    .dialog-overlay.show {
+      opacity: 1;
+    }
+    
+    .dialog {
+      background-color: var(--color-surface);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--shadow-xl);
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: scale(0.9);
+      transition: transform var(--transition-base);
+    }
+    
+    .dialog-overlay.show .dialog {
+      transform: scale(1);
+    }
+    
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+    }
+    
+    .dialog-icon {
+      font-size: var(--font-size-2xl);
+      flex-shrink: 0;
+    }
+    
+    .dialog-title {
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text);
+      margin: 0;
+    }
+    
+    .dialog-body {
+      padding: var(--spacing-lg);
+    }
+    
+    .dialog-message {
+      font-size: var(--font-size-base);
+      color: var(--color-text);
+      line-height: 1.6;
+      margin: 0;
+    }
+    
+    .dialog-footer {
+      display: flex;
+      gap: var(--spacing-md);
+      justify-content: flex-end;
+      padding: var(--spacing-lg);
+      border-top: 1px solid var(--color-border);
+    }
+    
+    .dialog-warning .dialog-icon {
+      color: var(--color-warning);
+    }
+    
+    .dialog-danger .dialog-icon {
+      color: var(--color-danger);
+    }
+    
     /* ===== Responsive Design (Task 2.4) ===== */
     
     /* Mobile: < 768px */
@@ -834,13 +1135,196 @@
     <!-- Dashboard Section -->
     <section class="content-section active" id="section-dashboard">
       <h2 tabindex="-1">Dashboard</h2>
-      <p>System overview and quick actions will be implemented here.</p>
+      
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Quick Actions</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Perform common system actions. Destructive actions will require confirmation.
+        </p>
+        
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button class="btn btn-warning" onclick="handleSystemRestart()">
+            <span>🔄</span>
+            <span>Restart System</span>
+          </button>
+          <button class="btn btn-danger" onclick="handleFactoryReset()">
+            <span>⚠️</span>
+            <span>Factory Reset</span>
+          </button>
+        </div>
+      </div>
+      
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <h3 style="margin-bottom: var(--spacing-md);">Form Validation Demo</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          This demonstrates the form validation system. Try submitting without filling required fields, 
+          or enter invalid data to see validation in action. The save button is disabled until you make changes.
+        </p>
+        
+        <form class="config-form" id="demo-form" data-api="/api/demo/config" style="border: none; padding: 0; box-shadow: none;">
+          <div class="form-group">
+            <label for="demo-email">
+              Email Address
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="email" 
+              id="demo-email" 
+              name="email" 
+              required
+              data-error="Please enter a valid email address"
+              placeholder="user@example.com">
+            <span class="error-message" hidden></span>
+          </div>
+          
+          <div class="form-group">
+            <label for="demo-number">
+              Port Number
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="number" 
+              id="demo-number" 
+              name="port" 
+              required
+              min="1"
+              max="65535"
+              data-error="Port must be between 1 and 65535"
+              placeholder="5060">
+            <span class="error-message" hidden></span>
+          </div>
+          
+          <div class="form-group">
+            <label for="demo-checkbox">
+              <input type="checkbox" id="demo-checkbox" name="enabled">
+              Enable this feature
+            </label>
+            <span class="form-help">Check this box to enable the feature</span>
+          </div>
+          
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled>
+              <span class="btn-text">Save Settings</span>
+              <span class="btn-spinner" hidden>⏳</span>
+            </button>
+            <button type="reset" class="btn btn-secondary">Reset</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <!-- SIP Settings Section -->
     <section class="content-section" id="section-sip" hidden>
       <h2 tabindex="-1">SIP Settings</h2>
-      <p>SIP configuration will be implemented here.</p>
+      
+      <!-- Example form demonstrating Task 4 functionality -->
+      <form class="config-form" id="sip-form" data-api="/api/sip/config">
+        <div class="form-group">
+          <label for="sip-server">
+            SIP Server
+            <span class="required">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="sip-server" 
+            name="server" 
+            required
+            pattern="^[a-zA-Z0-9.-]+$"
+            data-error="Please enter a valid server address (letters, numbers, dots, and hyphens only)"
+            placeholder="sip.example.com">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Enter your SIP server domain or IP address</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="sip-username">
+            Username
+            <span class="required">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="sip-username" 
+            name="username" 
+            required
+            minlength="3"
+            data-error="Username must be at least 3 characters"
+            placeholder="doorstation">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="sip-password">
+            Password
+            <span class="required">*</span>
+          </label>
+          <input 
+            type="password" 
+            id="sip-password" 
+            name="password" 
+            required
+            minlength="6"
+            data-error="Password must be at least 6 characters"
+            placeholder="••••••••">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="sip-target1">
+            Target 1 (Apartment 1)
+            <span class="required">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="sip-target1" 
+            name="target1" 
+            required
+            pattern="^sip:[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$"
+            data-error="Please enter a valid SIP URI (e.g., sip:user@domain.com)"
+            placeholder="sip:apartment1@example.com">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="sip-target2">
+            Target 2 (Apartment 2)
+          </label>
+          <input 
+            type="text" 
+            id="sip-target2" 
+            name="target2" 
+            pattern="^sip:[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$"
+            data-error="Please enter a valid SIP URI (e.g., sip:user@domain.com)"
+            placeholder="sip:apartment2@example.com">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Optional second target for dual apartment setup</span>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" disabled>
+            <span class="btn-text">Save Configuration</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Reset</button>
+        </div>
+      </form>
+      
+      <div style="margin-top: var(--spacing-lg);">
+        <h3 style="margin-bottom: var(--spacing-md);">Connection Management</h3>
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button class="btn btn-success" onclick="handleSIPConnect()">
+            <span>📞</span>
+            <span>Connect to SIP</span>
+          </button>
+          <button class="btn btn-warning" onclick="handleSIPDisconnect()">
+            <span>📴</span>
+            <span>Disconnect</span>
+          </button>
+          <button class="btn btn-info" onclick="handleSIPTest()">
+            <span>🧪</span>
+            <span>Test Configuration</span>
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Network Settings Section -->
@@ -1392,6 +1876,560 @@
       }
     }
     
+    // ===== Task 4: Form Handling and Validation =====
+    
+    // Store initial form states for change tracking
+    let formInitialStates = {};
+    
+    // ===== Task 4.1: Form Validation System =====
+    
+    /**
+     * Validate a form using HTML5 validation
+     * @param {HTMLFormElement} form - The form to validate
+     * @returns {boolean} True if form is valid, false otherwise
+     */
+    function validateForm(form) {
+      let isValid = true;
+      const inputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+      
+      inputs.forEach(input => {
+        const errorSpan = input.parentElement.querySelector('.error-message');
+        
+        // Check HTML5 validity
+        if (!input.validity.valid) {
+          isValid = false;
+          
+          // Get custom error message or use default
+          let errorMessage = input.dataset.error || 'This field is required';
+          
+          // Provide specific error messages based on validity state
+          if (input.validity.valueMissing) {
+            errorMessage = input.dataset.error || 'This field is required';
+          } else if (input.validity.typeMismatch) {
+            errorMessage = `Please enter a valid ${input.type}`;
+          } else if (input.validity.patternMismatch) {
+            errorMessage = input.dataset.error || 'Please match the requested format';
+          } else if (input.validity.tooShort) {
+            errorMessage = `Minimum length is ${input.minLength} characters`;
+          } else if (input.validity.tooLong) {
+            errorMessage = `Maximum length is ${input.maxLength} characters`;
+          } else if (input.validity.rangeUnderflow) {
+            errorMessage = `Minimum value is ${input.min}`;
+          } else if (input.validity.rangeOverflow) {
+            errorMessage = `Maximum value is ${input.max}`;
+          }
+          
+          if (errorSpan) {
+            errorSpan.textContent = errorMessage;
+            errorSpan.hidden = false;
+          }
+          input.classList.add('invalid');
+          input.setAttribute('aria-invalid', 'true');
+        } else {
+          if (errorSpan) {
+            errorSpan.hidden = true;
+          }
+          input.classList.remove('invalid');
+          input.setAttribute('aria-invalid', 'false');
+        }
+      });
+      
+      return isValid;
+    }
+    
+    /**
+     * Clear validation errors from a form
+     * @param {HTMLFormElement} form - The form to clear errors from
+     */
+    function clearValidationErrors(form) {
+      const inputs = form.querySelectorAll('input, select, textarea');
+      inputs.forEach(input => {
+        const errorSpan = input.parentElement.querySelector('.error-message');
+        if (errorSpan) {
+          errorSpan.hidden = true;
+        }
+        input.classList.remove('invalid');
+        input.setAttribute('aria-invalid', 'false');
+      });
+    }
+    
+    /**
+     * Setup real-time validation for form inputs
+     * @param {HTMLFormElement} form - The form to setup validation for
+     */
+    function setupFormValidation(form) {
+      const inputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+      
+      inputs.forEach(input => {
+        // Validate on blur
+        input.addEventListener('blur', () => {
+          if (input.value) {
+            validateForm(form);
+          }
+        });
+        
+        // Clear error on input
+        input.addEventListener('input', () => {
+          if (input.classList.contains('invalid')) {
+            const errorSpan = input.parentElement.querySelector('.error-message');
+            if (input.validity.valid) {
+              if (errorSpan) {
+                errorSpan.hidden = true;
+              }
+              input.classList.remove('invalid');
+              input.setAttribute('aria-invalid', 'false');
+            }
+          }
+        });
+      });
+    }
+    
+    // ===== Task 4.2: Unsaved Changes Tracking =====
+    
+    /**
+     * Get form data as an object
+     * @param {HTMLFormElement} form - The form to get data from
+     * @returns {Object} Form data as key-value pairs
+     */
+    function getFormData(form) {
+      const formData = new FormData(form);
+      const data = {};
+      
+      for (const [key, value] of formData.entries()) {
+        // Handle checkboxes
+        const input = form.elements[key];
+        if (input && input.type === 'checkbox') {
+          data[key] = input.checked;
+        } else {
+          data[key] = value;
+        }
+      }
+      
+      return data;
+    }
+    
+    /**
+     * Track form changes and update UI accordingly
+     * @param {HTMLFormElement} form - The form to track changes for
+     */
+    function trackFormChanges(form) {
+      const formId = form.id;
+      if (!formId) return;
+      
+      const currentState = getFormData(form);
+      const initialState = formInitialStates[formId] || {};
+      
+      // Compare current state with initial state
+      const hasChanges = JSON.stringify(currentState) !== JSON.stringify(initialState);
+      
+      // Enable/disable save button
+      const saveButton = form.querySelector('button[type="submit"]');
+      if (saveButton) {
+        saveButton.disabled = !hasChanges;
+      }
+      
+      // Show/hide unsaved indicator in sidebar
+      const section = form.closest('.content-section');
+      if (section) {
+        const sectionId = section.id.replace('section-', '');
+        const navItem = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+        if (navItem) {
+          const indicator = navItem.querySelector('.unsaved-indicator');
+          if (indicator) {
+            indicator.hidden = !hasChanges;
+          }
+        }
+      }
+    }
+    
+    /**
+     * Save initial form state for change tracking
+     * @param {HTMLFormElement} form - The form to save state for
+     */
+    function saveFormInitialState(form) {
+      const formId = form.id;
+      if (!formId) return;
+      
+      formInitialStates[formId] = getFormData(form);
+    }
+    
+    /**
+     * Setup change tracking for a form
+     * @param {HTMLFormElement} form - The form to setup tracking for
+     */
+    function setupFormChangeTracking(form) {
+      // Save initial state
+      saveFormInitialState(form);
+      
+      // Track changes on input
+      form.addEventListener('input', () => {
+        trackFormChanges(form);
+      });
+      
+      // Track changes on change (for select, checkbox, radio)
+      form.addEventListener('change', () => {
+        trackFormChanges(form);
+      });
+    }
+    
+    // ===== Task 4.3: Form Submission Handler =====
+    
+    /**
+     * Handle form submission with loading states and error handling
+     * @param {Event} event - The submit event
+     */
+    async function handleFormSubmit(event) {
+      event.preventDefault();
+      const form = event.target;
+      
+      // Validate form
+      if (!validateForm(form)) {
+        showToast('Please fix the errors in the form', 'error');
+        // Focus on first invalid input
+        const firstInvalid = form.querySelector('.invalid');
+        if (firstInvalid) {
+          firstInvalid.focus();
+        }
+        return;
+      }
+      
+      // Get API endpoint from form data attribute
+      const endpoint = form.dataset.api;
+      if (!endpoint) {
+        console.error('Form missing data-api attribute');
+        showToast('Configuration error. Please contact support.', 'error');
+        return;
+      }
+      
+      // Get submit button
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (!submitBtn) return;
+      
+      // Show loading state
+      setLoadingState(submitBtn, true);
+      
+      try {
+        // Get form data
+        const formData = getFormData(form);
+        
+        // Make API request
+        const response = await apiRequest(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(formData)
+        });
+        
+        // Show success message
+        showToast(response.message || 'Configuration saved successfully!', 'success');
+        
+        // Update initial state to current state
+        saveFormInitialState(form);
+        trackFormChanges(form);
+        
+        // Call custom success handler if defined
+        if (form.dataset.onSuccess) {
+          const handlerName = form.dataset.onSuccess;
+          if (typeof window[handlerName] === 'function') {
+            window[handlerName](response);
+          }
+        }
+        
+      } catch (error) {
+        // Error already shown by apiRequest
+        console.error('Form submission error:', error);
+      } finally {
+        // Reset button state
+        setLoadingState(submitBtn, false);
+      }
+    }
+    
+    /**
+     * Setup form submission handler
+     * @param {HTMLFormElement} form - The form to setup handler for
+     */
+    function setupFormSubmission(form) {
+      form.addEventListener('submit', handleFormSubmit);
+      
+      // Prevent default form submission
+      form.setAttribute('novalidate', 'true');
+      
+      // Setup reset button
+      const resetBtn = form.querySelector('button[type="reset"]');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          
+          // Reset form to initial state
+          const formId = form.id;
+          const initialState = formInitialStates[formId];
+          
+          if (initialState) {
+            // Restore initial values
+            Object.keys(initialState).forEach(key => {
+              const input = form.elements[key];
+              if (input) {
+                if (input.type === 'checkbox') {
+                  input.checked = initialState[key];
+                } else {
+                  input.value = initialState[key];
+                }
+              }
+            });
+          } else {
+            // Just reset the form
+            form.reset();
+          }
+          
+          // Clear validation errors
+          clearValidationErrors(form);
+          
+          // Update change tracking
+          trackFormChanges(form);
+        });
+      }
+    }
+    
+    // ===== Task 4.4: Confirmation Dialogs for Destructive Actions =====
+    
+    /**
+     * Show a confirmation dialog
+     * @param {string} title - Dialog title
+     * @param {string} message - Dialog message
+     * @param {string} confirmText - Confirm button text (default: 'Confirm')
+     * @param {string} cancelText - Cancel button text (default: 'Cancel')
+     * @param {string} type - Dialog type: 'warning', 'danger' (default: 'warning')
+     * @returns {Promise<boolean>} True if confirmed, false if cancelled
+     */
+    function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+      return new Promise((resolve) => {
+        // Create dialog overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'dialog-title');
+        overlay.setAttribute('aria-describedby', 'dialog-message');
+        
+        // Create dialog
+        const dialog = document.createElement('div');
+        dialog.className = `dialog dialog-${type}`;
+        
+        const iconMap = {
+          warning: '⚠️',
+          danger: '🚨'
+        };
+        const icon = iconMap[type] || iconMap.warning;
+        
+        dialog.innerHTML = `
+          <div class="dialog-header">
+            <span class="dialog-icon">${icon}</span>
+            <h3 class="dialog-title" id="dialog-title">${title}</h3>
+          </div>
+          <div class="dialog-body">
+            <p class="dialog-message" id="dialog-message">${message}</p>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary dialog-cancel">${cancelText}</button>
+            <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
+          </div>
+        `;
+        
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        // Animate in
+        setTimeout(() => overlay.classList.add('show'), 10);
+        
+        // Focus confirm button
+        const confirmBtn = dialog.querySelector('.dialog-confirm');
+        setTimeout(() => confirmBtn.focus(), 100);
+        
+        // Handle confirm
+        confirmBtn.addEventListener('click', () => {
+          closeDialog(overlay);
+          resolve(true);
+        });
+        
+        // Handle cancel
+        const cancelBtn = dialog.querySelector('.dialog-cancel');
+        cancelBtn.addEventListener('click', () => {
+          closeDialog(overlay);
+          resolve(false);
+        });
+        
+        // Handle escape key
+        const handleEscape = (e) => {
+          if (e.key === 'Escape') {
+            closeDialog(overlay);
+            resolve(false);
+            document.removeEventListener('keydown', handleEscape);
+          }
+        };
+        document.addEventListener('keydown', handleEscape);
+        
+        // Handle overlay click
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            closeDialog(overlay);
+            resolve(false);
+          }
+        });
+      });
+    }
+    
+    /**
+     * Close a dialog
+     * @param {HTMLElement} overlay - The dialog overlay element
+     */
+    function closeDialog(overlay) {
+      overlay.classList.remove('show');
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      }, 300);
+    }
+    
+    /**
+     * Confirm system restart
+     * @returns {Promise<boolean>} True if confirmed
+     */
+    async function confirmSystemRestart() {
+      return await showConfirmDialog(
+        'Restart System',
+        'Are you sure you want to restart the system? This will temporarily interrupt all services.',
+        'Restart',
+        'Cancel',
+        'warning'
+      );
+    }
+    
+    /**
+     * Confirm factory reset
+     * @returns {Promise<boolean>} True if confirmed
+     */
+    async function confirmFactoryReset() {
+      return await showConfirmDialog(
+        'Factory Reset',
+        'WARNING: This will erase ALL configuration settings and restart the device. This action cannot be undone. Are you absolutely sure?',
+        'Yes, Reset Everything',
+        'Cancel',
+        'danger'
+      );
+    }
+    
+    /**
+     * Confirm SIP disconnect
+     * @returns {Promise<boolean>} True if confirmed
+     */
+    async function confirmSIPDisconnect() {
+      return await showConfirmDialog(
+        'Disconnect SIP',
+        'Are you sure you want to disconnect from the SIP server? You will not be able to receive calls until reconnected.',
+        'Disconnect',
+        'Cancel',
+        'warning'
+      );
+    }
+    
+    /**
+     * Initialize all forms on the page
+     */
+    function initForms() {
+      const forms = document.querySelectorAll('form.config-form');
+      
+      forms.forEach(form => {
+        setupFormValidation(form);
+        setupFormChangeTracking(form);
+        setupFormSubmission(form);
+      });
+    }
+    
+    // ===== Example Action Handlers (demonstrating confirmation dialogs) =====
+    
+    /**
+     * Handle SIP connect action
+     */
+    async function handleSIPConnect() {
+      try {
+        showToast('Connecting to SIP server...', 'info');
+        const response = await apiRequest('/api/sip/connect', { method: 'POST' });
+        showToast(response.message || 'Connected to SIP server successfully!', 'success');
+      } catch (error) {
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Handle SIP disconnect action (with confirmation)
+     */
+    async function handleSIPDisconnect() {
+      const confirmed = await confirmSIPDisconnect();
+      if (!confirmed) return;
+      
+      try {
+        showToast('Disconnecting from SIP server...', 'info');
+        const response = await apiRequest('/api/sip/disconnect', { method: 'POST' });
+        showToast(response.message || 'Disconnected from SIP server', 'success');
+      } catch (error) {
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Handle SIP test action
+     */
+    async function handleSIPTest() {
+      try {
+        showToast('Testing SIP configuration...', 'info');
+        const response = await apiRequest('/api/sip/test', { method: 'POST' });
+        showToast(response.message || 'SIP configuration test successful!', 'success');
+      } catch (error) {
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Handle system restart action (with confirmation)
+     */
+    async function handleSystemRestart() {
+      const confirmed = await confirmSystemRestart();
+      if (!confirmed) return;
+      
+      try {
+        showToast('Restarting system...', 'info');
+        await apiRequest('/api/system/restart', { method: 'POST' });
+        showToast('System is restarting. Page will reload automatically.', 'info', 5000);
+        
+        // Reload page after delay
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
+      } catch (error) {
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Handle factory reset action (with confirmation)
+     */
+    async function handleFactoryReset() {
+      const confirmed = await confirmFactoryReset();
+      if (!confirmed) return;
+      
+      try {
+        showToast('Performing factory reset...', 'warning');
+        await apiRequest('/api/system/factory-reset', { method: 'POST' });
+        showToast('Factory reset complete. Device is restarting.', 'info', 5000);
+        
+        // Reload page after delay
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
+      } catch (error) {
+        // Error already shown by apiRequest
+      }
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -1406,6 +2444,9 @@
       
       // Initialize status panel
       initStatusPanel();
+      
+      // Initialize forms
+      initForms();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
