@@ -227,7 +227,7 @@ static void dtmf_add_security_log(dtmf_command_type_t type, bool success,
         } else {
             struct timeval tv;
             gettimeofday(&tv, NULL);
-            timestamp = (uint64_t)(tv.tv_sec * 1000ULL + tv.tv_usec / 1000ULL);
+            timestamp = tv.tv_sec * 1000ULL + tv.tv_usec / 1000ULL;
         }
 
         // Add entry to circular buffer
@@ -582,7 +582,7 @@ static void dtmf_command_handler(dtmf_tone_t tone)
         memset(command_buffer, 0, sizeof(command_buffer));
         command_index = 0;
     } else if (command_index < sizeof(command_buffer) - 1) {
-        command_buffer[command_index++] = tone;
+        command_buffer[command_index++] = (char)tone;
     }
 }
 
@@ -665,9 +665,13 @@ int dtmf_get_security_logs(dtmf_security_log_t* entries, int max_entries, uint64
         }
 
         // Iterate through all entries in chronological order
-        for (int i = 0; i < security_log_count && count < max_entries; i++) {
+        for (int i = 0; i < security_log_count; i++) {
+            if (count >= max_entries) {
+                break;
+            }
+            
             int index = (start_index + i) % SECURITY_LOG_SIZE;
-            dtmf_security_log_t* entry = &security_log_buffer[index];
+            const dtmf_security_log_t* entry = &security_log_buffer[index];
 
             // Filter by timestamp
             if (entry->timestamp >= since_timestamp) {
