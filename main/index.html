@@ -2269,10 +2269,129 @@
       </div>
     </section>
 
-    <!-- System Logs Section -->
+    <!-- System Logs Section (Task 11) -->
     <section class="content-section" id="section-logs" hidden>
       <h2 tabindex="-1">System Logs</h2>
-      <p>System logs will be implemented here.</p>
+      
+      <!-- Task 11.1: SIP Connection Log Display -->
+      <div class="config-form">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+          <h3 style="margin: 0;">SIP Connection Logs</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
+              <input type="checkbox" id="sip-log-auto-refresh" checked>
+              <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
+            </label>
+            <button class="btn btn-sm btn-info" onclick="refreshSIPLogs()" id="sip-log-refresh-btn">
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="clearSIPLogDisplay()">
+              <span>🗑️</span>
+              <span>Clear Display</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Task 11.3: Log Search and Filtering for SIP Logs -->
+        <div style="margin-bottom: var(--spacing-md);">
+          <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); flex-wrap: wrap;">
+            <input 
+              type="search" 
+              id="sip-log-search" 
+              placeholder="Search SIP logs..." 
+              style="flex: 1; min-width: 200px; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-bg); color: var(--color-text);">
+            <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
+              <button class="btn btn-sm" onclick="filterSIPLogs('all')" data-filter="all" style="background-color: var(--color-text-secondary);">All</button>
+              <button class="btn btn-sm" onclick="filterSIPLogs('error')" data-filter="error" style="background-color: var(--color-danger);">Errors</button>
+              <button class="btn btn-sm" onclick="filterSIPLogs('info')" data-filter="info" style="background-color: var(--color-info);">Info</button>
+              <button class="btn btn-sm" onclick="filterSIPLogs('sent')" data-filter="sent" style="background-color: var(--color-primary);">Sent</button>
+              <button class="btn btn-sm" onclick="filterSIPLogs('received')" data-filter="received" style="background-color: var(--color-warning);">Received</button>
+            </div>
+          </div>
+          <div id="sip-log-filter-count" style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+            Showing all entries
+          </div>
+        </div>
+        
+        <!-- SIP Log Container -->
+        <div id="sip-log-container" style="position: relative; max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md); font-family: 'Courier New', monospace; font-size: var(--font-size-sm);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading SIP logs...</div>
+        </div>
+        
+        <!-- Task 11.5: Jump to Bottom Button -->
+        <button id="sip-log-jump-bottom" class="btn btn-sm btn-info" onclick="jumpToBottomSIPLog()" style="position: absolute; bottom: var(--spacing-lg); right: var(--spacing-lg); display: none; box-shadow: var(--shadow-lg);">
+          <span>⬇️</span>
+          <span>Jump to Bottom</span>
+        </button>
+        
+        <!-- Task 11.4: Log Export Functionality -->
+        <div style="margin-top: var(--spacing-md); display: flex; justify-content: flex-end;">
+          <button class="btn btn-sm btn-secondary" onclick="exportSIPLogs()">
+            <span>💾</span>
+            <span>Export to File</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Task 11.2: DTMF Security Log Display -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+          <h3 style="margin: 0;">DTMF Security Logs</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
+              <input type="checkbox" id="dtmf-log-auto-refresh" checked>
+              <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
+            </label>
+            <button class="btn btn-sm btn-info" onclick="refreshDTMFLogs()" id="dtmf-log-refresh-btn">
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="clearDTMFLogDisplay()">
+              <span>🗑️</span>
+              <span>Clear Display</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Task 11.3: Log Search and Filtering for DTMF Logs -->
+        <div style="margin-bottom: var(--spacing-md);">
+          <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); flex-wrap: wrap;">
+            <input 
+              type="search" 
+              id="dtmf-log-search" 
+              placeholder="Search DTMF logs..." 
+              style="flex: 1; min-width: 200px; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-bg); color: var(--color-text);">
+            <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
+              <button class="btn btn-sm" onclick="filterDTMFLogs('all')" data-filter="all" style="background-color: var(--color-text-secondary);">All</button>
+              <button class="btn btn-sm" onclick="filterDTMFLogs('success')" data-filter="success" style="background-color: var(--color-success);">Success</button>
+              <button class="btn btn-sm" onclick="filterDTMFLogs('failed')" data-filter="failed" style="background-color: var(--color-danger);">Failed</button>
+            </div>
+          </div>
+          <div id="dtmf-log-filter-count" style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+            Showing all entries
+          </div>
+        </div>
+        
+        <!-- DTMF Log Container -->
+        <div id="dtmf-log-container" style="position: relative; max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md); font-family: 'Courier New', monospace; font-size: var(--font-size-sm);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading DTMF logs...</div>
+        </div>
+        
+        <!-- Task 11.5: Jump to Bottom Button -->
+        <button id="dtmf-log-jump-bottom" class="btn btn-sm btn-info" onclick="jumpToBottomDTMFLog()" style="position: absolute; bottom: var(--spacing-lg); right: var(--spacing-lg); display: none; box-shadow: var(--shadow-lg);">
+          <span>⬇️</span>
+          <span>Jump to Bottom</span>
+        </button>
+        
+        <!-- Task 11.4: Log Export Functionality -->
+        <div style="margin-top: var(--spacing-md); display: flex; justify-content: flex-end;">
+          <button class="btn btn-sm btn-secondary" onclick="exportDTMFLogs()">
+            <span>💾</span>
+            <span>Export to File</span>
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Hardware Testing Section -->
@@ -2354,7 +2473,7 @@
         closeMobileSidebar();
       }
       
-      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9, Task 10)
+      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9, Task 10, Task 11)
       if (sectionId === 'sip') {
         // Load SIP configuration from server (Task 7.4)
         loadSIPConfiguration();
@@ -2370,6 +2489,9 @@
       } else if (sectionId === 'security') {
         // Load Security Settings (Task 10.4)
         loadSecurityConfiguration();
+      } else if (sectionId === 'logs') {
+        // Initialize System Logs section (Task 11)
+        initLogsSection();
       }
     }
     
@@ -5180,6 +5302,694 @@
     function initSecuritySettings() {
       // Load existing configuration
       loadSecurityConfiguration();
+    }
+    
+    // ===== Task 11: System Logs Section Functions =====
+    
+    // Log storage
+    let sipLogEntries = [];
+    let dtmfLogEntries = [];
+    let sipLogLastTimestamp = 0;
+    let dtmfLogLastTimestamp = 0;
+    let sipLogAutoRefreshInterval = null;
+    let dtmfLogAutoRefreshInterval = null;
+    let sipLogCurrentFilter = 'all';
+    let dtmfLogCurrentFilter = 'all';
+    
+    // ===== Task 11.1: SIP Connection Log Display =====
+    
+    /**
+     * Initialize SIP logs section
+     */
+    function initSIPLogs() {
+      // Load initial logs
+      refreshSIPLogs();
+      
+      // Setup auto-refresh
+      const autoRefreshCheckbox = document.getElementById('sip-log-auto-refresh');
+      if (autoRefreshCheckbox) {
+        autoRefreshCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            startSIPLogAutoRefresh();
+          } else {
+            stopSIPLogAutoRefresh();
+          }
+        });
+        
+        // Start auto-refresh if checked
+        if (autoRefreshCheckbox.checked) {
+          startSIPLogAutoRefresh();
+        }
+      }
+      
+      // Setup search input
+      const searchInput = document.getElementById('sip-log-search');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          filterAndDisplaySIPLogs();
+        });
+      }
+      
+      // Setup scroll detection for jump to bottom button
+      const container = document.getElementById('sip-log-container');
+      if (container) {
+        container.addEventListener('scroll', () => {
+          updateSIPLogJumpButton();
+        });
+      }
+    }
+    
+    /**
+     * Start SIP log auto-refresh
+     */
+    function startSIPLogAutoRefresh() {
+      if (sipLogAutoRefreshInterval) {
+        clearInterval(sipLogAutoRefreshInterval);
+      }
+      sipLogAutoRefreshInterval = setInterval(() => {
+        refreshSIPLogs(true); // Silent refresh
+      }, 10000); // Refresh every 10 seconds
+    }
+    
+    /**
+     * Stop SIP log auto-refresh
+     */
+    function stopSIPLogAutoRefresh() {
+      if (sipLogAutoRefreshInterval) {
+        clearInterval(sipLogAutoRefreshInterval);
+        sipLogAutoRefreshInterval = null;
+      }
+    }
+    
+    /**
+     * Refresh SIP logs from server
+     * @param {boolean} silent - If true, don't show loading message
+     */
+    async function refreshSIPLogs(silent = false) {
+      try {
+        // Fetch logs since last timestamp (incremental)
+        const endpoint = sipLogLastTimestamp > 0 
+          ? `/api/sip/log?since=${sipLogLastTimestamp}`
+          : '/api/sip/log';
+        
+        const response = await apiRequest(endpoint, { silentError: silent });
+        
+        if (response && response.entries && Array.isArray(response.entries)) {
+          // Append new entries
+          if (response.entries.length > 0) {
+            sipLogEntries = sipLogEntries.concat(response.entries);
+            
+            // Update last timestamp
+            const timestamps = response.entries.map(e => e.timestamp || 0);
+            sipLogLastTimestamp = Math.max(...timestamps, sipLogLastTimestamp);
+            
+            // Keep only last 1000 entries to prevent memory issues
+            if (sipLogEntries.length > 1000) {
+              sipLogEntries = sipLogEntries.slice(-1000);
+            }
+          }
+        }
+        
+        // Display logs
+        filterAndDisplaySIPLogs();
+        
+      } catch (error) {
+        if (!silent) {
+          console.error('Error refreshing SIP logs:', error);
+          const container = document.getElementById('sip-log-container');
+          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
+        }
+      }
+    }
+    
+    /**
+     * Filter and display SIP logs based on current filter and search
+     */
+    function filterAndDisplaySIPLogs() {
+      const searchQuery = document.getElementById('sip-log-search')?.value.toLowerCase() || '';
+      
+      // Filter by type
+      let filtered = sipLogEntries;
+      if (sipLogCurrentFilter !== 'all') {
+        filtered = filtered.filter(entry => {
+          const type = (entry.type || '').toLowerCase();
+          return type === sipLogCurrentFilter;
+        });
+      }
+      
+      // Filter by search query
+      if (searchQuery) {
+        filtered = filtered.filter(entry => {
+          const message = (entry.message || '').toLowerCase();
+          const type = (entry.type || '').toLowerCase();
+          return message.includes(searchQuery) || type.includes(searchQuery);
+        });
+      }
+      
+      // Update filter count
+      const countElement = document.getElementById('sip-log-filter-count');
+      if (countElement) {
+        if (filtered.length === sipLogEntries.length) {
+          countElement.textContent = `Showing all ${sipLogEntries.length} entries`;
+        } else {
+          countElement.textContent = `Showing ${filtered.length} of ${sipLogEntries.length} entries`;
+        }
+      }
+      
+      // Display logs
+      displaySIPLogs(filtered, searchQuery);
+    }
+    
+    /**
+     * Display SIP logs in the container
+     * @param {Array} logs - Array of log entries to display
+     * @param {string} searchQuery - Search query for highlighting
+     */
+    function displaySIPLogs(logs, searchQuery = '') {
+      const container = document.getElementById('sip-log-container');
+      if (!container) return;
+      
+      if (logs.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No log entries</div>';
+        return;
+      }
+      
+      // Remember scroll position
+      const wasAtBottom = isScrolledToBottom(container);
+      
+      // Build HTML
+      let html = '';
+      logs.forEach(entry => {
+        const timestamp = formatTimestamp(entry.timestamp);
+        const type = entry.type || 'info';
+        const message = entry.message || '';
+        
+        // Color coding by type
+        let color = 'var(--color-text)';
+        if (type.toLowerCase() === 'error') {
+          color = 'var(--color-danger)';
+        } else if (type.toLowerCase() === 'sent') {
+          color = 'var(--color-primary)';
+        } else if (type.toLowerCase() === 'received') {
+          color = 'var(--color-warning)';
+        } else if (type.toLowerCase() === 'info') {
+          color = 'var(--color-info)';
+        }
+        
+        // Highlight search terms
+        let displayMessage = message;
+        if (searchQuery) {
+          const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
+          displayMessage = message.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
+        }
+        
+        html += `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">`;
+        html += `<span style="color: var(--color-text-secondary);">[${timestamp}]</span> `;
+        html += `<span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span> `;
+        html += `<span style="color: var(--color-text);">${displayMessage}</span>`;
+        html += `</div>`;
+      });
+      
+      container.innerHTML = html;
+      
+      // Scroll to bottom if was at bottom before
+      if (wasAtBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+      
+      // Update jump button visibility
+      updateSIPLogJumpButton();
+    }
+    
+    /**
+     * Filter SIP logs by type
+     * @param {string} type - Log type to filter ('all', 'error', 'info', 'sent', 'received')
+     */
+    function filterSIPLogs(type) {
+      sipLogCurrentFilter = type;
+      
+      // Update button states
+      const buttons = document.querySelectorAll('#section-logs button[data-filter]');
+      buttons.forEach(btn => {
+        if (btn.dataset.filter === type) {
+          btn.style.opacity = '1';
+          btn.style.transform = 'scale(1.05)';
+        } else {
+          btn.style.opacity = '0.7';
+          btn.style.transform = 'scale(1)';
+        }
+      });
+      
+      filterAndDisplaySIPLogs();
+    }
+    
+    /**
+     * Clear SIP log display
+     */
+    function clearSIPLogDisplay() {
+      sipLogEntries = [];
+      sipLogLastTimestamp = 0;
+      const container = document.getElementById('sip-log-container');
+      if (container) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Log display cleared</div>';
+      }
+      const countElement = document.getElementById('sip-log-filter-count');
+      if (countElement) {
+        countElement.textContent = 'Showing 0 entries';
+      }
+    }
+    
+    /**
+     * Update jump to bottom button visibility for SIP logs
+     */
+    function updateSIPLogJumpButton() {
+      const container = document.getElementById('sip-log-container');
+      const button = document.getElementById('sip-log-jump-bottom');
+      if (!container || !button) return;
+      
+      const isAtBottom = isScrolledToBottom(container);
+      button.style.display = isAtBottom ? 'none' : 'inline-flex';
+    }
+    
+    /**
+     * Jump to bottom of SIP log
+     */
+    function jumpToBottomSIPLog() {
+      const container = document.getElementById('sip-log-container');
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
+    }
+    
+    /**
+     * Export SIP logs to text file
+     */
+    function exportSIPLogs() {
+      if (sipLogEntries.length === 0) {
+        showToast('No logs to export', 'warning');
+        return;
+      }
+      
+      // Get filtered logs
+      const searchQuery = document.getElementById('sip-log-search')?.value.toLowerCase() || '';
+      let filtered = sipLogEntries;
+      
+      if (sipLogCurrentFilter !== 'all') {
+        filtered = filtered.filter(entry => {
+          const type = (entry.type || '').toLowerCase();
+          return type === sipLogCurrentFilter;
+        });
+      }
+      
+      if (searchQuery) {
+        filtered = filtered.filter(entry => {
+          const message = (entry.message || '').toLowerCase();
+          const type = (entry.type || '').toLowerCase();
+          return message.includes(searchQuery) || type.includes(searchQuery);
+        });
+      }
+      
+      // Build text content
+      let content = 'ESP32 SIP Door Station - SIP Connection Logs\n';
+      content += `Exported: ${new Date().toISOString()}\n`;
+      content += `Total Entries: ${filtered.length}\n`;
+      content += '='.repeat(80) + '\n\n';
+      
+      filtered.forEach(entry => {
+        const timestamp = formatTimestamp(entry.timestamp);
+        const type = entry.type || 'info';
+        const message = entry.message || '';
+        content += `[${timestamp}] [${type.toUpperCase()}] ${message}\n`;
+      });
+      
+      // Create and download file
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sip-logs-${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showToast(`Exported ${filtered.length} log entries`, 'success');
+    }
+    
+    // ===== Task 11.2: DTMF Security Log Display =====
+    
+    /**
+     * Initialize DTMF logs section
+     */
+    function initDTMFLogs() {
+      // Load initial logs
+      refreshDTMFLogs();
+      
+      // Setup auto-refresh
+      const autoRefreshCheckbox = document.getElementById('dtmf-log-auto-refresh');
+      if (autoRefreshCheckbox) {
+        autoRefreshCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            startDTMFLogAutoRefresh();
+          } else {
+            stopDTMFLogAutoRefresh();
+          }
+        });
+        
+        // Start auto-refresh if checked
+        if (autoRefreshCheckbox.checked) {
+          startDTMFLogAutoRefresh();
+        }
+      }
+      
+      // Setup search input
+      const searchInput = document.getElementById('dtmf-log-search');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          filterAndDisplayDTMFLogs();
+        });
+      }
+      
+      // Setup scroll detection for jump to bottom button
+      const container = document.getElementById('dtmf-log-container');
+      if (container) {
+        container.addEventListener('scroll', () => {
+          updateDTMFLogJumpButton();
+        });
+      }
+    }
+    
+    /**
+     * Start DTMF log auto-refresh
+     */
+    function startDTMFLogAutoRefresh() {
+      if (dtmfLogAutoRefreshInterval) {
+        clearInterval(dtmfLogAutoRefreshInterval);
+      }
+      dtmfLogAutoRefreshInterval = setInterval(() => {
+        refreshDTMFLogs(true); // Silent refresh
+      }, 10000); // Refresh every 10 seconds
+    }
+    
+    /**
+     * Stop DTMF log auto-refresh
+     */
+    function stopDTMFLogAutoRefresh() {
+      if (dtmfLogAutoRefreshInterval) {
+        clearInterval(dtmfLogAutoRefreshInterval);
+        dtmfLogAutoRefreshInterval = null;
+      }
+    }
+    
+    /**
+     * Refresh DTMF logs from server
+     * @param {boolean} silent - If true, don't show loading message
+     */
+    async function refreshDTMFLogs(silent = false) {
+      try {
+        // Fetch logs since last timestamp (incremental)
+        const endpoint = dtmfLogLastTimestamp > 0 
+          ? `/api/dtmf/logs?since=${dtmfLogLastTimestamp}`
+          : '/api/dtmf/logs';
+        
+        const response = await apiRequest(endpoint, { silentError: silent });
+        
+        if (response && response.logs && Array.isArray(response.logs)) {
+          // Append new entries
+          if (response.logs.length > 0) {
+            dtmfLogEntries = dtmfLogEntries.concat(response.logs);
+            
+            // Update last timestamp
+            const timestamps = response.logs.map(e => e.timestamp || 0);
+            dtmfLogLastTimestamp = Math.max(...timestamps, dtmfLogLastTimestamp);
+            
+            // Keep only last 1000 entries to prevent memory issues
+            if (dtmfLogEntries.length > 1000) {
+              dtmfLogEntries = dtmfLogEntries.slice(-1000);
+            }
+          }
+        }
+        
+        // Display logs
+        filterAndDisplayDTMFLogs();
+        
+      } catch (error) {
+        if (!silent) {
+          console.error('Error refreshing DTMF logs:', error);
+          const container = document.getElementById('dtmf-log-container');
+          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
+        }
+      }
+    }
+    
+    /**
+     * Filter and display DTMF logs based on current filter and search
+     */
+    function filterAndDisplayDTMFLogs() {
+      const searchQuery = document.getElementById('dtmf-log-search')?.value.toLowerCase() || '';
+      
+      // Filter by type
+      let filtered = dtmfLogEntries;
+      if (dtmfLogCurrentFilter !== 'all') {
+        filtered = filtered.filter(entry => {
+          const success = entry.success === true || entry.success === 'true';
+          if (dtmfLogCurrentFilter === 'success') {
+            return success;
+          } else if (dtmfLogCurrentFilter === 'failed') {
+            return !success;
+          }
+          return true;
+        });
+      }
+      
+      // Filter by search query
+      if (searchQuery) {
+        filtered = filtered.filter(entry => {
+          const command = (entry.command || '').toLowerCase();
+          const type = (entry.type || '').toLowerCase();
+          return command.includes(searchQuery) || type.includes(searchQuery);
+        });
+      }
+      
+      // Update filter count
+      const countElement = document.getElementById('dtmf-log-filter-count');
+      if (countElement) {
+        if (filtered.length === dtmfLogEntries.length) {
+          countElement.textContent = `Showing all ${dtmfLogEntries.length} entries`;
+        } else {
+          countElement.textContent = `Showing ${filtered.length} of ${dtmfLogEntries.length} entries`;
+        }
+      }
+      
+      // Display logs
+      displayDTMFLogs(filtered, searchQuery);
+    }
+    
+    /**
+     * Display DTMF logs in the container
+     * @param {Array} logs - Array of log entries to display
+     * @param {string} searchQuery - Search query for highlighting
+     */
+    function displayDTMFLogs(logs, searchQuery = '') {
+      const container = document.getElementById('dtmf-log-container');
+      if (!container) return;
+      
+      if (logs.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No log entries</div>';
+        return;
+      }
+      
+      // Remember scroll position
+      const wasAtBottom = isScrolledToBottom(container);
+      
+      // Build HTML
+      let html = '';
+      logs.forEach(entry => {
+        const timestamp = formatTimestamp(entry.timestamp);
+        const command = entry.command || '';
+        const type = entry.type || '';
+        const success = entry.success === true || entry.success === 'true';
+        
+        // Color coding and icon
+        const icon = success ? '✅' : '❌';
+        const color = success ? 'var(--color-success)' : 'var(--color-danger)';
+        
+        // Highlight search terms
+        let displayCommand = command;
+        if (searchQuery) {
+          const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
+          displayCommand = command.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
+        }
+        
+        html += `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">`;
+        html += `<span style="color: var(--color-text-secondary);">[${timestamp}]</span> `;
+        html += `<span style="font-size: var(--font-size-lg);">${icon}</span> `;
+        html += `<span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span> `;
+        html += `<span style="color: var(--color-text);">Command: ${displayCommand}</span>`;
+        html += `</div>`;
+      });
+      
+      container.innerHTML = html;
+      
+      // Scroll to bottom if was at bottom before
+      if (wasAtBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+      
+      // Update jump button visibility
+      updateDTMFLogJumpButton();
+    }
+    
+    /**
+     * Filter DTMF logs by type
+     * @param {string} type - Log type to filter ('all', 'success', 'failed')
+     */
+    function filterDTMFLogs(type) {
+      dtmfLogCurrentFilter = type;
+      
+      // Update button states
+      const buttons = document.querySelectorAll('#section-logs button[data-filter]');
+      buttons.forEach(btn => {
+        if (btn.dataset.filter === type) {
+          btn.style.opacity = '1';
+          btn.style.transform = 'scale(1.05)';
+        } else {
+          btn.style.opacity = '0.7';
+          btn.style.transform = 'scale(1)';
+        }
+      });
+      
+      filterAndDisplayDTMFLogs();
+    }
+    
+    /**
+     * Clear DTMF log display
+     */
+    function clearDTMFLogDisplay() {
+      dtmfLogEntries = [];
+      dtmfLogLastTimestamp = 0;
+      const container = document.getElementById('dtmf-log-container');
+      if (container) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Log display cleared</div>';
+      }
+      const countElement = document.getElementById('dtmf-log-filter-count');
+      if (countElement) {
+        countElement.textContent = 'Showing 0 entries';
+      }
+    }
+    
+    /**
+     * Update jump to bottom button visibility for DTMF logs
+     */
+    function updateDTMFLogJumpButton() {
+      const container = document.getElementById('dtmf-log-container');
+      const button = document.getElementById('dtmf-log-jump-bottom');
+      if (!container || !button) return;
+      
+      const isAtBottom = isScrolledToBottom(container);
+      button.style.display = isAtBottom ? 'none' : 'inline-flex';
+    }
+    
+    /**
+     * Jump to bottom of DTMF log
+     */
+    function jumpToBottomDTMFLog() {
+      const container = document.getElementById('dtmf-log-container');
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
+    }
+    
+    /**
+     * Export DTMF logs to text file
+     */
+    function exportDTMFLogs() {
+      if (dtmfLogEntries.length === 0) {
+        showToast('No logs to export', 'warning');
+        return;
+      }
+      
+      // Get filtered logs
+      const searchQuery = document.getElementById('dtmf-log-search')?.value.toLowerCase() || '';
+      let filtered = dtmfLogEntries;
+      
+      if (dtmfLogCurrentFilter !== 'all') {
+        filtered = filtered.filter(entry => {
+          const success = entry.success === true || entry.success === 'true';
+          if (dtmfLogCurrentFilter === 'success') {
+            return success;
+          } else if (dtmfLogCurrentFilter === 'failed') {
+            return !success;
+          }
+          return true;
+        });
+      }
+      
+      if (searchQuery) {
+        filtered = filtered.filter(entry => {
+          const command = (entry.command || '').toLowerCase();
+          const type = (entry.type || '').toLowerCase();
+          return command.includes(searchQuery) || type.includes(searchQuery);
+        });
+      }
+      
+      // Build text content
+      let content = 'ESP32 SIP Door Station - DTMF Security Logs\n';
+      content += `Exported: ${new Date().toISOString()}\n`;
+      content += `Total Entries: ${filtered.length}\n`;
+      content += '='.repeat(80) + '\n\n';
+      
+      filtered.forEach(entry => {
+        const timestamp = formatTimestamp(entry.timestamp);
+        const command = entry.command || '';
+        const type = entry.type || '';
+        const success = entry.success === true || entry.success === 'true';
+        const status = success ? 'SUCCESS' : 'FAILED';
+        content += `[${timestamp}] [${status}] [${type.toUpperCase()}] Command: ${command}\n`;
+      });
+      
+      // Create and download file
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dtmf-logs-${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showToast(`Exported ${filtered.length} log entries`, 'success');
+    }
+    
+    // ===== Helper Functions for Logs =====
+    
+    /**
+     * Check if container is scrolled to bottom
+     * @param {HTMLElement} container - Container element
+     * @returns {boolean} True if scrolled to bottom
+     */
+    function isScrolledToBottom(container) {
+      if (!container) return true;
+      const threshold = 50; // pixels from bottom
+      return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    }
+    
+    /**
+     * Escape regex special characters
+     * @param {string} string - String to escape
+     * @returns {string} Escaped string
+     */
+    function escapeRegex(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    /**
+     * Initialize logs section when navigated to
+     */
+    function initLogsSection() {
+      initSIPLogs();
+      initDTMFLogs();
     }
     
     // ===== Initialization =====
