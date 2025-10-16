@@ -817,6 +817,68 @@
       min-height: 48px;
     }
     
+    /* ===== Dashboard Styles (Task 6) ===== */
+    
+    .dashboard-info-card {
+      padding: var(--spacing-md);
+      background-color: var(--color-bg);
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-border);
+      transition: box-shadow var(--transition-fast);
+    }
+    
+    .dashboard-info-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+    
+    .dashboard-info-label {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--spacing-xs);
+    }
+    
+    .dashboard-info-value {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text);
+    }
+    
+    .activity-entry {
+      padding: var(--spacing-sm);
+      border-bottom: 1px solid var(--color-border-light);
+      display: flex;
+      gap: var(--spacing-sm);
+      align-items: start;
+      transition: background-color var(--transition-fast);
+    }
+    
+    .activity-entry:last-child {
+      border-bottom: none;
+    }
+    
+    .activity-entry:hover {
+      background-color: var(--color-hover);
+    }
+    
+    .activity-type {
+      font-weight: var(--font-weight-bold);
+      min-width: 60px;
+      font-size: var(--font-size-sm);
+    }
+    
+    .activity-timestamp {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      min-width: 80px;
+    }
+    
+    .activity-message {
+      flex: 1;
+      color: var(--color-text);
+      font-size: var(--font-size-sm);
+      word-break: break-word;
+    }
+    
     /* ===== Dialog Styles (Task 4.4) ===== */
     
     .dialog-overlay {
@@ -1207,6 +1269,48 @@
     <section class="content-section active" id="section-dashboard">
       <h2 tabindex="-1">Dashboard</h2>
       
+      <!-- System Information Display (Task 6.1) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">System Information</h3>
+        <div id="system-info" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Uptime</div>
+            <div id="system-uptime" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Free Heap</div>
+            <div id="system-heap" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">IP Address</div>
+            <div id="system-ip" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Firmware Version</div>
+            <div id="system-version" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- NTP Sync Status (Task 6.3) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Time Synchronization</h3>
+        <div id="ntp-status" style="display: flex; align-items: center; gap: var(--spacing-lg); flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">NTP Sync Status</div>
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+              <span id="ntp-sync-indicator" style="font-size: var(--font-size-xl);">⏳</span>
+              <span id="ntp-sync-text" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Checking...</span>
+            </div>
+          </div>
+          <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Current Time</div>
+            <div id="ntp-current-time" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Quick Actions (Task 6.2) -->
       <div class="config-form">
         <h3 style="margin-bottom: var(--spacing-md);">Quick Actions</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
@@ -1214,73 +1318,59 @@
         </p>
         
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button class="btn btn-warning" onclick="handleSystemRestart()">
+          <button class="btn btn-success" onclick="handleSIPConnect()" id="quick-sip-connect">
+            <span>📞</span>
+            <span>Connect SIP</span>
+          </button>
+          <button class="btn btn-warning" onclick="handleSIPDisconnect()" id="quick-sip-disconnect">
+            <span>📴</span>
+            <span>Disconnect SIP</span>
+          </button>
+          <button class="btn btn-warning" onclick="handleSystemRestart()" id="system-restart-btn">
             <span>🔄</span>
             <span>Restart System</span>
           </button>
-          <button class="btn btn-danger" onclick="handleFactoryReset()">
+          <button class="btn btn-danger" onclick="handleFactoryReset()" id="factory-reset-btn">
             <span>⚠️</span>
             <span>Factory Reset</span>
           </button>
         </div>
       </div>
       
-      <div class="config-form" style="margin-top: var(--spacing-lg);">
-        <h3 style="margin-bottom: var(--spacing-md);">Form Validation Demo</h3>
+      <!-- Recent Activity Summary (Task 6.4) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Recent Activity</h3>
+        <div id="recent-activity" style="max-height: 300px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading recent activity...</div>
+        </div>
+      </div>
+      
+      <!-- Backup/Restore Functionality (Task 6.5) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Configuration Backup & Restore</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
-          This demonstrates the form validation system. Try submitting without filling required fields, 
-          or enter invalid data to see validation in action. The save button is disabled until you make changes.
+          Backup your configuration to a JSON file or restore from a previous backup.
         </p>
         
-        <form class="config-form" id="demo-form" data-api="/api/demo/config" style="border: none; padding: 0; box-shadow: none;">
-          <div class="form-group">
-            <label for="demo-email">
-              Email Address
-              <span class="required">*</span>
-            </label>
-            <input 
-              type="email" 
-              id="demo-email" 
-              name="email" 
-              required
-              data-error="Please enter a valid email address"
-              placeholder="user@example.com">
-            <span class="error-message" hidden></span>
-          </div>
-          
-          <div class="form-group">
-            <label for="demo-number">
-              Port Number
-              <span class="required">*</span>
-            </label>
-            <input 
-              type="number" 
-              id="demo-number" 
-              name="port" 
-              required
-              min="1"
-              max="65535"
-              data-error="Port must be between 1 and 65535"
-              placeholder="5060">
-            <span class="error-message" hidden></span>
-          </div>
-          
-          <div class="form-group">
-            <label for="demo-checkbox">
-              <input type="checkbox" id="demo-checkbox" name="enabled">
-              Enable this feature
-            </label>
-            <span class="form-help">Check this box to enable the feature</span>
-          </div>
-          
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary" disabled>
-              <span class="btn-text">Save Settings</span>
-              <span class="btn-spinner" hidden>⏳</span>
-            </button>
-            <button type="reset" class="btn btn-secondary">Reset</button>
-          </div>
-        </form>
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg);">
+          <button class="btn btn-primary" onclick="handleBackupConfig()">
+            <span>💾</span>
+            <span>Download Backup</span>
+          </button>
+          <button class="btn btn-info" onclick="document.getElementById('restore-file-input').click()">
+            <span>📂</span>
+            <span>Restore from File</span>
+          </button>
+          <input type="file" id="restore-file-input" accept=".json" style="display: none;" onchange="handleRestoreFileSelected(event)">
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>
+            <input type="checkbox" id="backup-include-passwords" checked>
+            Include passwords in backup (recommended for security: uncheck)
+          </label>
+          <span class="form-help">Unchecking this will exclude sensitive passwords from the backup file</span>
+        </div>
       </div>
     </section>
 
@@ -2862,6 +2952,509 @@
       }
     }
     
+    // ===== Task 6: Dashboard Section Functions =====
+    
+    // ===== Task 6.1: System Information Display =====
+    
+    /**
+     * Update system information display
+     */
+    async function updateSystemInfo() {
+      try {
+        const response = await apiRequest('/api/system/status');
+        
+        // Update uptime
+        const uptimeElement = document.getElementById('system-uptime');
+        if (uptimeElement && response.uptime !== undefined) {
+          uptimeElement.textContent = formatUptime(response.uptime);
+        }
+        
+        // Update free heap
+        const heapElement = document.getElementById('system-heap');
+        if (heapElement && response.free_heap !== undefined) {
+          heapElement.textContent = formatBytes(response.free_heap);
+        }
+        
+        // Update IP address
+        const ipElement = document.getElementById('system-ip');
+        if (ipElement) {
+          // Try to get IP from system status or WiFi status
+          const ip = response.ip || response.network?.wifi?.ip || 'N/A';
+          ipElement.textContent = ip;
+        }
+        
+        // Update firmware version
+        const versionElement = document.getElementById('system-version');
+        if (versionElement && response.firmware_version) {
+          versionElement.textContent = response.firmware_version;
+        }
+        
+      } catch (error) {
+        console.error('Error updating system info:', error);
+        // Set error state
+        const elements = ['system-uptime', 'system-heap', 'system-ip', 'system-version'];
+        elements.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = 'Error';
+        });
+      }
+    }
+    
+    /**
+     * Format uptime in milliseconds to human-readable string
+     * @param {number} uptimeMs - Uptime in milliseconds
+     * @returns {string} Formatted uptime string
+     */
+    function formatUptime(uptimeMs) {
+      const seconds = Math.floor(uptimeMs / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      if (days > 0) {
+        return `${days}d ${hours % 24}h ${minutes % 60}m`;
+      } else if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+      } else if (minutes > 0) {
+        return `${minutes}m ${seconds % 60}s`;
+      } else {
+        return `${seconds}s`;
+      }
+    }
+    
+    /**
+     * Format bytes to human-readable string
+     * @param {number} bytes - Number of bytes
+     * @returns {string} Formatted bytes string
+     */
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    /**
+     * Initialize system information display with auto-refresh
+     */
+    function initSystemInfo() {
+      // Initial update
+      updateSystemInfo();
+      
+      // Auto-refresh every 10 seconds
+      setInterval(updateSystemInfo, 10000);
+    }
+    
+    // ===== Task 6.3: NTP Sync Status Display =====
+    
+    /**
+     * Update NTP sync status display
+     */
+    async function updateNTPStatus() {
+      try {
+        const response = await apiRequest('/api/ntp/status');
+        
+        const indicatorElement = document.getElementById('ntp-sync-indicator');
+        const textElement = document.getElementById('ntp-sync-text');
+        const timeElement = document.getElementById('ntp-current-time');
+        
+        if (response.synced) {
+          if (indicatorElement) indicatorElement.textContent = '✅';
+          if (textElement) {
+            textElement.textContent = 'Synchronized';
+            textElement.style.color = 'var(--color-success)';
+          }
+        } else {
+          if (indicatorElement) indicatorElement.textContent = '❌';
+          if (textElement) {
+            textElement.textContent = 'Not Synchronized';
+            textElement.style.color = 'var(--color-danger)';
+          }
+        }
+        
+        if (timeElement && response.current_time) {
+          timeElement.textContent = response.current_time;
+        }
+        
+      } catch (error) {
+        console.error('Error updating NTP status:', error);
+        const indicatorElement = document.getElementById('ntp-sync-indicator');
+        const textElement = document.getElementById('ntp-sync-text');
+        const timeElement = document.getElementById('ntp-current-time');
+        
+        if (indicatorElement) indicatorElement.textContent = '❌';
+        if (textElement) {
+          textElement.textContent = 'Error';
+          textElement.style.color = 'var(--color-danger)';
+        }
+        if (timeElement) timeElement.textContent = 'N/A';
+      }
+    }
+    
+    /**
+     * Initialize NTP status display with auto-refresh
+     */
+    function initNTPStatus() {
+      // Initial update
+      updateNTPStatus();
+      
+      // Auto-refresh every 10 seconds
+      setInterval(updateNTPStatus, 10000);
+    }
+    
+    // ===== Task 6.4: Recent Activity Summary =====
+    
+    /**
+     * Update recent activity display
+     */
+    async function updateRecentActivity() {
+      try {
+        const response = await apiRequest('/api/sip/log?limit=10');
+        
+        const activityContainer = document.getElementById('recent-activity');
+        if (!activityContainer) return;
+        
+        if (!response.entries || response.entries.length === 0) {
+          activityContainer.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No recent activity</div>';
+          return;
+        }
+        
+        // Build activity list
+        let html = '';
+        response.entries.forEach(entry => {
+          const typeColor = getLogTypeColor(entry.type);
+          const timestamp = formatTimestamp(entry.timestamp);
+          
+          html += `
+            <div style="padding: var(--spacing-sm); border-bottom: 1px solid var(--color-border-light); display: flex; gap: var(--spacing-sm); align-items: start;">
+              <span style="color: ${typeColor}; font-weight: var(--font-weight-bold); min-width: 60px; font-size: var(--font-size-sm);">${entry.type || 'INFO'}</span>
+              <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm); min-width: 80px;">${timestamp}</span>
+              <span style="flex: 1; color: var(--color-text); font-size: var(--font-size-sm);">${escapeHtml(entry.message || '')}</span>
+            </div>
+          `;
+        });
+        
+        activityContainer.innerHTML = html;
+        
+      } catch (error) {
+        console.error('Error updating recent activity:', error);
+        const activityContainer = document.getElementById('recent-activity');
+        if (activityContainer) {
+          activityContainer.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading activity</div>';
+        }
+      }
+    }
+    
+    /**
+     * Get color for log type
+     * @param {string} type - Log type
+     * @returns {string} CSS color value
+     */
+    function getLogTypeColor(type) {
+      const typeUpper = (type || '').toUpperCase();
+      switch (typeUpper) {
+        case 'ERROR':
+          return 'var(--color-danger)';
+        case 'WARNING':
+        case 'WARN':
+          return 'var(--color-warning)';
+        case 'SUCCESS':
+          return 'var(--color-success)';
+        case 'INFO':
+          return 'var(--color-info)';
+        case 'SENT':
+          return 'var(--color-primary)';
+        case 'RECEIVED':
+          return 'var(--color-info)';
+        default:
+          return 'var(--color-text-secondary)';
+      }
+    }
+    
+    /**
+     * Format timestamp to readable string
+     * @param {number|string} timestamp - Unix timestamp or ISO string
+     * @returns {string} Formatted time string
+     */
+    function formatTimestamp(timestamp) {
+      try {
+        const date = new Date(timestamp);
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
+      } catch (error) {
+        return 'N/A';
+      }
+    }
+    
+    /**
+     * Escape HTML to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    /**
+     * Initialize recent activity display with auto-refresh
+     */
+    function initRecentActivity() {
+      // Initial update
+      updateRecentActivity();
+      
+      // Auto-refresh every 10 seconds
+      setInterval(updateRecentActivity, 10000);
+    }
+    
+    // ===== Task 6.5: Backup/Restore Functionality =====
+    
+    /**
+     * Handle configuration backup download
+     */
+    async function handleBackupConfig() {
+      try {
+        showToast('Generating configuration backup...', 'info');
+        
+        const includePasswords = document.getElementById('backup-include-passwords')?.checked ?? true;
+        
+        // Fetch configuration backup
+        const response = await apiRequest(`/api/config/backup?include_passwords=${includePasswords}`);
+        
+        // Create backup object with metadata
+        const backup = {
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          firmware_version: response.firmware_version || 'unknown',
+          include_passwords: includePasswords,
+          config: response
+        };
+        
+        // Convert to JSON
+        const jsonString = JSON.stringify(backup, null, 2);
+        
+        // Create blob and download
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        // Create download link
+        const a = document.createElement('a');
+        a.href = url;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        a.download = `esp32-doorstation-backup-${timestamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('Configuration backup downloaded successfully!', 'success');
+        
+      } catch (error) {
+        console.error('Error creating backup:', error);
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Handle restore file selection
+     * @param {Event} event - File input change event
+     */
+    function handleRestoreFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      // Validate file type
+      if (!file.name.endsWith('.json')) {
+        showToast('Please select a valid JSON backup file', 'error');
+        event.target.value = '';
+        return;
+      }
+      
+      // Read file
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const jsonString = e.target.result;
+          const backup = JSON.parse(jsonString);
+          
+          // Validate backup format
+          if (!backup.config) {
+            throw new Error('Invalid backup file format: missing config data');
+          }
+          
+          // Show preview and confirmation
+          await showRestorePreview(backup);
+          
+        } catch (error) {
+          console.error('Error reading backup file:', error);
+          showToast('Invalid backup file: ' + error.message, 'error');
+        }
+        
+        // Reset file input
+        event.target.value = '';
+      };
+      
+      reader.onerror = () => {
+        showToast('Error reading file', 'error');
+        event.target.value = '';
+      };
+      
+      reader.readAsText(file);
+    }
+    
+    /**
+     * Show restore preview dialog
+     * @param {Object} backup - Backup object
+     */
+    async function showRestorePreview(backup) {
+      // Create preview message
+      let previewHtml = '<div style="margin-bottom: var(--spacing-md);">';
+      previewHtml += '<p style="margin-bottom: var(--spacing-sm);"><strong>Backup Information:</strong></p>';
+      previewHtml += '<ul style="margin-left: var(--spacing-lg); margin-bottom: var(--spacing-md);">';
+      previewHtml += `<li>Created: ${new Date(backup.timestamp).toLocaleString()}</li>`;
+      previewHtml += `<li>Firmware Version: ${backup.firmware_version || 'unknown'}</li>`;
+      previewHtml += `<li>Includes Passwords: ${backup.include_passwords ? 'Yes' : 'No'}</li>`;
+      previewHtml += '</ul>';
+      previewHtml += '<p style="color: var(--color-warning);"><strong>Warning:</strong> This will overwrite your current configuration. The device will restart after restore.</p>';
+      previewHtml += '</div>';
+      
+      // Create custom dialog
+      const confirmed = await showCustomDialog(
+        'Restore Configuration',
+        previewHtml,
+        'Restore & Restart',
+        'Cancel',
+        'warning'
+      );
+      
+      if (confirmed) {
+        await performRestore(backup);
+      }
+    }
+    
+    /**
+     * Show custom dialog with HTML content
+     * @param {string} title - Dialog title
+     * @param {string} htmlContent - HTML content for dialog body
+     * @param {string} confirmText - Confirm button text
+     * @param {string} cancelText - Cancel button text
+     * @param {string} type - Dialog type
+     * @returns {Promise<boolean>} True if confirmed
+     */
+    function showCustomDialog(title, htmlContent, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'dialog-title');
+        
+        const dialog = document.createElement('div');
+        dialog.className = `dialog dialog-${type}`;
+        
+        const iconMap = {
+          warning: '⚠️',
+          danger: '🚨',
+          info: 'ℹ️'
+        };
+        const icon = iconMap[type] || iconMap.warning;
+        
+        dialog.innerHTML = `
+          <div class="dialog-header">
+            <span class="dialog-icon">${icon}</span>
+            <h3 class="dialog-title" id="dialog-title">${title}</h3>
+          </div>
+          <div class="dialog-body">
+            ${htmlContent}
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary dialog-cancel">${cancelText}</button>
+            <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
+          </div>
+        `;
+        
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        setTimeout(() => overlay.classList.add('show'), 10);
+        
+        const confirmBtn = dialog.querySelector('.dialog-confirm');
+        setTimeout(() => confirmBtn.focus(), 100);
+        
+        confirmBtn.addEventListener('click', () => {
+          closeDialog(overlay);
+          resolve(true);
+        });
+        
+        const cancelBtn = dialog.querySelector('.dialog-cancel');
+        cancelBtn.addEventListener('click', () => {
+          closeDialog(overlay);
+          resolve(false);
+        });
+        
+        const handleEscape = (e) => {
+          if (e.key === 'Escape') {
+            closeDialog(overlay);
+            resolve(false);
+            document.removeEventListener('keydown', handleEscape);
+          }
+        };
+        document.addEventListener('keydown', handleEscape);
+        
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            closeDialog(overlay);
+            resolve(false);
+          }
+        });
+      });
+    }
+    
+    /**
+     * Perform configuration restore
+     * @param {Object} backup - Backup object
+     */
+    async function performRestore(backup) {
+      try {
+        showToast('Restoring configuration...', 'info');
+        
+        // Send restore request
+        const response = await apiRequest('/api/config/restore', {
+          method: 'POST',
+          body: JSON.stringify({
+            config: backup.config,
+            include_passwords: backup.include_passwords
+          })
+        });
+        
+        showToast('Configuration restored successfully! Device is restarting...', 'success', 5000);
+        
+        // Reload page after delay
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
+        
+      } catch (error) {
+        console.error('Error restoring configuration:', error);
+        // Error already shown by apiRequest
+      }
+    }
+    
+    /**
+     * Initialize Dashboard section
+     */
+    function initDashboard() {
+      initSystemInfo();
+      initNTPStatus();
+      initRecentActivity();
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -2882,6 +3475,9 @@
       
       // Initialize global search
       initGlobalSearch();
+      
+      // Initialize Dashboard section
+      initDashboard();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
