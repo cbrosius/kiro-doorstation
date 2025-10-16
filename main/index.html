@@ -2397,7 +2397,101 @@
     <!-- Hardware Testing Section -->
     <section class="content-section" id="section-testing" hidden>
       <h2 tabindex="-1">Hardware Testing</h2>
-      <p>Hardware testing controls will be implemented here.</p>
+      
+      <div class="status-panel">
+        <div class="status-content">
+          <p style="padding: var(--spacing-md) var(--spacing-lg); margin: 0; color: var(--color-text-secondary);">
+            Test hardware components before mounting the device. Use these controls to verify functionality during installation and setup.
+          </p>
+        </div>
+      </div>
+      
+      <!-- Doorbell Button Testing -->
+      <div class="config-form">
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Doorbell Button Simulation</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+          Simulate doorbell button presses to test SIP call functionality without physical button presses.
+        </p>
+        
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" id="test-bell1-btn">
+            <span class="btn-text">🔔 Test Bell 1</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          
+          <button type="button" class="btn btn-primary" id="test-bell2-btn">
+            <span class="btn-text">🔔 Test Bell 2</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <div id="bell-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
+          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
+        </div>
+      </div>
+      
+      <!-- Door Opener Relay Testing -->
+      <div class="config-form">
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Door Opener Relay</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+          ⚠️ <strong>Warning:</strong> This will physically activate the door opener relay. Ensure the door mechanism is safe to operate.
+        </p>
+        
+        <div class="form-group">
+          <label for="door-duration">Activation Duration (seconds) <span class="required">*</span></label>
+          <input type="number" 
+                 id="door-duration" 
+                 name="duration" 
+                 min="1" 
+                 max="10" 
+                 value="3" 
+                 required
+                 data-error="Duration must be between 1 and 10 seconds">
+          <span class="error-message" hidden></span>
+          <span class="form-help">Duration the relay will remain active (1-10 seconds)</span>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button type="button" class="btn btn-warning" id="test-door-btn">
+            <span class="btn-text">🚪 Trigger Door Opener</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          
+          <div id="door-relay-state" style="display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border: 2px solid var(--color-status-inactive);">
+            <span style="font-size: var(--font-size-lg);">🚪</span>
+            <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Relay: <span id="door-relay-status">Inactive</span></span>
+          </div>
+        </div>
+        
+        <div id="door-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
+          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
+        </div>
+      </div>
+      
+      <!-- Light Relay Testing -->
+      <div class="config-form">
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Light Relay</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+          Toggle the light relay on and off to test light control functionality.
+        </p>
+        
+        <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button type="button" class="btn btn-info" id="test-light-btn">
+            <span class="btn-text">💡 Toggle Light</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          
+          <div id="light-relay-state" style="display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border: 2px solid var(--color-status-inactive);">
+            <span style="font-size: var(--font-size-lg);">💡</span>
+            <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Relay: <span id="light-relay-status">Off</span></span>
+          </div>
+        </div>
+        
+        <div id="light-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
+          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
+        </div>
+      </div>
+      
     </section>
 
     <!-- Email Reports Section -->
@@ -5992,6 +6086,238 @@
       initDTMFLogs();
     }
     
+    // ===== Task 12: Hardware Testing Section Functions =====
+    
+    // ===== Task 12.1: Doorbell Button Simulation =====
+    
+    /**
+     * Test doorbell button press
+     * @param {number} buttonNumber - Button number (1 or 2)
+     */
+    async function testDoorbellButton(buttonNumber) {
+      const btnId = `test-bell${buttonNumber}-btn`;
+      const btn = document.getElementById(btnId);
+      const feedbackDiv = document.getElementById('bell-test-feedback');
+      const feedbackText = feedbackDiv.querySelector('p');
+      
+      if (!btn) return;
+      
+      try {
+        // Show loading state
+        setLoadingState(btn, true);
+        
+        // Hide previous feedback
+        feedbackDiv.style.display = 'none';
+        
+        // Make API request
+        const response = await apiRequest('/api/hardware/test/bell', {
+          method: 'POST',
+          body: JSON.stringify({ button: buttonNumber })
+        });
+        
+        // Show success feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
+        feedbackText.textContent = `✅ Bell ${buttonNumber} test successful! ${response.message || 'Button press simulated.'}`;
+        feedbackDiv.style.display = 'block';
+        
+        showToast(`Bell ${buttonNumber} test successful`, 'success');
+        
+      } catch (error) {
+        // Show error feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
+        feedbackText.textContent = `❌ Bell ${buttonNumber} test failed: ${error.message}`;
+        feedbackDiv.style.display = 'block';
+        
+      } finally {
+        // Reset button state
+        setLoadingState(btn, false);
+      }
+    }
+    
+    // ===== Task 12.2: Door Opener Relay Testing =====
+    
+    /**
+     * Update door relay state indicator
+     * @param {string} state - Relay state ('active' or 'inactive')
+     */
+    function updateDoorRelayState(state) {
+      const stateDiv = document.getElementById('door-relay-state');
+      const statusSpan = document.getElementById('door-relay-status');
+      
+      if (!stateDiv || !statusSpan) return;
+      
+      if (state === 'active') {
+        stateDiv.style.borderColor = 'var(--color-status-connected)';
+        statusSpan.textContent = 'Active';
+        statusSpan.style.color = 'var(--color-status-connected)';
+      } else {
+        stateDiv.style.borderColor = 'var(--color-status-inactive)';
+        statusSpan.textContent = 'Inactive';
+        statusSpan.style.color = 'var(--color-text)';
+      }
+    }
+    
+    /**
+     * Test door opener relay
+     */
+    async function testDoorOpener() {
+      const btn = document.getElementById('test-door-btn');
+      const durationInput = document.getElementById('door-duration');
+      const feedbackDiv = document.getElementById('door-test-feedback');
+      const feedbackText = feedbackDiv.querySelector('p');
+      
+      if (!btn || !durationInput) return;
+      
+      // Validate duration
+      const duration = parseInt(durationInput.value);
+      if (isNaN(duration) || duration < 1 || duration > 10) {
+        showToast('Duration must be between 1 and 10 seconds', 'error');
+        return;
+      }
+      
+      try {
+        // Show loading state
+        setLoadingState(btn, true);
+        
+        // Hide previous feedback
+        feedbackDiv.style.display = 'none';
+        
+        // Update relay state to active
+        updateDoorRelayState('active');
+        
+        // Make API request
+        const response = await apiRequest('/api/hardware/test/door', {
+          method: 'POST',
+          body: JSON.stringify({ duration: duration * 1000 }) // Convert to milliseconds
+        });
+        
+        // Show success feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
+        feedbackText.textContent = `✅ Door opener activated for ${duration} seconds. ${response.message || ''}`;
+        feedbackDiv.style.display = 'block';
+        
+        showToast(`Door opener activated for ${duration}s`, 'success');
+        
+        // Reset relay state after duration
+        setTimeout(() => {
+          updateDoorRelayState('inactive');
+        }, duration * 1000);
+        
+      } catch (error) {
+        // Show error feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
+        feedbackText.textContent = `❌ Door opener test failed: ${error.message}`;
+        feedbackDiv.style.display = 'block';
+        
+        // Reset relay state on error
+        updateDoorRelayState('inactive');
+        
+      } finally {
+        // Reset button state
+        setLoadingState(btn, false);
+      }
+    }
+    
+    // ===== Task 12.3: Light Relay Testing =====
+    
+    /**
+     * Update light relay state indicator
+     * @param {string} state - Relay state ('on' or 'off')
+     */
+    function updateLightRelayState(state) {
+      const stateDiv = document.getElementById('light-relay-state');
+      const statusSpan = document.getElementById('light-relay-status');
+      
+      if (!stateDiv || !statusSpan) return;
+      
+      if (state === 'on') {
+        stateDiv.style.borderColor = 'var(--color-warning)';
+        statusSpan.textContent = 'On';
+        statusSpan.style.color = 'var(--color-warning)';
+      } else {
+        stateDiv.style.borderColor = 'var(--color-status-inactive)';
+        statusSpan.textContent = 'Off';
+        statusSpan.style.color = 'var(--color-text)';
+      }
+    }
+    
+    /**
+     * Test light relay toggle
+     */
+    async function testLightToggle() {
+      const btn = document.getElementById('test-light-btn');
+      const feedbackDiv = document.getElementById('light-test-feedback');
+      const feedbackText = feedbackDiv.querySelector('p');
+      
+      if (!btn) return;
+      
+      try {
+        // Show loading state
+        setLoadingState(btn, true);
+        
+        // Hide previous feedback
+        feedbackDiv.style.display = 'none';
+        
+        // Make API request
+        const response = await apiRequest('/api/hardware/test/light', {
+          method: 'POST'
+        });
+        
+        // Update relay state based on response
+        const newState = response.state || 'off';
+        updateLightRelayState(newState);
+        
+        // Show success feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
+        feedbackText.textContent = `✅ Light toggled ${newState.toUpperCase()}. ${response.message || ''}`;
+        feedbackDiv.style.display = 'block';
+        
+        showToast(`Light toggled ${newState}`, 'success');
+        
+      } catch (error) {
+        // Show error feedback
+        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
+        feedbackText.textContent = `❌ Light toggle failed: ${error.message}`;
+        feedbackDiv.style.display = 'block';
+        
+      } finally {
+        // Reset button state
+        setLoadingState(btn, false);
+      }
+    }
+    
+    // ===== Task 12.4: Initialize Hardware Testing Section =====
+    
+    /**
+     * Initialize hardware testing section
+     */
+    function initHardwareTesting() {
+      // Setup doorbell button test handlers
+      const bell1Btn = document.getElementById('test-bell1-btn');
+      if (bell1Btn) {
+        bell1Btn.addEventListener('click', () => testDoorbellButton(1));
+      }
+      
+      const bell2Btn = document.getElementById('test-bell2-btn');
+      if (bell2Btn) {
+        bell2Btn.addEventListener('click', () => testDoorbellButton(2));
+      }
+      
+      // Setup door opener test handler
+      const doorBtn = document.getElementById('test-door-btn');
+      if (doorBtn) {
+        doorBtn.addEventListener('click', testDoorOpener);
+      }
+      
+      // Setup light toggle test handler
+      const lightBtn = document.getElementById('test-light-btn');
+      if (lightBtn) {
+        lightBtn.addEventListener('click', testLightToggle);
+      }
+      
+      console.log('Hardware Testing section initialized');
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -6024,6 +6350,9 @@
       
       // Initialize Hardware Settings section
       initHardwareSettings();
+      
+      // Initialize Hardware Testing section
+      initHardwareTesting();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
