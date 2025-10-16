@@ -1,8 +1,10 @@
 #include "dtmf_decoder.h"
 #include "gpio_handler.h"
+#include "ntp_sync.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <math.h>
@@ -15,6 +17,15 @@ static dtmf_callback_t dtmf_callback = NULL;
 
 // NVS namespace for security configuration
 #define NVS_NAMESPACE "dtmf_security"
+
+// Security log buffer configuration
+#define SECURITY_LOG_SIZE 50
+
+// Circular buffer for security logs
+static dtmf_security_log_t security_log_buffer[SECURITY_LOG_SIZE];
+static int security_log_head = 0;
+static int security_log_count = 0;
+static SemaphoreHandle_t security_log_mutex = NULL;
 
 // Security configuration and state
 static dtmf_security_config_t security_config = {
@@ -194,6 +205,69 @@ static char event_to_char(uint8_t event)
     }
 }
 
+// Add entry to security log (thread-safe)
+static void dtmf_add_security_log(dtmf_command_type_t type, bool success, 
+                                   const char* command, const char* caller_id, 
+                                   const char* reason)
+{
+    if (security_log_mutex == NULL) {
+        ESP_LOGE(TAG, "Security log mutex not initialized");
+        return;
+    }
+
+    if (xSemaphoreTake(security_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Get timestamp - use NTP if available, otherwise use system time
+        uint64_t timestamp;
+        if (ntp_is_synced()) {
+            timestamp = ntp_get_timestamp_ms();
+        } else {
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            timestamp = (uint64_t)(tv.tv_sec * 1000ULL + tv.tv_usec / 1000ULL);
+        }
+
+        // Add entry to circular buffer
+        dtmf_security_log_t* entry = &security_log_buffer[security_log_head];
+        entry->timestamp = timestamp;
+        entry->type = type;
+        entry->success = success;
+        
+        // Copy command string
+        if (command) {
+            snprintf(entry->command, sizeof(entry->command), "%s", command);
+        } else {
+            entry->command[0] = '\0';
+        }
+        
+        // Copy caller ID
+        if (caller_id) {
+            snprintf(entry->caller_id, sizeof(entry->caller_id), "%s", caller_id);
+        } else {
+            snprintf(entry->caller_id, sizeof(entry->caller_id), "unknown");
+        }
+        
+        // Copy reason (for failures)
+        if (reason) {
+            snprintf(entry->reason, sizeof(entry->reason), "%s", reason);
+        } else {
+            entry->reason[0] = '\0';
+        }
+
+        // Update circular buffer pointers
+        security_log_head = (security_log_head + 1) % SECURITY_LOG_SIZE;
+        if (security_log_count < SECURITY_LOG_SIZE) {
+            security_log_count++;
+        }
+
+        xSemaphoreGive(security_log_mutex);
+        
+        ESP_LOGI(TAG, "Security log entry added: type=%d, success=%d, command=%s", 
+                 type, success, command ? command : "");
+    } else {
+        ESP_LOGE(TAG, "Failed to acquire security log mutex");
+    }
+}
+
 // Execute validated command
 static void dtmf_execute_command(const char* command)
 {
@@ -207,6 +281,9 @@ static void dtmf_execute_command(const char* command)
     if (strcmp(command, "*2") == 0) {
         ESP_LOGI(TAG, "Toggling light relay");
         light_relay_toggle();
+        
+        // Log successful execution
+        dtmf_add_security_log(CMD_LIGHT_TOGGLE, true, "*2#", NULL, NULL);
         
         // Clear buffer after successful execution
         memset(command_state.buffer, 0, sizeof(command_state.buffer));
@@ -222,6 +299,9 @@ static void dtmf_execute_command(const char* command)
             ESP_LOGI(TAG, "Activating door opener (legacy mode)");
             xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
             
+            // Log successful execution
+            dtmf_add_security_log(CMD_DOOR_OPEN, true, "*1#", NULL, NULL);
+            
             // Clear buffer after successful execution
             memset(command_state.buffer, 0, sizeof(command_state.buffer));
             command_state.buffer_index = 0;
@@ -233,6 +313,11 @@ static void dtmf_execute_command(const char* command)
         if (security_config.pin_enabled) {
             ESP_LOGI(TAG, "Activating door opener (PIN authenticated)");
             xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
+            
+            // Log successful execution (don't log actual PIN)
+            char log_command[16];
+            snprintf(log_command, sizeof(log_command), "*[PIN]#");
+            dtmf_add_security_log(CMD_DOOR_OPEN, true, log_command, NULL, NULL);
             
             // Clear buffer after successful execution
             memset(command_state.buffer, 0, sizeof(command_state.buffer));
@@ -262,11 +347,19 @@ static bool dtmf_validate_command(const char* command)
         ESP_LOGW(TAG, "Empty command");
         command_state.failed_attempts++;
         
+        // Log failed attempt
+        dtmf_add_security_log(CMD_INVALID, false, "", NULL, "empty_command");
+        
         // Check rate limiting
         if (command_state.failed_attempts >= security_config.max_attempts) {
             command_state.rate_limited = true;
             ESP_LOGE(TAG, "SECURITY ALERT: Rate limit triggered after %d failed attempts", 
                      command_state.failed_attempts);
+            
+            // Log rate limiting event
+            char reason[32];
+            snprintf(reason, sizeof(reason), "rate_limit_%d_attempts", command_state.failed_attempts);
+            dtmf_add_security_log(CMD_INVALID, false, "", NULL, reason);
         }
         return false;
     }
@@ -288,11 +381,21 @@ static bool dtmf_validate_command(const char* command)
                 ESP_LOGW(TAG, "Invalid legacy command: %s", command);
                 command_state.failed_attempts++;
                 
+                // Log failed attempt
+                char log_command[16];
+                snprintf(log_command, sizeof(log_command), "%s#", command);
+                dtmf_add_security_log(CMD_INVALID, false, log_command, NULL, "invalid_command");
+                
                 // Check rate limiting
                 if (command_state.failed_attempts >= security_config.max_attempts) {
                     command_state.rate_limited = true;
                     ESP_LOGE(TAG, "SECURITY ALERT: Rate limit triggered after %d failed attempts", 
                              command_state.failed_attempts);
+                    
+                    // Log rate limiting event
+                    char reason[32];
+                    snprintf(reason, sizeof(reason), "rate_limit_%d_attempts", command_state.failed_attempts);
+                    dtmf_add_security_log(CMD_INVALID, false, log_command, NULL, reason);
                 }
                 return false;
             }
@@ -307,11 +410,19 @@ static bool dtmf_validate_command(const char* command)
             ESP_LOGW(TAG, "Invalid PIN length");
             command_state.failed_attempts++;
             
+            // Log failed attempt (don't log actual PIN)
+            dtmf_add_security_log(CMD_DOOR_OPEN, false, "*[PIN]#", NULL, "invalid_pin_length");
+            
             // Check rate limiting
             if (command_state.failed_attempts >= security_config.max_attempts) {
                 command_state.rate_limited = true;
                 ESP_LOGE(TAG, "SECURITY ALERT: Rate limit triggered after %d failed attempts", 
                          command_state.failed_attempts);
+                
+                // Log rate limiting event
+                char reason[32];
+                snprintf(reason, sizeof(reason), "rate_limit_%d_attempts", command_state.failed_attempts);
+                dtmf_add_security_log(CMD_DOOR_OPEN, false, "*[PIN]#", NULL, reason);
             }
             return false;
         }
@@ -324,11 +435,19 @@ static bool dtmf_validate_command(const char* command)
             ESP_LOGW(TAG, "Invalid PIN");
             command_state.failed_attempts++;
             
+            // Log failed attempt (don't log actual PIN)
+            dtmf_add_security_log(CMD_DOOR_OPEN, false, "*[PIN]#", NULL, "invalid_pin");
+            
             // Check rate limiting
             if (command_state.failed_attempts >= security_config.max_attempts) {
                 command_state.rate_limited = true;
                 ESP_LOGE(TAG, "SECURITY ALERT: Rate limit triggered after %d failed attempts", 
                          command_state.failed_attempts);
+                
+                // Log rate limiting event
+                char reason[32];
+                snprintf(reason, sizeof(reason), "rate_limit_%d_attempts", command_state.failed_attempts);
+                dtmf_add_security_log(CMD_DOOR_OPEN, false, "*[PIN]#", NULL, reason);
             }
             return false;
         }
@@ -337,11 +456,21 @@ static bool dtmf_validate_command(const char* command)
     ESP_LOGW(TAG, "Unknown command format: %s", command);
     command_state.failed_attempts++;
     
+    // Log failed attempt
+    char log_command[16];
+    snprintf(log_command, sizeof(log_command), "%s#", command);
+    dtmf_add_security_log(CMD_INVALID, false, log_command, NULL, "unknown_format");
+    
     // Check rate limiting
     if (command_state.failed_attempts >= security_config.max_attempts) {
         command_state.rate_limited = true;
         ESP_LOGE(TAG, "SECURITY ALERT: Rate limit triggered after %d failed attempts", 
                  command_state.failed_attempts);
+        
+        // Log rate limiting event
+        char reason[32];
+        snprintf(reason, sizeof(reason), "rate_limit_%d_attempts", command_state.failed_attempts);
+        dtmf_add_security_log(CMD_INVALID, false, log_command, NULL, reason);
     }
     return false;
 }
@@ -458,6 +587,14 @@ void dtmf_decoder_init(void)
     ESP_LOGI(TAG, "Initializing DTMF Decoder");
     dtmf_callback = dtmf_command_handler;
     
+    // Create mutex for security log
+    if (security_log_mutex == NULL) {
+        security_log_mutex = xSemaphoreCreateMutex();
+        if (security_log_mutex == NULL) {
+            ESP_LOGE(TAG, "Failed to create security log mutex");
+        }
+    }
+    
     // Load security configuration from NVS
     dtmf_load_security_config();
     
@@ -524,4 +661,53 @@ void dtmf_reset_call_state(void)
     command_state.last_event_ts = 0;
     
     ESP_LOGI(TAG, "Call state reset complete");
+}
+
+// Get security log entries since timestamp (thread-safe)
+int dtmf_get_security_logs(dtmf_security_log_t* entries, int max_entries, uint64_t since_timestamp)
+{
+    if (!entries || max_entries <= 0) {
+        ESP_LOGE(TAG, "Invalid parameters for log retrieval");
+        return 0;
+    }
+
+    if (security_log_mutex == NULL) {
+        ESP_LOGE(TAG, "Security log mutex not initialized");
+        return 0;
+    }
+
+    int count = 0;
+
+    if (xSemaphoreTake(security_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Calculate the starting index (oldest entry in circular buffer)
+        int start_index;
+        if (security_log_count < SECURITY_LOG_SIZE) {
+            // Buffer not full yet, start from beginning
+            start_index = 0;
+        } else {
+            // Buffer is full, start from head (oldest entry)
+            start_index = security_log_head;
+        }
+
+        // Iterate through all entries in chronological order
+        for (int i = 0; i < security_log_count && count < max_entries; i++) {
+            int index = (start_index + i) % SECURITY_LOG_SIZE;
+            dtmf_security_log_t* entry = &security_log_buffer[index];
+
+            // Filter by timestamp
+            if (entry->timestamp >= since_timestamp) {
+                memcpy(&entries[count], entry, sizeof(dtmf_security_log_t));
+                count++;
+            }
+        }
+
+        xSemaphoreGive(security_log_mutex);
+        
+        ESP_LOGI(TAG, "Retrieved %d security log entries (since timestamp %llu)", 
+                 count, since_timestamp);
+    } else {
+        ESP_LOGE(TAG, "Failed to acquire security log mutex for retrieval");
+    }
+
+    return count;
 }

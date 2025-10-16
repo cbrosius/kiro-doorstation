@@ -73,4 +73,7 @@ void dtmf_load_security_config(void);
 void dtmf_save_security_config(const dtmf_security_config_t* config);
 void dtmf_reset_call_state(void);
 
+// Security log retrieval
+int dtmf_get_security_logs(dtmf_security_log_t* entries, int max_entries, uint64_t since_timestamp);
+
 #endif
