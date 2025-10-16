@@ -1879,15 +1879,18 @@
         const card = document.getElementById('sip-status');
         const valueSpan = card.querySelector('.status-value');
         
-        if (response.status === 'registered') {
+        // API returns capitalized status values like "Registered", "Connecting", etc.
+        const status = response.status ? response.status.toLowerCase() : '';
+        
+        if (status === 'registered') {
           card.setAttribute('data-status', 'registered');
           valueSpan.textContent = `Registered (${response.state || 'IDLE'})`;
-        } else if (response.status === 'connecting') {
+        } else if (status === 'connecting') {
           card.setAttribute('data-status', 'connecting');
           valueSpan.textContent = 'Connecting...';
         } else {
           card.setAttribute('data-status', 'disconnected');
-          valueSpan.textContent = 'Disconnected';
+          valueSpan.textContent = response.status || 'Disconnected';
         }
       } catch (error) {
         const card = document.getElementById('sip-status');
@@ -3614,7 +3617,10 @@
         const connectBtn = document.getElementById('sip-connect-btn');
         const disconnectBtn = document.getElementById('sip-disconnect-btn');
         
-        if (response.status === 'registered') {
+        // API returns capitalized status values like "Registered", "Connecting", etc.
+        const status = response.status ? response.status.toLowerCase() : '';
+        
+        if (status === 'registered') {
           if (iconElement) iconElement.textContent = '✅';
           if (statusElement) {
             statusElement.textContent = `Registered (${response.state || 'IDLE'})`;
@@ -3624,7 +3630,7 @@
           if (connectBtn) connectBtn.disabled = true;
           if (disconnectBtn) disconnectBtn.disabled = false;
           
-        } else if (response.status === 'connecting') {
+        } else if (status === 'connecting') {
           if (iconElement) iconElement.textContent = '⏳';
           if (statusElement) {
             statusElement.textContent = 'Connecting...';
@@ -3637,7 +3643,7 @@
         } else {
           if (iconElement) iconElement.textContent = '❌';
           if (statusElement) {
-            statusElement.textContent = 'Disconnected';
+            statusElement.textContent = response.status || 'Disconnected';
             statusElement.style.color = 'var(--color-danger)';
           }
           // Enable connect, disable disconnect
