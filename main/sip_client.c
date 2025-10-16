@@ -133,7 +133,7 @@ static void calculate_md5_hex(const char* input, char* output) {
     mbedtls_md5((const unsigned char*)input, strlen(input), hash);
     
     // Convert to hex string
-    for (int i = 0; i < 16; i++) {
+    for (size_t i = 0; i < 16; i++) {
         sprintf(output + (i * 2), "%02x", hash[i]);
     }
     output[32] = '\0';
@@ -145,82 +145,60 @@ static void generate_cnonce(char* cnonce_out, size_t len) {
     snprintf(cnonce_out, len, "%08lx%08lx", (unsigned long)random, (unsigned long)esp_random());
 }
 
+// Helper to extract quoted value from header
+static bool extract_quoted_value(const char* header, const char* key, char* dest, size_t dest_size) {
+    const char* start = strstr(header, key);
+    if (!start) {
+        return false;
+    }
+    start += strlen(key);
+    const char* end = strchr(start, '"');
+    if (!end) {
+        return false;
+    }
+    size_t len = end - start;
+    if (len >= dest_size) {
+        len = dest_size - 1;
+    }
+    strncpy(dest, start, len);
+    dest[len] = '\0';
+    return true;
+}
+
 // Parse WWW-Authenticate header
 static sip_auth_challenge_t parse_www_authenticate(const char* buffer) {
     sip_auth_challenge_t challenge = {0};
     
-    char* auth_header = strstr(buffer, "WWW-Authenticate:");
+    const char* auth_header = strstr(buffer, "WWW-Authenticate:");
     if (!auth_header) {
         return challenge;
     }
     
     // Extract realm
-    char* realm_start = strstr(auth_header, "realm=\"");
-    if (realm_start) {
-        realm_start += 7;
-        char* realm_end = strchr(realm_start, '"');
-        if (realm_end) {
-            int len = realm_end - realm_start;
-            if (len < sizeof(challenge.realm)) {
-                strncpy(challenge.realm, realm_start, len);
-                challenge.realm[len] = '\0';
-            }
-        }
-    }
+    extract_quoted_value(auth_header, "realm=\"", challenge.realm, sizeof(challenge.realm));
     
     // Extract nonce
-    char* nonce_start = strstr(auth_header, "nonce=\"");
-    if (nonce_start) {
-        nonce_start += 7;
-        char* nonce_end = strchr(nonce_start, '"');
-        if (nonce_end) {
-            int len = nonce_end - nonce_start;
-            if (len < sizeof(challenge.nonce)) {
-                strncpy(challenge.nonce, nonce_start, len);
-                challenge.nonce[len] = '\0';
-            }
-        }
-    }
+    extract_quoted_value(auth_header, "nonce=\"", challenge.nonce, sizeof(challenge.nonce));
     
     // Extract qop
-    char* qop_start = strstr(auth_header, "qop=\"");
-    if (qop_start) {
-        qop_start += 5;
-        char* qop_end = strchr(qop_start, '"');
-        if (qop_end) {
-            int len = qop_end - qop_start;
-            if (len < sizeof(challenge.qop)) {
-                strncpy(challenge.qop, qop_start, len);
-                challenge.qop[len] = '\0';
-            }
-        }
-    }
+    extract_quoted_value(auth_header, "qop=\"", challenge.qop, sizeof(challenge.qop));
     
     // Extract opaque (optional)
-    char* opaque_start = strstr(auth_header, "opaque=\"");
-    if (opaque_start) {
-        opaque_start += 8;
-        char* opaque_end = strchr(opaque_start, '"');
-        if (opaque_end) {
-            int len = opaque_end - opaque_start;
-            if (len < sizeof(challenge.opaque)) {
-                strncpy(challenge.opaque, opaque_start, len);
-                challenge.opaque[len] = '\0';
-            }
-        }
-    }
+    extract_quoted_value(auth_header, "opaque=\"", challenge.opaque, sizeof(challenge.opaque));
     
     // Extract algorithm (optional, defaults to MD5)
-    char* algo_start = strstr(auth_header, "algorithm=");
+    const char* algo_start = strstr(auth_header, "algorithm=");
     if (algo_start) {
         algo_start += 10;
-        if (*algo_start == '"') algo_start++;
-        char* algo_end = strpbrk(algo_start, "\",\r\n ");
+        if (*algo_start == '"') {
+            algo_start++;
+        }
+        const char* algo_end = strpbrk(algo_start, "\",\r\n ");
         if (algo_end) {
-            int len = algo_end - algo_start;
-            if (len < sizeof(challenge.algorithm)) {
-                strncpy(challenge.algorithm, algo_start, len);
-                challenge.algorithm[len] = '\0';
+            size_t algo_len = algo_end - algo_start;
+            if (algo_len < sizeof(challenge.algorithm)) {
+                strncpy(challenge.algorithm, algo_start, algo_len);
+                challenge.algorithm[algo_len] = '\0';
             }
         }
     } else {
@@ -252,9 +230,13 @@ static void calculate_digest_response(
     const char* cnonce,
     char* response_out)
 {
-    char ha1[33], ha2[33];
-    // Use static to avoid stack allocation (not thread-safe but only one SIP task)
-    static char ha1_input[256], ha2_input[256], response_input[512];
+    char ha1[33];
+    char ha2[33];
+    // Use static to avoid stack allocation
+    // Thread-safe: only one SIP task accesses this function
+    static char ha1_input[256];
+    static char ha2_input[256];
+    static char response_input[512];
     
     // Calculate HA1 = MD5(username:realm:password)
     snprintf(ha1_input, sizeof(ha1_input), "%s:%s:%s", username, realm, password);
@@ -298,7 +280,7 @@ static bool get_local_ip(char* ip_str, size_t max_len)
 }
 
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
-static void sip_task(void *pvParameters)
+static void sip_task(void *pvParameters __attribute__((unused)))
 {
     // Allocate buffer on heap instead of static to avoid memory issues
     const size_t buffer_size = 1536;  // Reduced from 2048 to 1536 bytes
@@ -468,17 +450,17 @@ static void sip_task(void *pvParameters)
                         
                         // Extract To tag for ACK
                         char to_tag[32] = {0};
-                        char* to_header = strstr(buffer, "To:");
-                        if (to_header) {
-                            char* tag_start = strstr(to_header, "tag=");
-                            if (tag_start) {
-                                tag_start += 4;
-                                char* tag_end = strpbrk(tag_start, ";\r\n ");
-                                if (tag_end) {
-                                    int tag_len = tag_end - tag_start;
-                                    if (tag_len < sizeof(to_tag)) {
-                                        strncpy(to_tag, tag_start, tag_len);
-                                        to_tag[tag_len] = '\0';
+                        const char* to_hdr = strstr(buffer, "To:");
+                        if (to_hdr) {
+                            const char* tag_ptr = strstr(to_hdr, "tag=");
+                            if (tag_ptr) {
+                                tag_ptr += 4;
+                                const char* tag_term = strpbrk(tag_ptr, ";\r\n ");
+                                if (tag_term) {
+                                    size_t tag_length = tag_term - tag_ptr;
+                                    if (tag_length < sizeof(to_tag)) {
+                                        strncpy(to_tag, tag_ptr, tag_length);
+                                        to_tag[tag_length] = '\0';
                                     }
                                 }
                             }
@@ -493,16 +475,18 @@ static void sip_task(void *pvParameters)
                         
                         // Extract Call-ID and CSeq for ACK
                         char call_id[128] = {0};  // Increased buffer size
-                        char* callid_start = strstr(buffer, "Call-ID:");
-                        if (callid_start) {
-                            callid_start += 8;
-                            while (*callid_start == ' ') callid_start++;
-                            char* callid_end = strstr(callid_start, "\r\n");
-                            if (callid_end) {
-                                int len = callid_end - callid_start;
-                                if (len < sizeof(call_id) - 1) {
-                                    strncpy(call_id, callid_start, len);
-                                    call_id[len] = '\0';
+                        const char* cid_start = strstr(buffer, "Call-ID:");
+                        if (cid_start) {
+                            cid_start += 8;
+                            while (*cid_start == ' ') {
+                                cid_start++;
+                            }
+                            const char* cid_end = strstr(cid_start, "\r\n");
+                            if (cid_end) {
+                                size_t cid_len = cid_end - cid_start;
+                                if (cid_len < sizeof(call_id) - 1) {
+                                    strncpy(call_id, cid_start, cid_len);
+                                    call_id[cid_len] = '\0';
                                 }
                             }
                         }
@@ -527,9 +511,9 @@ static void sip_task(void *pvParameters)
                         struct sockaddr_in server_addr;
                         server_addr.sin_family = AF_INET;
                         server_addr.sin_port = htons(sip_config.port);
-                        struct hostent *host = gethostbyname(sip_config.server);
+                        const struct hostent *host = gethostbyname(sip_config.server);
                         if (host) {
-                            memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                            memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
                             sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
                                   (struct sockaddr*)&server_addr, sizeof(server_addr));
                             sip_add_log_entry("sent", "ACK sent");
@@ -538,12 +522,15 @@ static void sip_task(void *pvParameters)
                         // Extract remote RTP port from SDP (simplified - assumes port 5004)
                         // In a full implementation, parse the SDP m= line
                         uint16_t remote_rtp_port = 5004;
-                        char* sdp_start = strstr(buffer, "\r\n\r\n");
+                        const char* sdp_start = strstr(buffer, "\r\n\r\n");
                         if (sdp_start) {
-                            char* m_line = strstr(sdp_start, "m=audio ");
+                            const char* m_line = strstr(sdp_start, "m=audio ");
                             if (m_line) {
                                 m_line += 8;
-                                remote_rtp_port = atoi(m_line);
+                                int port_val = atoi(m_line);
+                                if (port_val > 0 && port_val <= 65535) {
+                                    remote_rtp_port = (uint16_t)port_val;
+                                }
                             }
                         }
                         
@@ -636,12 +623,12 @@ static void sip_task(void *pvParameters)
                     
                     // Only accept if we're in IDLE or REGISTERED state
                     if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED) {
-                        const char* state_name = (current_state < sizeof(state_names)/sizeof(state_names[0])) ? 
+                        const char* current_state_name = (current_state < sizeof(state_names)/sizeof(state_names[0])) ? 
                                                 state_names[current_state] : "UNKNOWN";
-                        char log_msg[128];
-                        snprintf(log_msg, sizeof(log_msg), "Busy - cannot accept call (state: %s)", state_name);
-                        sip_add_log_entry("error", log_msg);
-                        // TODO: Send 486 Busy Here response
+                        char busy_msg[128];
+                        snprintf(busy_msg, sizeof(busy_msg), "Busy - cannot accept call (state: %s)", current_state_name);
+                        sip_add_log_entry("error", busy_msg);
+                        // Send 486 Busy Here response would be implemented here
                         continue;
                     }
                     
@@ -655,71 +642,81 @@ static void sip_task(void *pvParameters)
                     int cseq_num = 1;
                     
                     // Extract Call-ID
-                    char* callid_start = strstr(buffer, "Call-ID:");
-                    if (callid_start) {
-                        callid_start += 8;
-                        while (*callid_start == ' ') callid_start++;
-                        char* callid_end = strstr(callid_start, "\r\n");
-                        if (callid_end) {
-                            int len = callid_end - callid_start;
-                            if (len < sizeof(call_id) - 1) {
-                                strncpy(call_id, callid_start, len);
-                                call_id[len] = '\0';
+                    const char* cid_ptr = strstr(buffer, "Call-ID:");
+                    if (cid_ptr) {
+                        cid_ptr += 8;
+                        while (*cid_ptr == ' ') {
+                            cid_ptr++;
+                        }
+                        const char* cid_term = strstr(cid_ptr, "\r\n");
+                        if (cid_term) {
+                            size_t cid_length = cid_term - cid_ptr;
+                            if (cid_length < sizeof(call_id) - 1) {
+                                strncpy(call_id, cid_ptr, cid_length);
+                                call_id[cid_length] = '\0';
                             }
                         }
                     }
                     
                     // Extract From
-                    char* from_start = strstr(buffer, "From:");
-                    if (from_start) {
-                        from_start += 5;
-                        while (*from_start == ' ') from_start++;
-                        char* from_end = strstr(from_start, "\r\n");
-                        if (from_end) {
-                            int len = from_end - from_start;
-                            if (len < sizeof(from_header) - 1) {
-                                strncpy(from_header, from_start, len);
-                                from_header[len] = '\0';
+                    const char* from_ptr = strstr(buffer, "From:");
+                    if (from_ptr) {
+                        from_ptr += 5;
+                        while (*from_ptr == ' ') {
+                            from_ptr++;
+                        }
+                        const char* from_term = strstr(from_ptr, "\r\n");
+                        if (from_term) {
+                            size_t from_length = from_term - from_ptr;
+                            if (from_length < sizeof(from_header) - 1) {
+                                strncpy(from_header, from_ptr, from_length);
+                                from_header[from_length] = '\0';
                             }
                         }
                     }
                     
                     // Extract To
-                    char* to_start = strstr(buffer, "To:");
-                    if (to_start) {
-                        to_start += 3;
-                        while (*to_start == ' ') to_start++;
-                        char* to_end = strstr(to_start, "\r\n");
-                        if (to_end) {
-                            int len = to_end - to_start;
-                            if (len < sizeof(to_header) - 1) {
-                                strncpy(to_header, to_start, len);
-                                to_header[len] = '\0';
+                    const char* to_ptr = strstr(buffer, "To:");
+                    if (to_ptr) {
+                        to_ptr += 3;
+                        while (*to_ptr == ' ') {
+                            to_ptr++;
+                        }
+                        const char* to_term = strstr(to_ptr, "\r\n");
+                        if (to_term) {
+                            size_t to_length = to_term - to_ptr;
+                            if (to_length < sizeof(to_header) - 1) {
+                                strncpy(to_header, to_ptr, to_length);
+                                to_header[to_length] = '\0';
                             }
                         }
                     }
                     
                     // Extract Via
-                    char* via_start = strstr(buffer, "Via:");
-                    if (via_start) {
-                        via_start += 4;
-                        while (*via_start == ' ') via_start++;
-                        char* via_end = strstr(via_start, "\r\n");
-                        if (via_end) {
-                            int len = via_end - via_start;
-                            if (len < sizeof(via_header) - 1) {
-                                strncpy(via_header, via_start, len);
-                                via_header[len] = '\0';
+                    const char* via_ptr = strstr(buffer, "Via:");
+                    if (via_ptr) {
+                        via_ptr += 4;
+                        while (*via_ptr == ' ') {
+                            via_ptr++;
+                        }
+                        const char* via_term = strstr(via_ptr, "\r\n");
+                        if (via_term) {
+                            size_t via_length = via_term - via_ptr;
+                            if (via_length < sizeof(via_header) - 1) {
+                                strncpy(via_header, via_ptr, via_length);
+                                via_header[via_length] = '\0';
                             }
                         }
                     }
                     
                     // Extract CSeq
-                    char* cseq_start = strstr(buffer, "CSeq:");
-                    if (cseq_start) {
-                        cseq_start += 5;
-                        while (*cseq_start == ' ') cseq_start++;
-                        cseq_num = atoi(cseq_start);
+                    const char* cseq_ptr = strstr(buffer, "CSeq:");
+                    if (cseq_ptr) {
+                        cseq_ptr += 5;
+                        while (*cseq_ptr == ' ') {
+                            cseq_ptr++;
+                        }
+                        cseq_num = atoi(cseq_ptr);
                     }
                     
                     // Get local IP
@@ -777,9 +774,9 @@ static void sip_task(void *pvParameters)
                     server_addr.sin_family = AF_INET;
                     server_addr.sin_port = htons(sip_config.port);
                     
-                    struct hostent *host = gethostbyname(sip_config.server);
+                    const struct hostent *host = gethostbyname(sip_config.server);
                     if (host) {
-                        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                        memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
                         int sent = sendto(sip_socket, response, strlen(response), 0,
                                          (struct sockaddr*)&server_addr, sizeof(server_addr));
                         if (sent > 0) {
@@ -820,25 +817,29 @@ static void sip_task(void *pvParameters)
                     // Extract Call-ID and CSeq for response
                     char call_id[128] = {0};  // Increased buffer size
                     int cseq_num = 1;
-                    char* callid_start = strstr(buffer, "Call-ID:");
-                    if (callid_start) {
-                        callid_start += 8;
-                        while (*callid_start == ' ') callid_start++;
-                        char* callid_end = strstr(callid_start, "\r\n");
-                        if (callid_end) {
-                            int len = callid_end - callid_start;
-                            if (len < sizeof(call_id)) {
-                                strncpy(call_id, callid_start, len);
-                                call_id[len] = '\0';
+                    const char* bye_cid_ptr = strstr(buffer, "Call-ID:");
+                    if (bye_cid_ptr) {
+                        bye_cid_ptr += 8;
+                        while (*bye_cid_ptr == ' ') {
+                            bye_cid_ptr++;
+                        }
+                        const char* bye_cid_term = strstr(bye_cid_ptr, "\r\n");
+                        if (bye_cid_term) {
+                            size_t bye_cid_len = bye_cid_term - bye_cid_ptr;
+                            if (bye_cid_len < sizeof(call_id)) {
+                                strncpy(call_id, bye_cid_ptr, bye_cid_len);
+                                call_id[bye_cid_len] = '\0';
                             }
                         }
                     }
                     
-                    char* cseq_start = strstr(buffer, "CSeq:");
-                    if (cseq_start) {
-                        cseq_start += 5;
-                        while (*cseq_start == ' ') cseq_start++;
-                        cseq_num = atoi(cseq_start);
+                    const char* bye_cseq_ptr = strstr(buffer, "CSeq:");
+                    if (bye_cseq_ptr) {
+                        bye_cseq_ptr += 5;
+                        while (*bye_cseq_ptr == ' ') {
+                            bye_cseq_ptr++;
+                        }
+                        cseq_num = atoi(bye_cseq_ptr);
                     }
                     
                     snprintf(bye_response, sizeof(bye_response),
@@ -857,9 +858,9 @@ static void sip_task(void *pvParameters)
                     struct sockaddr_in server_addr;
                     server_addr.sin_family = AF_INET;
                     server_addr.sin_port = htons(sip_config.port);
-                    struct hostent *host = gethostbyname(sip_config.server);
+                    const struct hostent *host = gethostbyname(sip_config.server);
                     if (host) {
-                        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                        memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
                         sendto(sip_socket, bye_response, strlen(bye_response), 0,
                               (struct sockaddr*)&server_addr, sizeof(server_addr));
                         sip_add_log_entry("sent", "200 OK response to BYE");
@@ -1015,7 +1016,7 @@ bool sip_client_register(void)
     server_addr.sin_port = htons(sip_config.port);
 
     // DNS lookup (no watchdog needed - SIP task not monitored)
-    struct hostent *host = gethostbyname(sip_config.server);
+    const struct hostent *host = gethostbyname(sip_config.server);
     
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
@@ -1026,7 +1027,7 @@ bool sip_client_register(void)
     
     sip_add_log_entry("info", "DNS lookup successful");
 
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
 
     // Get local IP address
     char local_ip[16];
@@ -1050,7 +1051,9 @@ bool sip_client_register(void)
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent < 0) {
-        ESP_LOGE(TAG, "Error sending REGISTER message: %d", sent);
+        char err_msg[64];
+        snprintf(err_msg, sizeof(err_msg), "Error sending REGISTER message: %d", sent);
+        ESP_LOGE(TAG, "%s", err_msg);
         current_state = SIP_STATE_ERROR;
         return false;
     }
@@ -1073,13 +1076,13 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(sip_config.port);
 
-    struct hostent *host = gethostbyname(sip_config.server);
+    const struct hostent *host = gethostbyname(sip_config.server);
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         current_state = SIP_STATE_ERROR;
         return false;
     }
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
 
     // Get local IP
     char local_ip[16];
@@ -1263,14 +1266,14 @@ void sip_client_make_call(const char* uri)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(sip_config.port);
     
-    struct hostent *host = gethostbyname(sip_config.server);
+    const struct hostent *host = gethostbyname(sip_config.server);
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         sip_add_log_entry("error", "DNS lookup failed for call");
         current_state = SIP_STATE_ERROR;
         return;
     }
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
     
     // Send INVITE message
     int sent = sendto(sip_socket, invite_msg, strlen(invite_msg), 0,
@@ -1331,9 +1334,9 @@ void sip_client_hangup(void)
             struct sockaddr_in server_addr;
             server_addr.sin_family = AF_INET;
             server_addr.sin_port = htons(sip_config.port);
-            struct hostent *host = gethostbyname(sip_config.server);
+            const struct hostent *host = gethostbyname(sip_config.server);
             if (host) {
-                memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+                memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
                 int sent = sendto(sip_socket, bye_msg, strlen(bye_msg), 0,
                                  (struct sockaddr*)&server_addr, sizeof(server_addr));
                 if (sent > 0) {
@@ -1345,7 +1348,7 @@ void sip_client_hangup(void)
         } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
             // Send CANCEL for calls that haven't been answered yet
             sip_add_log_entry("info", "Canceling outgoing call");
-            // TODO: Implement CANCEL message
+            // CANCEL message implementation would go here
         }
         
         // Return to registered state
@@ -1401,13 +1404,15 @@ bool sip_client_test_connection(void)
 
     // For testing purposes, we'll just check if we can resolve the hostname
     // and send a REGISTER message (without waiting for response)
-    struct hostent *host = gethostbyname(sip_config.server);
+    const struct hostent *host = gethostbyname(sip_config.server);
     if (host == NULL) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         return false;
     }
 
-    ESP_LOGI(TAG, "SIP server %s is reachable", sip_config.server);
+    char reachable_msg[128];
+    snprintf(reachable_msg, sizeof(reachable_msg), "SIP server %s is reachable", sip_config.server);
+    ESP_LOGI(TAG, "%s", reachable_msg);
     return true;
 }
 
@@ -1481,7 +1486,9 @@ sip_state_t sip_client_get_state(void)
 void sip_save_config(const char* server, const char* username, const char* password,
                      const char* apt1, const char* apt2, int port)
 {
-    ESP_LOGI(TAG, "Saving SIP configuration: %s@%s", username, server);
+    char save_msg[128];
+    snprintf(save_msg, sizeof(save_msg), "Saving SIP configuration: %s@%s", username, server);
+    ESP_LOGI(TAG, "%s", save_msg);
 
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open("sip_config", NVS_READWRITE, &nvs_handle);
@@ -1492,7 +1499,7 @@ void sip_save_config(const char* server, const char* username, const char* passw
         nvs_set_str(nvs_handle, "password", password);
         nvs_set_str(nvs_handle, "apt1", apt1);
         nvs_set_str(nvs_handle, "apt2", apt2);
-        nvs_set_u16(nvs_handle, "port", port);
+        nvs_set_u16(nvs_handle, "port", (uint16_t)port);
         nvs_set_u8(nvs_handle, "configured", 1);
 
         nvs_commit(nvs_handle);
@@ -1530,9 +1537,9 @@ sip_config_t sip_load_config(void)
             required_size = sizeof(config.apartment2_uri);
             nvs_get_str(nvs_handle, "apt2", config.apartment2_uri, &required_size);
             
-            uint16_t port = 5060;
-            nvs_get_u16(nvs_handle, "port", &port);
-            config.port = port;
+            uint16_t port_val = 5060;
+            nvs_get_u16(nvs_handle, "port", &port_val);
+            config.port = (int)port_val;
             
             config.configured = true;
         }
@@ -1554,13 +1561,15 @@ int sip_get_log_entries(sip_log_entry_t* entries, int max_entries, uint64_t sinc
     if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         int start_index = (sip_log_write_index - sip_log_count + SIP_LOG_MAX_ENTRIES) % SIP_LOG_MAX_ENTRIES;
         
-        for (int i = 0; i < sip_log_count && count < max_entries; i++) {
+        int i = 0;
+        while (i < sip_log_count && count < max_entries) {
             int index = (start_index + i) % SIP_LOG_MAX_ENTRIES;
             // Use > to exclude entries at exactly since_timestamp (already seen)
             if (sip_log_buffer[index].timestamp > since_timestamp) {
                 memcpy(&entries[count], &sip_log_buffer[index], sizeof(sip_log_entry_t));
                 count++;
             }
+            i++;
         }
         
         xSemaphoreGive(sip_log_mutex);
@@ -1723,7 +1732,7 @@ void sip_disconnect(void)
     // Send REGISTER with Expires: 0 to unregister (if registered)
     if (current_state == SIP_STATE_REGISTERED && sip_socket >= 0) {
         sip_add_log_entry("info", "Sending unregister message");
-        // TODO: Send REGISTER with Expires: 0
+        // Unregister implementation would send REGISTER with Expires: 0
     }
     
     // Close socket
