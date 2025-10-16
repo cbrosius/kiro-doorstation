@@ -2144,7 +2144,129 @@
     <!-- Security Settings Section -->
     <section class="content-section" id="section-security" hidden>
       <h2 tabindex="-1">Security Settings</h2>
-      <p>Security configuration will be implemented here.</p>
+      
+      <!-- Current Security Status (Task 10.2) -->
+      <div class="status-panel">
+        <div class="status-content">
+          <div class="status-grid">
+            <div class="status-card" id="security-pin-status">
+              <span class="status-icon">🔒</span>
+              <div class="status-info">
+                <span class="status-label">PIN Protection</span>
+                <span class="status-value" id="security-pin-enabled">❌ Disabled</span>
+              </div>
+            </div>
+            <div class="status-card">
+              <span class="status-icon">🔢</span>
+              <div class="status-info">
+                <span class="status-label">PIN Code</span>
+                <span class="status-value" id="security-pin-code">****</span>
+              </div>
+            </div>
+            <div class="status-card">
+              <span class="status-icon">⏱️</span>
+              <div class="status-info">
+                <span class="status-label">Timeout</span>
+                <span class="status-value" id="security-timeout">10000 ms</span>
+              </div>
+            </div>
+            <div class="status-card">
+              <span class="status-icon">🔁</span>
+              <div class="status-info">
+                <span class="status-label">Max Attempts</span>
+                <span class="status-value" id="security-max-attempts">3</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- DTMF Security Configuration Form (Task 10.1) -->
+      <form class="config-form" id="security-form" data-api="/api/dtmf/security" data-on-success="onSecuritySaved">
+        <h3>DTMF PIN Protection</h3>
+        <p class="form-help">Configure PIN protection for DTMF commands to prevent unauthorized access to door opener and other controls.</p>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="security-pin-enable" name="pin_enabled">
+            Enable PIN Protection
+          </label>
+          <span class="form-help">When enabled, DTMF commands will require PIN authentication</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="security-pin-input">
+            PIN Code <span class="required">*</span>
+          </label>
+          <input type="text" 
+                 id="security-pin-input" 
+                 name="pin_code" 
+                 required
+                 pattern="^\d{1,8}$"
+                 minlength="1"
+                 maxlength="8"
+                 placeholder="Enter 1-8 digit PIN"
+                 data-error="PIN must be 1-8 digits only"
+                 aria-describedby="pin-help">
+          <span class="error-message" hidden></span>
+          <span class="form-help" id="pin-help">Enter a numeric PIN code (1-8 digits)</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="security-timeout-input">
+            Timeout (ms) <span class="required">*</span>
+          </label>
+          <input type="number" 
+                 id="security-timeout-input" 
+                 name="timeout_ms" 
+                 required
+                 min="5000"
+                 max="30000"
+                 step="1000"
+                 placeholder="10000"
+                 data-error="Timeout must be between 5000 and 30000 ms"
+                 aria-describedby="timeout-help">
+          <span class="error-message" hidden></span>
+          <span class="form-help" id="timeout-help">Time to wait for PIN entry (5000-30000 ms)</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="security-max-attempts-input">
+            Max Attempts <span class="required">*</span>
+          </label>
+          <input type="number" 
+                 id="security-max-attempts-input" 
+                 name="max_attempts" 
+                 required
+                 min="1"
+                 max="10"
+                 step="1"
+                 placeholder="3"
+                 data-error="Max attempts must be between 1 and 10"
+                 aria-describedby="attempts-help">
+          <span class="error-message" hidden></span>
+          <span class="form-help" id="attempts-help">Maximum number of failed PIN attempts before lockout (1-10)</span>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" disabled>
+            <span class="btn-text">Save Security Settings</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Reset</button>
+        </div>
+      </form>
+      
+      <div class="config-form">
+        <h3>Security Information</h3>
+        <p>DTMF PIN protection adds an extra layer of security to prevent unauthorized access to door controls during a call.</p>
+        <ul style="margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+          <li><strong>PIN Protection:</strong> When enabled, callers must enter the correct PIN before using DTMF commands</li>
+          <li><strong>Timeout:</strong> Maximum time allowed for PIN entry before the system rejects the attempt</li>
+          <li><strong>Max Attempts:</strong> Number of failed PIN attempts before the system temporarily locks out further attempts</li>
+          <li><strong>Security Best Practices:</strong> Use a PIN that is not easily guessable and change it regularly</li>
+        </ul>
+      </div>
     </section>
 
     <!-- System Logs Section -->
@@ -2232,7 +2354,7 @@
         closeMobileSidebar();
       }
       
-      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9)
+      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9, Task 10)
       if (sectionId === 'sip') {
         // Load SIP configuration from server (Task 7.4)
         loadSIPConfiguration();
@@ -2245,6 +2367,9 @@
         // Update Hardware Settings section (Task 9)
         updateHardwareInfo();
         updateHardwareStatus();
+      } else if (sectionId === 'security') {
+        // Load Security Settings (Task 10.4)
+        loadSecurityConfiguration();
       }
     }
     
@@ -4946,6 +5071,115 @@
         updateHardwareInfo();
         updateHardwareStatus();
       }, 10000);
+    }
+    
+    // ===== Task 10: Security Settings Functions =====
+    
+    /**
+     * Task 10.4: Load security configuration from server and populate form
+     */
+    async function loadSecurityConfiguration() {
+      try {
+        const response = await apiRequest('/api/dtmf/security', { silentError: true });
+        
+        if (response) {
+          // Populate form fields (Task 10.4)
+          const pinEnableCheckbox = document.getElementById('security-pin-enable');
+          const pinInput = document.getElementById('security-pin-input');
+          const timeoutInput = document.getElementById('security-timeout-input');
+          const maxAttemptsInput = document.getElementById('security-max-attempts-input');
+          
+          if (pinEnableCheckbox) pinEnableCheckbox.checked = response.pin_enabled || false;
+          if (pinInput && response.pin_code) pinInput.value = response.pin_code;
+          if (timeoutInput && response.timeout_ms) timeoutInput.value = response.timeout_ms;
+          if (maxAttemptsInput && response.max_attempts) maxAttemptsInput.value = response.max_attempts;
+          
+          // Update status display (Task 10.2)
+          updateSecurityStatus(response);
+          
+          // Save initial state for change tracking
+          const form = document.getElementById('security-form');
+          if (form) {
+            saveFormInitialState(form);
+            trackFormChanges(form);
+          }
+          
+          console.log('Security configuration loaded successfully');
+        }
+      } catch (error) {
+        console.error('Error loading security configuration:', error);
+        // Set default values if config doesn't exist
+        const pinInput = document.getElementById('security-pin-input');
+        const timeoutInput = document.getElementById('security-timeout-input');
+        const maxAttemptsInput = document.getElementById('security-max-attempts-input');
+        
+        if (pinInput && !pinInput.value) pinInput.value = '1234';
+        if (timeoutInput && !timeoutInput.value) timeoutInput.value = '10000';
+        if (maxAttemptsInput && !maxAttemptsInput.value) maxAttemptsInput.value = '3';
+        
+        // Save initial state
+        const form = document.getElementById('security-form');
+        if (form) {
+          saveFormInitialState(form);
+          trackFormChanges(form);
+        }
+      }
+    }
+    
+    /**
+     * Task 10.2: Update security status display
+     * @param {Object} config - Security configuration object
+     */
+    function updateSecurityStatus(config) {
+      // Update PIN enabled status
+      const pinEnabledElement = document.getElementById('security-pin-enabled');
+      const pinStatusCard = document.getElementById('security-pin-status');
+      if (pinEnabledElement) {
+        const isEnabled = config.pin_enabled || false;
+        pinEnabledElement.textContent = isEnabled ? '✅ Enabled' : '❌ Disabled';
+        
+        // Update status card color
+        if (pinStatusCard) {
+          pinStatusCard.setAttribute('data-status', isEnabled ? 'connected' : 'disconnected');
+        }
+      }
+      
+      // Update PIN code (masked)
+      const pinCodeElement = document.getElementById('security-pin-code');
+      if (pinCodeElement && config.pin_code) {
+        pinCodeElement.textContent = '****';
+      }
+      
+      // Update timeout
+      const timeoutElement = document.getElementById('security-timeout');
+      if (timeoutElement && config.timeout_ms) {
+        timeoutElement.textContent = `${config.timeout_ms} ms`;
+      }
+      
+      // Update max attempts
+      const maxAttemptsElement = document.getElementById('security-max-attempts');
+      if (maxAttemptsElement && config.max_attempts) {
+        maxAttemptsElement.textContent = config.max_attempts;
+      }
+    }
+    
+    /**
+     * Task 10.3: Handle successful security configuration save
+     * @param {Object} response - API response
+     */
+    function onSecuritySaved(response) {
+      // Reload configuration to update status display
+      loadSecurityConfiguration();
+      
+      console.log('Security configuration saved and status updated');
+    }
+    
+    /**
+     * Initialize Security Settings section
+     */
+    function initSecuritySettings() {
+      // Load existing configuration
+      loadSecurityConfiguration();
     }
     
     // ===== Initialization =====
