@@ -1551,10 +1551,309 @@
       </div>
     </section>
 
-    <!-- Network Settings Section -->
+    <!-- Network Settings Section (Task 8) -->
     <section class="content-section" id="section-network" hidden>
       <h2 tabindex="-1">Network Settings</h2>
-      <p>Network configuration will be implemented here.</p>
+      
+      <!-- Task 8.1: WiFi Configuration -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">WiFi Configuration</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Configure your WiFi connection. Scan for available networks or enter credentials manually.
+        </p>
+        
+        <!-- WiFi Scan -->
+        <div style="margin-bottom: var(--spacing-lg);">
+          <button class="btn btn-info" onclick="handleWiFiScan()" id="wifi-scan-btn">
+            <span class="btn-text">
+              <span>🔍</span>
+              <span>Scan for Networks</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Network List -->
+        <div id="wifi-network-list" style="display: none; margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-bottom: var(--spacing-md); font-size: var(--font-size-base);">Available Networks</h4>
+          <div id="wifi-networks" style="max-height: 300px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-sm);">
+            <!-- Networks will be populated here -->
+          </div>
+        </div>
+        
+        <!-- WiFi Connection Form -->
+        <form id="wifi-form" data-api="/api/wifi/connect">
+          <div class="form-group">
+            <label for="wifi-ssid">
+              Network Name (SSID)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="wifi-ssid" 
+              name="ssid" 
+              required
+              minlength="1"
+              maxlength="32"
+              data-error="Please enter a valid SSID (1-32 characters)"
+              placeholder="MyNetwork">
+            <span class="error-message" hidden></span>
+            <span class="form-help">Enter the WiFi network name</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="wifi-password">
+              Password
+            </label>
+            <input 
+              type="password" 
+              id="wifi-password" 
+              name="password" 
+              minlength="8"
+              maxlength="63"
+              data-error="Password must be 8-63 characters"
+              placeholder="••••••••">
+            <span class="error-message" hidden></span>
+            <span class="form-help">Leave empty for open networks</span>
+          </div>
+          
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled>
+              <span class="btn-text">Connect to WiFi</span>
+              <span class="btn-spinner" hidden>⏳</span>
+            </button>
+            <button type="reset" class="btn btn-secondary">Reset</button>
+          </div>
+        </form>
+      </div>
+      
+      <!-- Task 8.2: IP Configuration -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">IP Configuration</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Configure network IP settings. Use DHCP for automatic configuration or Static IP for manual setup.
+        </p>
+        
+        <form id="ip-config-form" data-api="/api/network/ip">
+          <!-- DHCP/Static Toggle -->
+          <div class="form-group">
+            <label>IP Address Mode</label>
+            <div style="display: flex; gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
+              <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+                <input type="radio" name="mode" value="dhcp" id="ip-mode-dhcp" checked onchange="toggleIPMode()">
+                <span>DHCP (Automatic)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+                <input type="radio" name="mode" value="static" id="ip-mode-static" onchange="toggleIPMode()">
+                <span>Static IP (Manual)</span>
+              </label>
+            </div>
+            <span class="form-help">DHCP automatically assigns IP settings, Static IP requires manual configuration</span>
+          </div>
+          
+          <!-- Current IP Display -->
+          <div class="form-group">
+            <label>Current IP Configuration</label>
+            <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-md);">
+                <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">IP Address</div>
+                  <div id="current-ip" style="font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+                </div>
+                <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Mode</div>
+                  <div id="current-mode" style="font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Static IP Fields (hidden by default) -->
+          <div id="static-ip-fields" style="display: none;">
+            <div class="form-group">
+              <label for="static-ip">
+                IP Address
+                <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="static-ip" 
+                name="ip" 
+                pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                data-error="Please enter a valid IP address (e.g., 192.168.1.100)"
+                placeholder="192.168.1.100">
+              <span class="error-message" hidden></span>
+            </div>
+            
+            <div class="form-group">
+              <label for="subnet-mask">
+                Subnet Mask
+                <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="subnet-mask" 
+                name="subnet" 
+                pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                data-error="Please enter a valid subnet mask (e.g., 255.255.255.0)"
+                placeholder="255.255.255.0">
+              <span class="error-message" hidden></span>
+            </div>
+            
+            <div class="form-group">
+              <label for="gateway">
+                Gateway
+                <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="gateway" 
+                name="gateway" 
+                pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                data-error="Please enter a valid gateway address (e.g., 192.168.1.1)"
+                placeholder="192.168.1.1">
+              <span class="error-message" hidden></span>
+            </div>
+            
+            <div class="form-group">
+              <label for="dns1">
+                Primary DNS Server
+                <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="dns1" 
+                name="dns1" 
+                pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                data-error="Please enter a valid DNS server address (e.g., 8.8.8.8)"
+                placeholder="8.8.8.8">
+              <span class="error-message" hidden></span>
+              <span class="form-help">Google DNS: 8.8.8.8, Cloudflare DNS: 1.1.1.1</span>
+            </div>
+            
+            <div class="form-group">
+              <label for="dns2">
+                Secondary DNS Server
+              </label>
+              <input 
+                type="text" 
+                id="dns2" 
+                name="dns2" 
+                pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                data-error="Please enter a valid DNS server address"
+                placeholder="8.8.4.4">
+              <span class="error-message" hidden></span>
+              <span class="form-help">Optional secondary DNS server</span>
+            </div>
+          </div>
+          
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled>
+              <span class="btn-text">Save IP Configuration</span>
+              <span class="btn-spinner" hidden>⏳</span>
+            </button>
+            <button type="reset" class="btn btn-secondary">Reset</button>
+          </div>
+        </form>
+      </div>
+      
+      <!-- Task 8.3: NTP Configuration -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Time Synchronization (NTP)</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Configure Network Time Protocol (NTP) settings for automatic time synchronization.
+        </p>
+        
+        <form id="ntp-config-form" data-api="/api/ntp/config">
+          <div class="form-group">
+            <label for="ntp-server">
+              NTP Server
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="ntp-server" 
+              name="server" 
+              required
+              pattern="^[a-zA-Z0-9.-]+$"
+              data-error="Please enter a valid NTP server address"
+              placeholder="pool.ntp.org">
+            <span class="error-message" hidden></span>
+            <span class="form-help">Common servers: pool.ntp.org, time.google.com, time.cloudflare.com</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="timezone">
+              Timezone
+              <span class="required">*</span>
+            </label>
+            <select id="timezone" name="timezone" required>
+              <option value="">Select timezone...</option>
+              <option value="UTC">UTC (GMT+0)</option>
+              <option value="Europe/London">Europe/London (GMT+0/+1)</option>
+              <option value="Europe/Paris">Europe/Paris (GMT+1/+2)</option>
+              <option value="Europe/Berlin">Europe/Berlin (GMT+1/+2)</option>
+              <option value="Europe/Rome">Europe/Rome (GMT+1/+2)</option>
+              <option value="Europe/Madrid">Europe/Madrid (GMT+1/+2)</option>
+              <option value="Europe/Athens">Europe/Athens (GMT+2/+3)</option>
+              <option value="Europe/Moscow">Europe/Moscow (GMT+3)</option>
+              <option value="America/New_York">America/New_York (EST/EDT)</option>
+              <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+              <option value="America/Denver">America/Denver (MST/MDT)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+              <option value="America/Toronto">America/Toronto (EST/EDT)</option>
+              <option value="America/Mexico_City">America/Mexico_City (CST/CDT)</option>
+              <option value="America/Sao_Paulo">America/Sao_Paulo (BRT)</option>
+              <option value="Asia/Dubai">Asia/Dubai (GMT+4)</option>
+              <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+              <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+              <option value="Asia/Seoul">Asia/Seoul (KST)</option>
+              <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+              <option value="Australia/Sydney">Australia/Sydney (AEDT/AEST)</option>
+              <option value="Australia/Melbourne">Australia/Melbourne (AEDT/AEST)</option>
+              <option value="Pacific/Auckland">Pacific/Auckland (NZDT/NZST)</option>
+            </select>
+            <span class="error-message" hidden></span>
+            <span class="form-help">Select your local timezone for accurate time display</span>
+          </div>
+          
+          <!-- Current NTP Status -->
+          <div class="form-group">
+            <label>Current Sync Status</label>
+            <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+              <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Sync Status</div>
+                  <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                    <span id="ntp-status-icon" style="font-size: var(--font-size-xl);">⏳</span>
+                    <span id="ntp-status-text" style="font-weight: var(--font-weight-medium); color: var(--color-text);">Checking...</span>
+                  </div>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Current Time</div>
+                  <div id="ntp-status-time" style="font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled>
+              <span class="btn-text">Save NTP Configuration</span>
+              <span class="btn-spinner" hidden>⏳</span>
+            </button>
+            <button type="button" class="btn btn-info" onclick="handleNTPForceSync()">
+              <span class="btn-text">
+                <span>🔄</span>
+                <span>Force Sync Now</span>
+              </span>
+              <span class="btn-spinner" hidden>⏳</span>
+            </button>
+            <button type="reset" class="btn btn-secondary">Reset</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <!-- Hardware Settings Section -->
@@ -1654,12 +1953,15 @@
         closeMobileSidebar();
       }
       
-      // Section-specific initialization (Task 7.3, 7.4)
+      // Section-specific initialization (Task 7.3, 7.4, Task 8.4)
       if (sectionId === 'sip') {
         // Load SIP configuration from server (Task 7.4)
         loadSIPConfiguration();
         // Update SIP connection status and button states
         updateSIPConnectionStatus();
+      } else if (sectionId === 'network') {
+        // Initialize Network Settings section (Task 8.4)
+        initNetworkSettings();
       }
     }
     
@@ -3793,6 +4095,373 @@
     window.handleSIPDisconnect = handleSIPDisconnectEnhanced;
     window.handleSIPTest = handleSIPTestEnhanced;
     
+    // ===== Task 8: Network Settings Section Functions =====
+    
+    // ===== Task 8.1: WiFi Configuration =====
+    
+    /**
+     * Handle WiFi network scan
+     */
+    async function handleWiFiScan() {
+      const button = document.getElementById('wifi-scan-btn');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Scanning for WiFi networks...', 'info');
+        const response = await apiRequest('/api/wifi/scan', { method: 'POST' });
+        
+        if (response.networks && response.networks.length > 0) {
+          displayWiFiNetworks(response.networks);
+          showToast(`Found ${response.networks.length} network(s)`, 'success');
+        } else {
+          showToast('No networks found', 'warning');
+          document.getElementById('wifi-network-list').style.display = 'none';
+        }
+        
+      } catch (error) {
+        // Error already shown by apiRequest
+        document.getElementById('wifi-network-list').style.display = 'none';
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Display WiFi networks in the list
+     * @param {Array} networks - Array of network objects with ssid and rssi
+     */
+    function displayWiFiNetworks(networks) {
+      const listContainer = document.getElementById('wifi-network-list');
+      const networksContainer = document.getElementById('wifi-networks');
+      
+      if (!networksContainer) return;
+      
+      // Sort networks by signal strength (RSSI)
+      networks.sort((a, b) => b.rssi - a.rssi);
+      
+      // Build network list HTML
+      let html = '';
+      networks.forEach(network => {
+        const signalStrength = getSignalStrength(network.rssi);
+        const signalIcon = getSignalIcon(network.rssi);
+        const isSecure = network.auth !== 'OPEN';
+        
+        html += `
+          <div style="display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border-bottom: 1px solid var(--color-border-light); cursor: pointer; transition: background-color var(--transition-fast);" 
+               onmouseover="this.style.backgroundColor='var(--color-hover)'" 
+               onmouseout="this.style.backgroundColor='transparent'"
+               onclick="selectWiFiNetwork('${escapeHtml(network.ssid)}')">
+            <span style="font-size: var(--font-size-xl);">${signalIcon}</span>
+            <div style="flex: 1;">
+              <div style="font-weight: var(--font-weight-medium); color: var(--color-text);">${escapeHtml(network.ssid)}</div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                ${signalStrength} • ${isSecure ? '🔒 Secured' : '🔓 Open'}
+              </div>
+            </div>
+            <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">${network.rssi} dBm</span>
+          </div>
+        `;
+      });
+      
+      networksContainer.innerHTML = html;
+      listContainer.style.display = 'block';
+    }
+    
+    /**
+     * Get signal strength description from RSSI
+     * @param {number} rssi - Signal strength in dBm
+     * @returns {string} Signal strength description
+     */
+    function getSignalStrength(rssi) {
+      if (rssi >= -50) return 'Excellent';
+      if (rssi >= -60) return 'Good';
+      if (rssi >= -70) return 'Fair';
+      if (rssi >= -80) return 'Weak';
+      return 'Very Weak';
+    }
+    
+    /**
+     * Get signal icon from RSSI
+     * @param {number} rssi - Signal strength in dBm
+     * @returns {string} Signal icon emoji
+     */
+    function getSignalIcon(rssi) {
+      if (rssi >= -50) return '📶';
+      if (rssi >= -60) return '📶';
+      if (rssi >= -70) return '📡';
+      if (rssi >= -80) return '📡';
+      return '📉';
+    }
+    
+    /**
+     * Select a WiFi network from the scan results
+     * @param {string} ssid - Network SSID
+     */
+    function selectWiFiNetwork(ssid) {
+      const ssidInput = document.getElementById('wifi-ssid');
+      const passwordInput = document.getElementById('wifi-password');
+      
+      if (ssidInput) {
+        ssidInput.value = ssid;
+        // Trigger change event to update form tracking
+        ssidInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Focus password field
+      if (passwordInput) {
+        passwordInput.focus();
+      }
+      
+      showToast(`Selected network: ${ssid}`, 'info', 2000);
+    }
+    
+    /**
+     * Load existing WiFi configuration
+     */
+    async function loadWiFiConfiguration() {
+      try {
+        const response = await apiRequest('/api/wifi/config');
+        
+        const ssidInput = document.getElementById('wifi-ssid');
+        
+        if (ssidInput && response.ssid) {
+          ssidInput.value = response.ssid;
+        }
+        
+        // Save initial state for change tracking
+        const form = document.getElementById('wifi-form');
+        if (form) {
+          saveFormInitialState(form);
+          trackFormChanges(form);
+        }
+        
+        console.log('WiFi configuration loaded successfully');
+        
+      } catch (error) {
+        console.error('Error loading WiFi configuration:', error);
+        // Don't show error toast on initial load
+      }
+    }
+    
+    // ===== Task 8.2: IP Configuration =====
+    
+    /**
+     * Toggle IP mode between DHCP and Static
+     */
+    function toggleIPMode() {
+      const dhcpRadio = document.getElementById('ip-mode-dhcp');
+      const staticFields = document.getElementById('static-ip-fields');
+      const staticInputs = staticFields.querySelectorAll('input');
+      
+      if (dhcpRadio.checked) {
+        // Hide static IP fields
+        staticFields.style.display = 'none';
+        // Remove required attribute from static IP inputs
+        staticInputs.forEach(input => {
+          input.removeAttribute('required');
+        });
+      } else {
+        // Show static IP fields
+        staticFields.style.display = 'block';
+        // Add required attribute to static IP inputs (except dns2)
+        staticInputs.forEach(input => {
+          if (input.id !== 'dns2') {
+            input.setAttribute('required', 'required');
+          }
+        });
+      }
+      
+      // Trigger form change tracking
+      const form = document.getElementById('ip-config-form');
+      if (form) {
+        trackFormChanges(form);
+      }
+    }
+    
+    /**
+     * Load existing IP configuration
+     */
+    async function loadIPConfiguration() {
+      try {
+        const response = await apiRequest('/api/network/ip');
+        
+        // Update current IP display
+        const currentIPElement = document.getElementById('current-ip');
+        const currentModeElement = document.getElementById('current-mode');
+        
+        if (currentIPElement && response.ip) {
+          currentIPElement.textContent = response.ip;
+        }
+        
+        if (currentModeElement && response.mode) {
+          currentModeElement.textContent = response.mode.toUpperCase();
+        }
+        
+        // Set mode radio buttons
+        const dhcpRadio = document.getElementById('ip-mode-dhcp');
+        const staticRadio = document.getElementById('ip-mode-static');
+        
+        if (response.mode === 'static') {
+          if (staticRadio) staticRadio.checked = true;
+          toggleIPMode();
+          
+          // Populate static IP fields
+          const ipInput = document.getElementById('static-ip');
+          const subnetInput = document.getElementById('subnet-mask');
+          const gatewayInput = document.getElementById('gateway');
+          const dns1Input = document.getElementById('dns1');
+          const dns2Input = document.getElementById('dns2');
+          
+          if (ipInput && response.ip) ipInput.value = response.ip;
+          if (subnetInput && response.subnet) subnetInput.value = response.subnet;
+          if (gatewayInput && response.gateway) gatewayInput.value = response.gateway;
+          if (dns1Input && response.dns1) dns1Input.value = response.dns1;
+          if (dns2Input && response.dns2) dns2Input.value = response.dns2;
+        } else {
+          if (dhcpRadio) dhcpRadio.checked = true;
+          toggleIPMode();
+        }
+        
+        // Save initial state for change tracking
+        const form = document.getElementById('ip-config-form');
+        if (form) {
+          saveFormInitialState(form);
+          trackFormChanges(form);
+        }
+        
+        console.log('IP configuration loaded successfully');
+        
+      } catch (error) {
+        console.error('Error loading IP configuration:', error);
+        // Set error state
+        const currentIPElement = document.getElementById('current-ip');
+        const currentModeElement = document.getElementById('current-mode');
+        if (currentIPElement) currentIPElement.textContent = 'Error';
+        if (currentModeElement) currentModeElement.textContent = 'Error';
+      }
+    }
+    
+    // ===== Task 8.3: NTP Configuration =====
+    
+    /**
+     * Load existing NTP configuration
+     */
+    async function loadNTPConfiguration() {
+      try {
+        const response = await apiRequest('/api/ntp/config');
+        
+        const serverInput = document.getElementById('ntp-server');
+        const timezoneSelect = document.getElementById('timezone');
+        
+        if (serverInput && response.server) {
+          serverInput.value = response.server;
+        }
+        
+        if (timezoneSelect && response.timezone) {
+          timezoneSelect.value = response.timezone;
+        }
+        
+        // Save initial state for change tracking
+        const form = document.getElementById('ntp-config-form');
+        if (form) {
+          saveFormInitialState(form);
+          trackFormChanges(form);
+        }
+        
+        console.log('NTP configuration loaded successfully');
+        
+      } catch (error) {
+        console.error('Error loading NTP configuration:', error);
+        // Don't show error toast on initial load
+      }
+    }
+    
+    /**
+     * Update NTP status display in Network Settings section
+     */
+    async function updateNTPStatusInNetworkSection() {
+      try {
+        const response = await apiRequest('/api/ntp/status');
+        
+        const iconElement = document.getElementById('ntp-status-icon');
+        const textElement = document.getElementById('ntp-status-text');
+        const timeElement = document.getElementById('ntp-status-time');
+        
+        if (response.synced) {
+          if (iconElement) iconElement.textContent = '✅';
+          if (textElement) {
+            textElement.textContent = 'Synchronized';
+            textElement.style.color = 'var(--color-success)';
+          }
+        } else {
+          if (iconElement) iconElement.textContent = '❌';
+          if (textElement) {
+            textElement.textContent = 'Not Synchronized';
+            textElement.style.color = 'var(--color-danger)';
+          }
+        }
+        
+        if (timeElement && response.current_time) {
+          timeElement.textContent = response.current_time;
+        }
+        
+      } catch (error) {
+        console.error('Error updating NTP status:', error);
+        const iconElement = document.getElementById('ntp-status-icon');
+        const textElement = document.getElementById('ntp-status-text');
+        const timeElement = document.getElementById('ntp-status-time');
+        
+        if (iconElement) iconElement.textContent = '❌';
+        if (textElement) {
+          textElement.textContent = 'Error';
+          textElement.style.color = 'var(--color-danger)';
+        }
+        if (timeElement) timeElement.textContent = 'N/A';
+      }
+    }
+    
+    /**
+     * Handle NTP force sync
+     */
+    async function handleNTPForceSync() {
+      const button = event.target.closest('button');
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Forcing NTP synchronization...', 'info');
+        const response = await apiRequest('/api/ntp/sync', { method: 'POST' });
+        showToast(response.message || 'NTP sync initiated successfully!', 'success');
+        
+        // Update status after a short delay
+        setTimeout(() => {
+          updateNTPStatusInNetworkSection();
+        }, 2000);
+        
+      } catch (error) {
+        // Error already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    // ===== Task 8.4: Load Existing Network Configuration =====
+    
+    /**
+     * Initialize Network Settings section
+     */
+    function initNetworkSettings() {
+      // Load existing configurations
+      loadWiFiConfiguration();
+      loadIPConfiguration();
+      loadNTPConfiguration();
+      
+      // Update NTP status
+      updateNTPStatusInNetworkSection();
+      
+      // Auto-refresh NTP status every 10 seconds
+      setInterval(updateNTPStatusInNetworkSection, 10000);
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -3819,6 +4488,9 @@
       
       // Initialize SIP Settings section
       initSIPSettings();
+      
+      // Initialize Network Settings section
+      initNetworkSettings();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
