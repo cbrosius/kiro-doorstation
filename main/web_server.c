@@ -2,6 +2,7 @@
 #include "sip_client.h"
 #include "wifi_manager.h"
 #include "ntp_sync.h"
+#include "dtmf_decoder.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
@@ -36,19 +37,19 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
     // Get SIP configuration values, handling null returns
     const char* target1 = sip_get_target1();
     const char* target2 = sip_get_target2();
-    const char* server = sip_get_server();
+    const char* sip_server = sip_get_server();
     const char* username = sip_get_username();
     const char* password = sip_get_password();
 
     cJSON_AddStringToObject(root, "target1", target1 ? target1 : "");
     cJSON_AddStringToObject(root, "target2", target2 ? target2 : "");
-    cJSON_AddStringToObject(root, "server", server ? server : "");
+    cJSON_AddStringToObject(root, "server", sip_server ? sip_server : "");
     cJSON_AddStringToObject(root, "username", username ? username : "");
     cJSON_AddStringToObject(root, "password", password ? password : "");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -66,9 +67,9 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
         "SIP configuration test passed" :
         "SIP configuration test failed");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -76,7 +77,8 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
 static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 {
     char buf[256];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -121,9 +123,9 @@ static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
         }
     }
 
-    const char *json_string = cJSON_Print(response);
+    char *json_string = cJSON_Print(response);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(response);
     cJSON_Delete(root);
     return ESP_OK;
@@ -169,9 +171,9 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "entries", entries_array);
     cJSON_AddNumberToObject(root, "count", count);
     
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     free(entries);  // Free heap-allocated entries
     return ESP_OK;
@@ -189,9 +191,9 @@ static esp_err_t post_sip_connect_handler(httpd_req_t *req)
         "SIP connection initiated" :
         "SIP connection failed - check configuration");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -206,9 +208,9 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "status", "success");
     cJSON_AddStringToObject(root, "message", "SIP disconnected");
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -216,7 +218,8 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
     char buf[1024];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -240,7 +243,7 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 
     const cJSON *target1 = cJSON_GetObjectItem(root, "target1");
     const cJSON *target2 = cJSON_GetObjectItem(root, "target2");
-    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *sip_server = cJSON_GetObjectItem(root, "server");
     const cJSON *username = cJSON_GetObjectItem(root, "username");
     const cJSON *password = cJSON_GetObjectItem(root, "password");
 
@@ -250,8 +253,8 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
     if (cJSON_IsString(target2) && (target2->valuestring != NULL)) {
         sip_set_target2(target2->valuestring);
     }
-    if (cJSON_IsString(server) && (server->valuestring != NULL)) {
-        sip_set_server(server->valuestring);
+    if (cJSON_IsString(sip_server) && (sip_server->valuestring != NULL)) {
+        sip_set_server(sip_server->valuestring);
     }
     if (cJSON_IsString(username) && (username->valuestring != NULL)) {
         sip_set_username(username->valuestring);
@@ -292,9 +295,9 @@ static esp_err_t get_wifi_status_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "rssi", info.rssi);
     }
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -325,9 +328,9 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "networks", networks_array);
     cJSON_AddNumberToObject(root, "count", network_count);
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -335,7 +338,8 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 {
     char buf[512];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -418,9 +422,9 @@ static esp_err_t get_system_status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
     cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -453,15 +457,15 @@ static esp_err_t get_ntp_status_handler(httpd_req_t *req)
         char time_str[64];
         ntp_get_time_string(time_str, sizeof(time_str));
         cJSON_AddStringToObject(root, "current_time", time_str);
-        cJSON_AddNumberToObject(root, "timestamp_ms", ntp_get_timestamp_ms());
+        cJSON_AddNumberToObject(root, "timestamp_ms", (double)ntp_get_timestamp_ms());
     }
     
     cJSON_AddStringToObject(root, "server", ntp_get_server());
     cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -474,9 +478,9 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "server", ntp_get_server());
     cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
 
-    const char *json_string = cJSON_Print(root);
+    char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
-    free((void *)json_string);
+    free(json_string);
     cJSON_Delete(root);
     return ESP_OK;
 }
@@ -484,7 +488,8 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 {
     char buf[512];
-    int ret, remaining = req->content_len;
+    int ret;
+    int remaining = req->content_len;
 
     if (remaining > sizeof(buf) - 1) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
@@ -506,10 +511,10 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *ntp_server = cJSON_GetObjectItem(root, "server");
     const cJSON *timezone = cJSON_GetObjectItem(root, "timezone");
 
-    if (!cJSON_IsString(server) || (server->valuestring == NULL)) {
+    if (!cJSON_IsString(ntp_server) || (ntp_server->valuestring == NULL)) {
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing server");
         return ESP_FAIL;
@@ -518,10 +523,10 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
     const char* tz = (cJSON_IsString(timezone) && timezone->valuestring) ? 
                      timezone->valuestring : NTP_DEFAULT_TIMEZONE;
 
-    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", server->valuestring, tz);
+    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", ntp_server->valuestring, tz);
     
     // Update NTP configuration
-    ntp_set_config(server->valuestring, tz);
+    ntp_set_config(ntp_server->valuestring, tz);
 
     cJSON_Delete(root);
 
@@ -543,10 +548,210 @@ static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// DTMF Security API Handlers
+static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Get current security configuration
+    dtmf_security_config_t config;
+    dtmf_get_security_config(&config);
+
+    cJSON_AddBoolToObject(root, "pin_enabled", config.pin_enabled);
+    cJSON_AddStringToObject(root, "pin_code", config.pin_code);
+    cJSON_AddNumberToObject(root, "timeout_ms", config.timeout_ms);
+    cJSON_AddNumberToObject(root, "max_attempts", config.max_attempts);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    // Parse configuration from JSON
+    dtmf_security_config_t config;
+    dtmf_get_security_config(&config);  // Start with current config
+
+    const cJSON *pin_enabled = cJSON_GetObjectItem(root, "pin_enabled");
+    const cJSON *pin_code = cJSON_GetObjectItem(root, "pin_code");
+    const cJSON *timeout_ms = cJSON_GetObjectItem(root, "timeout_ms");
+    const cJSON *max_attempts = cJSON_GetObjectItem(root, "max_attempts");
+
+    // Update fields if provided
+    if (cJSON_IsBool(pin_enabled)) {
+        config.pin_enabled = cJSON_IsTrue(pin_enabled);
+    }
+
+    if (cJSON_IsString(pin_code) && (pin_code->valuestring != NULL)) {
+        // Validate PIN format (digits only, 1-8 chars)
+        size_t pin_len = strlen(pin_code->valuestring);
+        if (pin_len < 1 || pin_len > 8) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "PIN must be 1-8 characters");
+            return ESP_FAIL;
+        }
+        for (size_t i = 0; i < pin_len; i++) {
+            if (pin_code->valuestring[i] < '0' || pin_code->valuestring[i] > '9') {
+                cJSON_Delete(root);
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "PIN must contain only digits");
+                return ESP_FAIL;
+            }
+        }
+        strncpy(config.pin_code, pin_code->valuestring, sizeof(config.pin_code) - 1);
+        config.pin_code[sizeof(config.pin_code) - 1] = '\0';
+    }
+
+    if (cJSON_IsNumber(timeout_ms)) {
+        uint32_t timeout = (uint32_t)timeout_ms->valueint;
+        // Validate timeout range (5000-30000 ms)
+        if (timeout < 5000 || timeout > 30000) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Timeout must be 5000-30000 ms");
+            return ESP_FAIL;
+        }
+        config.timeout_ms = timeout;
+    }
+
+    if (cJSON_IsNumber(max_attempts)) {
+        config.max_attempts = (uint8_t)max_attempts->valueint;
+    }
+
+    cJSON_Delete(root);
+
+    // Save configuration
+    dtmf_save_security_config(&config);
+
+    ESP_LOGI(TAG, "DTMF security config updated: PIN %s, timeout %lu ms, max attempts %d",
+             config.pin_enabled ? "enabled" : "disabled",
+             config.timeout_ms,
+             config.max_attempts);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"DTMF security configuration updated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"DTMF security configuration updated\"}"));
+    return ESP_OK;
+}
+
+static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    
+    // Parse query parameter "since"
+    char query[64];
+    uint64_t since_timestamp = 0;
+    
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char param[32];
+        if (httpd_query_key_value(query, "since", param, sizeof(param)) == ESP_OK) {
+            since_timestamp = strtoull(param, NULL, 10);
+        }
+    }
+    
+    // Allocate log entries on heap to avoid stack overflow
+    const int max_entries = 50;
+    dtmf_security_log_t *entries = malloc(max_entries * sizeof(dtmf_security_log_t));
+    if (!entries) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
+    int count = dtmf_get_security_logs(entries, max_entries, since_timestamp);
+    
+    cJSON *root = cJSON_CreateObject();
+    cJSON *logs_array = cJSON_CreateArray();
+    
+    for (int i = 0; i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        
+        // Use double for timestamp to preserve precision in JSON
+        cJSON_AddNumberToObject(entry, "timestamp", (double)entries[i].timestamp);
+        
+        // Add type as string
+        const char* type_str;
+        switch (entries[i].type) {
+            case CMD_DOOR_OPEN:
+                type_str = "door_open";
+                break;
+            case CMD_LIGHT_TOGGLE:
+                type_str = "light_toggle";
+                break;
+            case CMD_CONFIG_CHANGE:
+                type_str = "config_change";
+                break;
+            case CMD_INVALID:
+            default:
+                type_str = "invalid";
+                break;
+        }
+        cJSON_AddStringToObject(entry, "type", type_str);
+        
+        // Add success/failure
+        cJSON_AddBoolToObject(entry, "success", entries[i].success);
+        
+        // Add command
+        cJSON_AddStringToObject(entry, "command", entries[i].command);
+        
+        // Add action (same as type for successful commands)
+        if (entries[i].success) {
+            cJSON_AddStringToObject(entry, "action", type_str);
+        } else {
+            cJSON_AddStringToObject(entry, "action", "none");
+        }
+        
+        // Add caller ID
+        cJSON_AddStringToObject(entry, "caller", entries[i].caller_id);
+        
+        // Add reason (for failures)
+        if (!entries[i].success && entries[i].reason[0] != '\0') {
+            cJSON_AddStringToObject(entry, "reason", entries[i].reason);
+        }
+        
+        cJSON_AddItemToArray(logs_array, entry);
+    }
+    
+    cJSON_AddItemToObject(root, "logs", logs_array);
+    cJSON_AddNumberToObject(root, "count", count);
+    
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    free(entries);
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    const size_t index_html_size = (index_html_end - index_html_start);
+    const size_t index_html_size = (uintptr_t)index_html_end - (uintptr_t)index_html_start;
     httpd_resp_send(req, (const char *)index_html_start, index_html_size);
     return ESP_OK;
 }
@@ -648,10 +853,22 @@ static const httpd_uri_t ntp_sync_uri = {
     .uri = "/api/ntp/sync", .method = HTTP_POST, .handler = post_ntp_sync_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t dtmf_security_get_uri = {
+    .uri = "/api/dtmf/security", .method = HTTP_GET, .handler = get_dtmf_security_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t dtmf_security_post_uri = {
+    .uri = "/api/dtmf/security", .method = HTTP_POST, .handler = post_dtmf_security_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t dtmf_logs_uri = {
+    .uri = "/api/dtmf/logs", .method = HTTP_GET, .handler = get_dtmf_logs_handler, .user_ctx = NULL
+};
+
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 20; // Increase handler limit for NTP endpoints
+    config.max_uri_handlers = 24; // Increase handler limit for DTMF endpoints
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Register all URI handlers
@@ -681,6 +898,11 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &ntp_config_get_uri);
         httpd_register_uri_handler(server, &ntp_config_post_uri);
         httpd_register_uri_handler(server, &ntp_sync_uri);
+        
+        // DTMF Security API endpoints
+        httpd_register_uri_handler(server, &dtmf_security_get_uri);
+        httpd_register_uri_handler(server, &dtmf_security_post_uri);
+        httpd_register_uri_handler(server, &dtmf_logs_uri);
         
         ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {

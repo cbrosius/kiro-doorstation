@@ -61,7 +61,7 @@
 ## Next Development Phases
 
 ### Phase 8: Audio & DTMF Enhancement
-- [ ] Implement proper DTMF detection using Goertzel algorithm
+- [x] Implement proper DTMF detection
 - [ ] Add audio level monitoring and automatic gain control
 - [ ] Implement RTP audio streaming for SIP calls
 - [ ] Add audio quality indicators
