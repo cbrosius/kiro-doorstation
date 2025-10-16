@@ -963,6 +963,42 @@
       color: var(--color-danger);
     }
     
+    /* ===== OTA Update Styles (Task 14) ===== */
+    
+    #ota-drop-zone.dragging {
+      border-color: var(--color-primary);
+      background-color: rgba(76, 175, 80, 0.05);
+    }
+    
+    #ota-progress-bar {
+      transition: width 0.3s ease;
+      background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+    }
+    
+    #ota-update-log {
+      font-family: 'Courier New', Courier, monospace;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    #ota-update-log::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    #ota-update-log::-webkit-scrollbar-track {
+      background: var(--color-bg);
+      border-radius: var(--border-radius-sm);
+    }
+    
+    #ota-update-log::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: var(--border-radius-sm);
+    }
+    
+    #ota-update-log::-webkit-scrollbar-thumb:hover {
+      background: var(--color-text-secondary);
+    }
+    
     /* ===== Responsive Design (Task 2.4) ===== */
     
     /* Mobile: < 768px */
@@ -2706,10 +2742,169 @@
       
     </section>
 
-    <!-- OTA Update Section -->
+    <!-- OTA Update Section (Task 14) -->
     <section class="content-section" id="section-ota" hidden>
       <h2 tabindex="-1">OTA Update</h2>
-      <p>OTA update interface will be implemented here.</p>
+      
+      <!-- Task 14.1: Display Current Firmware Information -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Current Firmware Information</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Version</div>
+            <div id="ota-current-version" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Build Date</div>
+            <div id="ota-build-date" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Chip Model</div>
+            <div id="ota-chip-model" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 14.2: File Upload Interface -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Upload Firmware</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Select a firmware binary file (.bin) to upload. Maximum file size: 5MB.
+        </p>
+        
+        <!-- Drag and Drop Area -->
+        <div id="ota-drop-zone" style="border: 2px dashed var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-xl); text-align: center; background-color: var(--color-bg); cursor: pointer; transition: border-color var(--transition-fast), background-color var(--transition-fast);">
+          <div style="font-size: 48px; margin-bottom: var(--spacing-md);">📦</div>
+          <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">
+            Drag and drop firmware file here
+          </div>
+          <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-md);">
+            or click to browse
+          </div>
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('ota-file-input').click()">
+            <span>📂</span>
+            <span>Select File</span>
+          </button>
+          <input type="file" id="ota-file-input" accept=".bin" style="display: none;">
+        </div>
+        
+        <!-- Selected File Display -->
+        <div id="ota-file-info" style="display: none; margin-top: var(--spacing-lg); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
+            <div style="flex: 1;">
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Selected File</div>
+              <div id="ota-file-name" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text); word-break: break-all;"></div>
+              <div id="ota-file-size" style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);"></div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="clearOTAFile()">
+              <span>✕</span>
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Task 14.3: Upload Progress Tracking -->
+        <div id="ota-progress-container" style="display: none; margin-top: var(--spacing-lg);">
+          <div style="margin-bottom: var(--spacing-sm);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs);">
+              <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Upload Progress</span>
+              <span id="ota-progress-percent" style="font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); color: var(--color-primary);">0%</span>
+            </div>
+            <div style="width: 100%; height: 24px; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); overflow: hidden;">
+              <div id="ota-progress-bar" style="height: 100%; width: 0%; background-color: var(--color-primary); transition: width 0.3s ease;"></div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-sm);">
+            <span id="ota-upload-speed">Speed: --</span>
+            <span id="ota-time-remaining">Time remaining: --</span>
+          </div>
+          <div id="ota-upload-status" style="margin-top: var(--spacing-md); padding: var(--spacing-sm); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); font-size: var(--font-size-sm); color: var(--color-text);"></div>
+        </div>
+        
+        <!-- Upload Button -->
+        <div style="margin-top: var(--spacing-lg);">
+          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="handleOTAUpload()" disabled>
+            <span class="btn-text">
+              <span>⬆️</span>
+              <span>Upload Firmware</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Task 14.4: Update Confirmation and Warnings -->
+      <div class="config-form" id="ota-apply-section" style="display: none;">
+        <h3 style="margin-bottom: var(--spacing-md);">Apply Update</h3>
+        
+        <!-- Warning Messages -->
+        <div style="padding: var(--spacing-md); background-color: rgba(255, 193, 7, 0.1); border: 2px solid var(--color-warning); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <div style="display: flex; align-items: start; gap: var(--spacing-md);">
+            <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">⚠️</span>
+            <div>
+              <div style="font-size: var(--font-size-base); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-sm);">Important Warnings</div>
+              <ul style="margin: 0; padding-left: var(--spacing-lg); font-size: var(--font-size-sm); color: var(--color-text); line-height: 1.6;">
+                <li>Do not disconnect power during the update process</li>
+                <li>The device will restart automatically after applying the update</li>
+                <li>The update process may take 1-2 minutes</li>
+                <li>You will lose connection temporarily during the restart</li>
+                <li>Make sure you have a backup of your configuration</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
+        <button type="button" class="btn btn-danger btn-lg" onclick="handleOTAApply()">
+          <span>🔄</span>
+          <span>Apply Update and Restart</span>
+        </button>
+      </div>
+      
+      <!-- Task 14.5: Update Status Display -->
+      <div class="config-form" id="ota-status-section" style="display: none;">
+        <h3 style="margin-bottom: var(--spacing-md);">Update Status</h3>
+        
+        <div style="padding: var(--spacing-lg); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); text-align: center;">
+          <div id="ota-status-icon" style="font-size: 64px; margin-bottom: var(--spacing-md);">⏳</div>
+          <div id="ota-status-message" style="font-size: var(--font-size-xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Processing...</div>
+          <div id="ota-status-detail" style="font-size: var(--font-size-base); color: var(--color-text-secondary);"></div>
+        </div>
+        
+        <!-- Update Log -->
+        <div style="margin-top: var(--spacing-lg);">
+          <h4 style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); margin-bottom: var(--spacing-md);">Update Log</h4>
+          <div id="ota-update-log" style="max-height: 300px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md); font-family: monospace; font-size: var(--font-size-sm); color: var(--color-text); line-height: 1.6;">
+            <!-- Log entries will be added here -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 14.6: Automatic Page Reload After Update -->
+      <div class="config-form" id="ota-reload-section" style="display: none;">
+        <h3 style="margin-bottom: var(--spacing-md);">Update Complete</h3>
+        
+        <div style="padding: var(--spacing-lg); background-color: rgba(40, 167, 69, 0.1); border: 2px solid var(--color-success); border-radius: var(--border-radius); text-align: center;">
+          <div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div>
+          <div style="font-size: var(--font-size-xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Update Successful!</div>
+          <div style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+            Waiting for device to come back online...
+          </div>
+          <div style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-primary);">
+            <span id="ota-reload-countdown">30</span>s
+          </div>
+          <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-sm);">
+            Page will reload automatically when device is ready
+          </div>
+        </div>
+        
+        <div style="margin-top: var(--spacing-lg); text-align: center;">
+          <button type="button" class="btn btn-primary" onclick="location.reload()">
+            <span>🔄</span>
+            <span>Reload Now</span>
+          </button>
+        </div>
+      </div>
+      
     </section>
 
     <!-- Documentation Section -->
@@ -2795,6 +2990,9 @@
       } else if (sectionId === 'email') {
         // Load Email Reports configuration (Task 13.5)
         loadEmailConfiguration();
+      } else if (sectionId === 'ota') {
+        // Load OTA firmware information (Task 14.1)
+        loadOTAFirmwareInfo();
       }
     }
     
@@ -6845,6 +7043,435 @@
       console.log('Email Reports section initialized');
     }
     
+    // ===== Task 14: OTA Update Section =====
+    
+    let otaSelectedFile = null;
+    let otaUploadStartTime = 0;
+    let otaUploadedBytes = 0;
+    
+    /**
+     * Task 14.1: Load current firmware information
+     */
+    async function loadOTAFirmwareInfo() {
+      try {
+        const response = await apiRequest('/api/ota/version');
+        
+        document.getElementById('ota-current-version').textContent = response.version || 'Unknown';
+        document.getElementById('ota-build-date').textContent = response.build_date || 'Unknown';
+        document.getElementById('ota-chip-model').textContent = response.chip_model || 'Unknown';
+        
+      } catch (error) {
+        console.error('Error loading firmware info:', error);
+        document.getElementById('ota-current-version').textContent = 'Error';
+        document.getElementById('ota-build-date').textContent = 'Error';
+        document.getElementById('ota-chip-model').textContent = 'Error';
+      }
+    }
+    
+    /**
+     * Task 14.2: Initialize file upload interface
+     */
+    function initOTAFileUpload() {
+      const dropZone = document.getElementById('ota-drop-zone');
+      const fileInput = document.getElementById('ota-file-input');
+      
+      // Prevent default drag behaviors
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+      });
+      
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
+      // Highlight drop zone when item is dragged over it
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+          dropZone.style.borderColor = 'var(--color-primary)';
+          dropZone.style.backgroundColor = 'rgba(76, 175, 80, 0.05)';
+        }, false);
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+          dropZone.style.borderColor = 'var(--color-border)';
+          dropZone.style.backgroundColor = 'var(--color-bg)';
+        }, false);
+      });
+      
+      // Handle dropped files
+      dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0) {
+          handleOTAFileSelected(files[0]);
+        }
+      }, false);
+      
+      // Handle file input change
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleOTAFileSelected(e.target.files[0]);
+        }
+      });
+      
+      // Make drop zone clickable
+      dropZone.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          fileInput.click();
+        }
+      });
+    }
+    
+    /**
+     * Task 14.2: Handle file selection and validation
+     */
+    function handleOTAFileSelected(file) {
+      // Validate file format
+      if (!file.name.endsWith('.bin')) {
+        showToast('Invalid file format. Please select a .bin file.', 'error');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+      if (file.size > maxSize) {
+        showToast('File too large. Maximum size is 5MB.', 'error');
+        return;
+      }
+      
+      // Store selected file
+      otaSelectedFile = file;
+      
+      // Display file info
+      document.getElementById('ota-file-name').textContent = file.name;
+      document.getElementById('ota-file-size').textContent = formatFileSize(file.size);
+      document.getElementById('ota-file-info').style.display = 'block';
+      
+      // Enable upload button
+      document.getElementById('ota-upload-btn').disabled = false;
+      
+      // Hide other sections
+      document.getElementById('ota-apply-section').style.display = 'none';
+      document.getElementById('ota-status-section').style.display = 'none';
+      document.getElementById('ota-reload-section').style.display = 'none';
+      
+      showToast('Firmware file selected successfully', 'success');
+    }
+    
+    /**
+     * Clear selected OTA file
+     */
+    function clearOTAFile() {
+      otaSelectedFile = null;
+      document.getElementById('ota-file-input').value = '';
+      document.getElementById('ota-file-info').style.display = 'none';
+      document.getElementById('ota-upload-btn').disabled = true;
+      document.getElementById('ota-progress-container').style.display = 'none';
+    }
+    
+    /**
+     * Format file size for display
+     */
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    /**
+     * Format upload speed for display
+     */
+    function formatSpeed(bytesPerSecond) {
+      if (bytesPerSecond === 0) return '0 B/s';
+      const k = 1024;
+      const sizes = ['B/s', 'KB/s', 'MB/s'];
+      const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+      return Math.round((bytesPerSecond / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    /**
+     * Format time remaining for display
+     */
+    function formatTimeRemaining(seconds) {
+      if (seconds < 60) {
+        return Math.round(seconds) + 's';
+      } else {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return minutes + 'm ' + secs + 's';
+      }
+    }
+    
+    /**
+     * Task 14.3: Handle OTA upload with progress tracking
+     */
+    async function handleOTAUpload() {
+      if (!otaSelectedFile) {
+        showToast('Please select a firmware file first', 'error');
+        return;
+      }
+      
+      const uploadBtn = document.getElementById('ota-upload-btn');
+      setLoadingState(uploadBtn, true);
+      
+      // Show progress container
+      const progressContainer = document.getElementById('ota-progress-container');
+      progressContainer.style.display = 'block';
+      
+      // Reset progress
+      otaUploadStartTime = Date.now();
+      otaUploadedBytes = 0;
+      updateOTAProgress(0, 'Preparing upload...');
+      
+      try {
+        // Create FormData
+        const formData = new FormData();
+        formData.append('firmware', otaSelectedFile);
+        
+        // Upload with progress tracking
+        const xhr = new XMLHttpRequest();
+        
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            otaUploadedBytes = e.loaded;
+            
+            // Calculate speed and time remaining
+            const elapsedTime = (Date.now() - otaUploadStartTime) / 1000; // seconds
+            const speed = e.loaded / elapsedTime; // bytes per second
+            const remainingBytes = e.total - e.loaded;
+            const timeRemaining = remainingBytes / speed; // seconds
+            
+            // Update progress display
+            updateOTAProgress(percentComplete, 'Uploading...', speed, timeRemaining);
+          }
+        });
+        
+        // Handle completion
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              updateOTAProgress(100, 'Upload complete!');
+              showToast('Firmware uploaded successfully!', 'success');
+              
+              // Show apply section
+              document.getElementById('ota-apply-section').style.display = 'block';
+              
+              // Scroll to apply section
+              setTimeout(() => {
+                document.getElementById('ota-apply-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }, 500);
+              
+            } catch (error) {
+              throw new Error('Invalid response from server');
+            }
+          } else {
+            throw new Error(`Upload failed with status ${xhr.status}`);
+          }
+          setLoadingState(uploadBtn, false);
+        });
+        
+        // Handle errors
+        xhr.addEventListener('error', () => {
+          updateOTAProgress(0, 'Upload failed');
+          showToast('Upload failed. Please check your connection and try again.', 'error');
+          setLoadingState(uploadBtn, false);
+        });
+        
+        xhr.addEventListener('abort', () => {
+          updateOTAProgress(0, 'Upload cancelled');
+          showToast('Upload cancelled', 'warning');
+          setLoadingState(uploadBtn, false);
+        });
+        
+        // Send request
+        xhr.open('POST', '/api/ota/upload');
+        xhr.send(formData);
+        
+      } catch (error) {
+        console.error('Error uploading firmware:', error);
+        showToast('Upload failed: ' + error.message, 'error');
+        updateOTAProgress(0, 'Upload failed');
+        setLoadingState(uploadBtn, false);
+      }
+    }
+    
+    /**
+     * Task 14.3: Update progress display
+     */
+    function updateOTAProgress(percent, status, speed = 0, timeRemaining = 0) {
+      document.getElementById('ota-progress-bar').style.width = percent + '%';
+      document.getElementById('ota-progress-percent').textContent = Math.round(percent) + '%';
+      document.getElementById('ota-upload-status').textContent = status;
+      
+      if (speed > 0) {
+        document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(speed);
+      }
+      
+      if (timeRemaining > 0) {
+        document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(timeRemaining);
+      }
+    }
+    
+    /**
+     * Task 14.4 & 14.5: Handle OTA apply with confirmation
+     */
+    async function handleOTAApply() {
+      // Show confirmation dialog
+      const confirmed = await showConfirmDialog(
+        'Apply Firmware Update?',
+        'The device will restart and apply the new firmware. This process will take 1-2 minutes. Do not disconnect power during this time.',
+        'Apply Update',
+        'danger'
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      // Hide apply section, show status section
+      document.getElementById('ota-apply-section').style.display = 'none';
+      document.getElementById('ota-status-section').style.display = 'block';
+      
+      // Initialize update log
+      const updateLog = document.getElementById('ota-update-log');
+      updateLog.innerHTML = '';
+      addOTALogEntry('Starting firmware update...');
+      
+      // Update status display
+      updateOTAStatus('⏳', 'Verifying Firmware', 'Checking firmware integrity...');
+      
+      try {
+        // Apply the update
+        addOTALogEntry('Sending apply command to device...');
+        const response = await apiRequest('/api/ota/apply', { method: 'POST' });
+        
+        addOTALogEntry('Apply command sent successfully');
+        updateOTAStatus('🔄', 'Applying Update', 'Device is restarting and applying firmware...');
+        
+        // Start polling for device availability
+        addOTALogEntry('Device is restarting...');
+        setTimeout(() => {
+          pollDeviceAvailability();
+        }, 5000); // Wait 5 seconds before starting to poll
+        
+      } catch (error) {
+        console.error('Error applying OTA update:', error);
+        addOTALogEntry('ERROR: ' + error.message);
+        updateOTAStatus('❌', 'Update Failed', error.message);
+        showToast('Failed to apply update: ' + error.message, 'error');
+      }
+    }
+    
+    /**
+     * Task 14.5: Update status display
+     */
+    function updateOTAStatus(icon, message, detail) {
+      document.getElementById('ota-status-icon').textContent = icon;
+      document.getElementById('ota-status-message').textContent = message;
+      document.getElementById('ota-status-detail').textContent = detail;
+    }
+    
+    /**
+     * Task 14.5: Add entry to update log
+     */
+    function addOTALogEntry(message) {
+      const updateLog = document.getElementById('ota-update-log');
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.textContent = `[${timestamp}] ${message}`;
+      entry.style.marginBottom = 'var(--spacing-xs)';
+      updateLog.appendChild(entry);
+      
+      // Scroll to bottom
+      updateLog.scrollTop = updateLog.scrollHeight;
+    }
+    
+    /**
+     * Task 14.6: Poll for device availability after update
+     */
+    let pollAttempts = 0;
+    const maxPollAttempts = 60; // 60 attempts = 2 minutes (2 second intervals)
+    
+    async function pollDeviceAvailability() {
+      pollAttempts++;
+      addOTALogEntry(`Checking device availability (attempt ${pollAttempts}/${maxPollAttempts})...`);
+      
+      try {
+        // Try to fetch system status
+        const response = await fetch('/api/system/status', {
+          method: 'GET',
+          cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+          // Device is back online
+          addOTALogEntry('Device is back online!');
+          updateOTAStatus('✅', 'Update Complete', 'Firmware updated successfully');
+          
+          // Hide status section, show reload section
+          document.getElementById('ota-status-section').style.display = 'none';
+          document.getElementById('ota-reload-section').style.display = 'block';
+          
+          // Start countdown
+          startReloadCountdown();
+          
+          return;
+        }
+      } catch (error) {
+        // Device not available yet, continue polling
+      }
+      
+      if (pollAttempts < maxPollAttempts) {
+        // Continue polling
+        setTimeout(pollDeviceAvailability, 2000); // Poll every 2 seconds
+      } else {
+        // Max attempts reached
+        addOTALogEntry('ERROR: Device did not come back online within expected time');
+        updateOTAStatus('⚠️', 'Update Status Unknown', 'Device is taking longer than expected to restart. Please check device manually.');
+        showToast('Device restart is taking longer than expected', 'warning');
+      }
+    }
+    
+    /**
+     * Task 14.6: Start reload countdown
+     */
+    function startReloadCountdown() {
+      let countdown = 30;
+      const countdownElement = document.getElementById('ota-reload-countdown');
+      
+      const interval = setInterval(() => {
+        countdown--;
+        countdownElement.textContent = countdown;
+        
+        if (countdown <= 0) {
+          clearInterval(interval);
+          location.reload();
+        }
+      }, 1000);
+    }
+    
+    /**
+     * Initialize OTA Update section
+     */
+    function initOTASection() {
+      // Load firmware information
+      loadOTAFirmwareInfo();
+      
+      // Initialize file upload
+      initOTAFileUpload();
+      
+      console.log('OTA Update section initialized');
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -6883,6 +7510,9 @@
       
       // Initialize Email Reports section
       initEmailReports();
+      
+      // Initialize OTA Update section
+      initOTASection();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');

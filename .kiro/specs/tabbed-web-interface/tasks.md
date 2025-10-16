@@ -520,39 +520,49 @@ This implementation plan breaks down the web interface refactoring into discrete
     - _Requirements: 11.5.2_
 
 
-- [ ] 14. Implement OTA Update section
-  - [ ] 14.1 Display current firmware information
+- [x] 14. Implement OTA Update section
+
+
+
+
+  - [x] 14.1 Display current firmware information
+
     - Show current version and build date
     - Display chip model
     - _Requirements: 3.1.2_
   
-  - [ ] 14.2 Create file upload interface
+  - [x] 14.2 Create file upload interface
+
     - Implement drag-and-drop file upload area
     - Add file input with .bin filter
     - Validate file format and size (max 5MB)
     - Display selected file name and size
     - _Requirements: 3.1.3, 3.1.4_
   
-  - [ ] 14.3 Implement upload progress tracking
+  - [x] 14.3 Implement upload progress tracking
+
     - Create progress bar with percentage
     - Display upload status messages
     - Show estimated time remaining
     - Calculate and display upload speed
     - _Requirements: 3.1.5, 3.1.12_
   
-  - [ ] 14.4 Add update confirmation and warnings
+  - [x] 14.4 Add update confirmation and warnings
+
     - Display warning about power loss
     - Show confirmation dialog before applying update
     - Warn about device restart
     - _Requirements: 3.1.6, 3.1.7, 3.1.11_
   
-  - [ ] 14.5 Implement update status display
+  - [x] 14.5 Implement update status display
+
     - Show update states (uploading, verifying, applying, complete, failed)
     - Display update log with timestamped entries
     - Handle errors and display error messages
     - _Requirements: 3.1.8, 3.1.9_
   
-  - [ ] 14.6 Add automatic page reload after update
+  - [x] 14.6 Add automatic page reload after update
+
     - Poll for device availability after restart
     - Reload page when device is back online
     - Show countdown timer
