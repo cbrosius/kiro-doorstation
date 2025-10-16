@@ -54,6 +54,14 @@ This document describes the design for refactoring the ESP32 SIP Door Station we
 
 **Purpose**: Fixed top bar with branding, global search, and theme toggle
 
+**Favicon**:
+```html
+<head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔔</text></svg>">
+  <!-- Alternative: Use doorbell emoji or custom SVG icon -->
+</head>
+```
+
 **Structure**:
 ```html
 <header class="app-header">

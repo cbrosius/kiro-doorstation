@@ -226,6 +226,7 @@ This document specifies the requirements for refactoring the ESP32 SIP Door Stat
 7. THE Web_Interface SHALL minimize HTTP requests by embedding all resources (no external CSS/JS libraries)
 8. THE Web_Interface SHALL compress well with gzip to reduce transmission size from ESP32-S3
 9. THE Web_Interface SHALL document all API endpoints used by the interface in code comments
+10. THE Web_Interface SHALL include a favicon using an embedded data URI or inline SVG to provide visual identification in browser tabs and bookmarks
 
 ### Requirement 11
 
