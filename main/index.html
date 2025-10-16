@@ -2435,20 +2435,25 @@
     async function updateWiFiStatus() {
       try {
         const response = await apiRequest('/api/wifi/status');
+        console.log('WiFi status response:', response);
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
         
-        if (response.status === 'connected') {
+        // Normalize status to lowercase for comparison
+        const status = response && response.status ? response.status.toLowerCase() : '';
+        
+        if (status === 'connected' || response.connected === true) {
           card.setAttribute('data-status', 'connected');
-          valueSpan.textContent = `Connected (${response.ip || 'N/A'})`;
-        } else if (response.status === 'connecting') {
+          valueSpan.textContent = `Connected (${response.ip_address || response.ip || 'N/A'})`;
+        } else if (status === 'connecting') {
           card.setAttribute('data-status', 'connecting');
           valueSpan.textContent = 'Connecting...';
         } else {
           card.setAttribute('data-status', 'disconnected');
-          valueSpan.textContent = 'Disconnected';
+          valueSpan.textContent = response && response.ssid ? `Disconnected (${response.ssid})` : 'Disconnected';
         }
       } catch (error) {
+        console.error('WiFi status error:', error);
         const card = document.getElementById('wifi-status');
         card.setAttribute('data-status', 'disconnected');
         card.querySelector('.status-value').textContent = 'Error';
@@ -2630,6 +2635,9 @@
      * @returns {Promise<Object>} Response data
      */
     async function apiRequest(endpoint, options = {}, timeout = 10000) {
+      const silentError = options.silentError || false;
+      delete options.silentError; // Remove custom option before fetch
+      
       const defaultOptions = {
         method: 'GET',
         headers: {
@@ -2660,13 +2668,15 @@
       } catch (error) {
         console.error(`API Error [${endpoint}]:`, error);
         
-        // Show user-friendly error messages
-        if (error.message === 'Request timeout') {
-          showToast('Request timed out. Please try again.', 'error');
-        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          showToast('Connection error. Please check your network.', 'error');
-        } else {
-          showToast(error.message, 'error');
+        // Show user-friendly error messages (unless silentError is true)
+        if (!silentError) {
+          if (error.message === 'Request timeout') {
+            showToast('Request timed out. Please try again.', 'error');
+          } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            showToast('Connection error. Please check your network.', 'error');
+          } else {
+            showToast(error.message, 'error');
+          }
         }
         
         throw error;
@@ -4798,10 +4808,12 @@
     
     /**
      * Task 9.2 & 9.4: Update GPIO states and relay information
+     * Note: This endpoint may not be implemented yet, so we fail silently
      */
     async function updateHardwareStatus() {
       try {
-        const response = await apiRequest('/api/hardware/status');
+        // Try to get hardware status, but don't show errors if endpoint doesn't exist
+        const response = await apiRequest('/api/hardware/status', { silentError: true }, 5000);
         
         if (response) {
           // Update GPIO states (Task 9.2)
