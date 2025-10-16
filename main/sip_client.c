@@ -260,6 +260,34 @@ static void calculate_digest_response(
     calculate_md5_hex(response_input, response_out);
 }
 
+// Helper function to resolve hostname to IP address using getaddrinfo
+static bool resolve_hostname(const char* hostname, struct sockaddr_in* addr, uint16_t port)
+{
+    struct addrinfo hints;
+    struct addrinfo *result = NULL;
+    
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;        // IPv4
+    hints.ai_socktype = SOCK_DGRAM;   // UDP
+    hints.ai_protocol = IPPROTO_UDP;
+    
+    int ret = getaddrinfo(hostname, NULL, &hints, &result);
+    if (ret != 0 || result == NULL) {
+        ESP_LOGE(TAG, "DNS lookup failed for %s: %d", hostname, ret);
+        if (result) {
+            freeaddrinfo(result);
+        }
+        return false;
+    }
+    
+    // Copy the resolved address
+    memcpy(addr, result->ai_addr, sizeof(struct sockaddr_in));
+    addr->sin_port = htons(port);
+    
+    freeaddrinfo(result);
+    return true;
+}
+
 // Helper function to get local IP address
 static bool get_local_ip(char* ip_str, size_t max_len)
 {
@@ -509,11 +537,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         
                         // Send ACK
                         struct sockaddr_in server_addr;
-                        server_addr.sin_family = AF_INET;
-                        server_addr.sin_port = htons(sip_config.port);
-                        const struct hostent *host = gethostbyname(sip_config.server);
-                        if (host) {
-                            memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
+                        if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
                             sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
                                   (struct sockaddr*)&server_addr, sizeof(server_addr));
                             sip_add_log_entry("sent", "ACK sent");
@@ -771,12 +795,8 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     
                     // Send 200 OK
                     struct sockaddr_in server_addr;
-                    server_addr.sin_family = AF_INET;
-                    server_addr.sin_port = htons(sip_config.port);
                     
-                    const struct hostent *host = gethostbyname(sip_config.server);
-                    if (host) {
-                        memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
+                    if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
                         int sent = sendto(sip_socket, response, strlen(response), 0,
                                          (struct sockaddr*)&server_addr, sizeof(server_addr));
                         if (sent > 0) {
@@ -856,11 +876,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             call_id, cseq_num);
                     
                     struct sockaddr_in server_addr;
-                    server_addr.sin_family = AF_INET;
-                    server_addr.sin_port = htons(sip_config.port);
-                    const struct hostent *host = gethostbyname(sip_config.server);
-                    if (host) {
-                        memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
+                    if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
                         sendto(sip_socket, bye_response, strlen(bye_response), 0,
                               (struct sockaddr*)&server_addr, sizeof(server_addr));
                         sip_add_log_entry("sent", "200 OK response to BYE");
@@ -1012,22 +1028,15 @@ bool sip_client_register(void)
     current_state = SIP_STATE_REGISTERING;
 
     struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(sip_config.port);
 
     // DNS lookup (no watchdog needed - SIP task not monitored)
-    const struct hostent *host = gethostbyname(sip_config.server);
-    
-    if (host == NULL) {
-        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
         sip_add_log_entry("error", "DNS lookup failed");
         current_state = SIP_STATE_ERROR;
         return false;
     }
     
     sip_add_log_entry("info", "DNS lookup successful");
-
-    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
 
     // Get local IP address
     char local_ip[16];
@@ -1073,16 +1082,11 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
     sip_add_log_entry("info", "Sending authenticated REGISTER");
 
     struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(sip_config.port);
 
-    const struct hostent *host = gethostbyname(sip_config.server);
-    if (host == NULL) {
-        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
         current_state = SIP_STATE_ERROR;
         return false;
     }
-    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
 
     // Get local IP
     char local_ip[16];
@@ -1263,17 +1267,12 @@ void sip_client_make_call(const char* uri)
     
     // Resolve server address
     struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(sip_config.port);
     
-    const struct hostent *host = gethostbyname(sip_config.server);
-    if (host == NULL) {
-        ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
+    if (!resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
         sip_add_log_entry("error", "DNS lookup failed for call");
         current_state = SIP_STATE_ERROR;
         return;
     }
-    memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
     
     // Send INVITE message
     int sent = sendto(sip_socket, invite_msg, strlen(invite_msg), 0,
@@ -1332,11 +1331,7 @@ void sip_client_hangup(void)
             
             // Send BYE
             struct sockaddr_in server_addr;
-            server_addr.sin_family = AF_INET;
-            server_addr.sin_port = htons(sip_config.port);
-            const struct hostent *host = gethostbyname(sip_config.server);
-            if (host) {
-                memcpy(&server_addr.sin_addr, host->h_addr, (size_t)host->h_length);
+            if (resolve_hostname(sip_config.server, &server_addr, sip_config.port)) {
                 int sent = sendto(sip_socket, bye_msg, strlen(bye_msg), 0,
                                  (struct sockaddr*)&server_addr, sizeof(server_addr));
                 if (sent > 0) {
@@ -1403,9 +1398,8 @@ bool sip_client_test_connection(void)
     }
 
     // For testing purposes, we'll just check if we can resolve the hostname
-    // and send a REGISTER message (without waiting for response)
-    const struct hostent *host = gethostbyname(sip_config.server);
-    if (host == NULL) {
+    struct sockaddr_in test_addr;
+    if (!resolve_hostname(sip_config.server, &test_addr, sip_config.port)) {
         ESP_LOGE(TAG, "Cannot resolve hostname: %s", sip_config.server);
         return false;
     }
