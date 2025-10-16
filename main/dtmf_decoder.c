@@ -166,6 +166,17 @@ void dtmf_save_security_config(const dtmf_security_config_t* config)
     nvs_close(nvs_handle);
 }
 
+// Get current security configuration
+void dtmf_get_security_config(dtmf_security_config_t* config)
+{
+    if (!config) {
+        ESP_LOGE(TAG, "Invalid config pointer");
+        return;
+    }
+    
+    memcpy(config, &security_config, sizeof(dtmf_security_config_t));
+}
+
 // Get current time in milliseconds
 static uint32_t get_time_ms(void)
 {

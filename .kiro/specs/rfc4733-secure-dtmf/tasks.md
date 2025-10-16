@@ -228,15 +228,24 @@
   - Add `#include "dtmf_decoder.h"` to sip_client.c if not present
   - _Requirements: 2.5, 3.5_
 
-- [ ] 6. Add web interface endpoints for security configuration
-- [ ] 6.1 Implement GET /api/dtmf/security endpoint
+- [x] 6. Add web interface endpoints for security configuration
+
+
+
+
+
+
+- [x] 6.1 Implement GET /api/dtmf/security endpoint
+
   - Add handler function `get_dtmf_security_handler()` in web_server.c
   - Return current security configuration as JSON
   - Include pin_enabled, pin_code, timeout_ms, max_attempts
   - Register URI handler in web_server_start()
   - _Requirements: 5.5, 6.5_
 
-- [ ] 6.2 Implement POST /api/dtmf/security endpoint
+- [x] 6.2 Implement POST /api/dtmf/security endpoint
+
+
   - Add handler function `post_dtmf_security_handler()` in web_server.c
   - Accept security configuration updates via JSON
   - Validate PIN format (digits only, 1-8 chars)
@@ -245,7 +254,9 @@
   - Register URI handler in web_server_start()
   - _Requirements: 5.5, 6.5_
 
-- [ ] 6.3 Implement GET /api/dtmf/logs endpoint
+- [x] 6.3 Implement GET /api/dtmf/logs endpoint
+
+
   - Add handler function `get_dtmf_logs_handler()` in web_server.c
   - Return security log entries as JSON array
   - Support optional since_timestamp query parameter

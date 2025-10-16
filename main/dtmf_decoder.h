@@ -69,6 +69,7 @@ void dtmf_set_callback(dtmf_callback_t callback);
 void dtmf_process_telephone_event(uint8_t event);
 void dtmf_load_security_config(void);
 void dtmf_save_security_config(const dtmf_security_config_t* config);
+void dtmf_get_security_config(dtmf_security_config_t* config);
 void dtmf_reset_call_state(void);
 
 // Security log retrieval
