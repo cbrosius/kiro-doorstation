@@ -14,6 +14,7 @@
 #include "nvs.h"
 #include "mbedtls/md5.h"
 #include "esp_random.h"
+#include <inttypes.h>
 
 static const char *TAG = "SIP";
 static sip_state_t current_state = SIP_STATE_IDLE;
@@ -43,20 +44,7 @@ static int sip_log_write_index = 0;
 static int sip_log_count = 0;
 static SemaphoreHandle_t sip_log_mutex = NULL;
 
-// Simplified SIP messages
-static const char* sip_register_template = 
-"REGISTER sip:%s SIP/2.0\r\n"
-"Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
-"Max-Forwards: 70\r\n"
-"From: <sip:%s@%s>;tag=%d\r\n"
-"To: <sip:%s@%s>\r\n"
-"Call-ID: %d@%s\r\n"
-"CSeq: 1 REGISTER\r\n"
-"Contact: <sip:%s@%s:5060>\r\n"
-"Expires: 3600\r\n"
-"Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
-"User-Agent: ESP32-Doorbell/1.0\r\n"
-"Content-Length: 0\r\n\r\n";
+
 
 // SIP authentication challenge structure
 typedef struct {
@@ -141,8 +129,9 @@ static void calculate_md5_hex(const char* input, char* output) {
 
 // Generate random cnonce for digest authentication
 static void generate_cnonce(char* cnonce_out, size_t len) {
-    uint32_t random = esp_random();
-    snprintf(cnonce_out, len, "%08lx%08lx", (unsigned long)random, (unsigned long)esp_random());
+    uint32_t random1 = esp_random();
+    uint32_t random2 = esp_random();
+    snprintf(cnonce_out, len, "%08" PRIx32 "%08" PRIx32, random1, random2);
 }
 
 // Helper to extract quoted value from header
@@ -1049,11 +1038,27 @@ bool sip_client_register(void)
 
     // Create REGISTER message (use static to avoid stack allocation)
     static char register_msg[1024];
-    snprintf(register_msg, sizeof(register_msg), sip_register_template,
-             sip_config.server, local_ip, rand(),
-             sip_config.username, sip_config.server, rand(),
+    int branch_id = rand();
+    int from_tag = rand();
+    int call_id = rand();
+    
+    snprintf(register_msg, sizeof(register_msg),
+             "REGISTER sip:%s SIP/2.0\r\n"
+             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+             "Max-Forwards: 70\r\n"
+             "From: <sip:%s@%s>;tag=%d\r\n"
+             "To: <sip:%s@%s>\r\n"
+             "Call-ID: %d@%s\r\n"
+             "CSeq: 1 REGISTER\r\n"
+             "Contact: <sip:%s@%s:5060>\r\n"
+             "Expires: 3600\r\n"
+             "Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
+             "User-Agent: ESP32-Doorbell/1.0\r\n"
+             "Content-Length: 0\r\n\r\n",
+             sip_config.server, local_ip, branch_id,
+             sip_config.username, sip_config.server, from_tag,
              sip_config.username, sip_config.server,
-             rand(), local_ip,
+             call_id, local_ip,
              sip_config.username, local_ip);
 
     int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
@@ -1436,19 +1441,6 @@ void sip_get_status(char* buffer, size_t buffer_size)
         user_status = "Not Registered";
     }
 
-    const char* status_template =
-        "{"
-        "\"state\": \"%s\","
-        "\"status\": \"%s\","
-        "\"state_code\": %d,"
-        "\"configured\": %s,"
-        "\"server\": \"%s\","
-        "\"username\": \"%s\","
-        "\"apartment1\": \"%s\","
-        "\"apartment2\": \"%s\","
-        "\"port\": %d"
-        "}";
-
     char server[64] = {0};
     char username[32] = {0};
     char apt1[64] = {0};
@@ -1460,7 +1452,18 @@ void sip_get_status(char* buffer, size_t buffer_size)
     strncpy(apt1, sip_config.apartment1_uri, sizeof(apt1) - 1);
     strncpy(apt2, sip_config.apartment2_uri, sizeof(apt2) - 1);
 
-    snprintf(buffer, buffer_size, status_template,
+    snprintf(buffer, buffer_size,
+             "{"
+             "\"state\": \"%s\","
+             "\"status\": \"%s\","
+             "\"state_code\": %d,"
+             "\"configured\": %s,"
+             "\"server\": \"%s\","
+             "\"username\": \"%s\","
+             "\"apartment1\": \"%s\","
+             "\"apartment2\": \"%s\","
+             "\"port\": %d"
+             "}",
              state_name,
              user_status,
              state,
