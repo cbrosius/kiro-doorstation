@@ -94,9 +94,15 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
         }
     }
     
-    // Get log entries
-    sip_log_entry_t entries[50];
-    int count = sip_get_log_entries(entries, 50, since_timestamp);
+    // Allocate log entries on heap to avoid stack overflow (50 entries * 256 bytes = 12KB+)
+    const int max_entries = 50;
+    sip_log_entry_t *entries = malloc(max_entries * sizeof(sip_log_entry_t));
+    if (!entries) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
+    int count = sip_get_log_entries(entries, max_entries, since_timestamp);
     
     cJSON *root = cJSON_CreateObject();
     cJSON *entries_array = cJSON_CreateArray();
@@ -117,6 +123,7 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     httpd_resp_send(req, json_string, strlen(json_string));
     free((void *)json_string);
     cJSON_Delete(root);
+    free(entries);  // Free heap-allocated entries
     return ESP_OK;
 }
 

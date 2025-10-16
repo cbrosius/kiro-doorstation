@@ -194,7 +194,15 @@ void wifi_manager_init(void)
     ap_netif = esp_netif_create_default_wifi_ap();
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // Reduce Block Ack window to avoid timer crashes
+    cfg.ampdu_rx_enable = 0;  // Disable AMPDU RX to prevent ADDBA/DELBA timer issues
+    cfg.ampdu_tx_enable = 0;  // Disable AMPDU TX for consistency
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    
+    // Disable WiFi power save for better stability under load
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    ESP_LOGI(TAG, "WiFi power save disabled for system stability");
+    ESP_LOGI(TAG, "WiFi AMPDU disabled to prevent Block Ack timer crashes");
     
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));

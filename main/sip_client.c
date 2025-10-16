@@ -24,6 +24,13 @@ static bool registration_requested = false;
 static uint32_t auto_register_delay_ms = 5000; // Wait 5 seconds after init
 static uint32_t init_timestamp = 0;
 
+// State names for logging (global to avoid stack issues)
+static const char* state_names[] = {
+    "IDLE", "REGISTERING", "REGISTERED", "CALLING", "RINGING",
+    "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR",
+    "AUTH_FAILED", "NETWORK_ERROR", "TIMEOUT"
+};
+
 // SIP Log buffer for web interface
 #define SIP_LOG_MAX_ENTRIES 50
 #define SIP_LOG_MAX_MESSAGE_LEN 256
@@ -74,14 +81,30 @@ static const char* sip_invite_template =
 "Content-Type: application/sdp\r\n"
 "Content-Length: %d\r\n\r\n%s";
 
-// Helper function to add log entry (thread-safe)
+// Helper function to add log entry (thread-safe, synchronous with yielding)
+// Logs to both serial console and web interface
 static void sip_add_log_entry(const char* type, const char* message)
 {
+    // Log to serial console first
+    if (strcmp(type, "error") == 0) {
+        NTP_LOGE(TAG, "%s", message);
+    } else if (strcmp(type, "info") == 0) {
+        NTP_LOGI(TAG, "%s", message);
+    } else if (strcmp(type, "sent") == 0 || strcmp(type, "received") == 0) {
+        NTP_LOGD(TAG, "[%s] %s", type, message);
+    } else {
+        NTP_LOGI(TAG, "[%s] %s", type, message);
+    }
+    
+    // Yield to other tasks after serial logging
+    taskYIELD();
+    
+    // Add to web log buffer
     if (!sip_log_mutex) {
         sip_log_mutex = xSemaphoreCreateMutex();
     }
     
-    if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         sip_log_entry_t* entry = &sip_log_buffer[sip_log_write_index];
         
         // Use NTP timestamp if available, otherwise fall back to tick count
@@ -103,6 +126,9 @@ static void sip_add_log_entry(const char* type, const char* message)
         
         xSemaphoreGive(sip_log_mutex);
     }
+    
+    // Yield again after web log update
+    taskYIELD();
 }
 
 // Calculate MD5 hash and convert to hex string
@@ -210,8 +236,10 @@ static sip_auth_challenge_t parse_www_authenticate(const char* buffer) {
     challenge.valid = (strlen(challenge.realm) > 0 && strlen(challenge.nonce) > 0);
     
     if (challenge.valid) {
-        NTP_LOGI(TAG, "Auth challenge parsed: realm=%s, qop=%s, algorithm=%s", 
+        char log_msg[256];
+        snprintf(log_msg, sizeof(log_msg), "Auth challenge parsed: realm=%s, qop=%s, algorithm=%s", 
                  challenge.realm, challenge.qop, challenge.algorithm);
+        sip_add_log_entry("info", log_msg);
     }
     
     return challenge;
@@ -278,23 +306,25 @@ static bool get_local_ip(char* ip_str, size_t max_len)
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
 static void sip_task(void *pvParameters)
 {
-    // Use static buffer to avoid stack allocation (moves to .bss section)
-    static char buffer[2048];
+    // Allocate buffer on heap instead of static to avoid memory issues
+    const size_t buffer_size = 1536;  // Reduced from 2048 to 1536 bytes
+    char *buffer = malloc(buffer_size);
+    if (!buffer) {
+        ESP_LOGE(TAG, "Failed to allocate SIP receive buffer");
+        vTaskDelete(NULL);
+        return;
+    }
     int len;
     
-    NTP_LOGI(TAG, "SIP task started on core %d", xPortGetCoreID());
     sip_add_log_entry("info", "SIP task started on Core 1");
-    
-    // Add this task to the watchdog
-    esp_task_wdt_add(NULL);
     
     while (1) {
         // Longer delay to minimize CPU usage - SIP doesn't need fast polling
-        // 500ms is more than sufficient for SIP protocol and reduces system load
-        vTaskDelay(pdMS_TO_TICKS(500));
+        // 1000ms (1 second) reduces system load significantly
+        vTaskDelay(pdMS_TO_TICKS(1000));
         
-        // Reset watchdog to prevent timeout during long operations
-        esp_task_wdt_reset();
+        // Yield to WiFi and other high-priority tasks
+        taskYIELD();
         
         // Auto-registration after delay (if configured and not already registered)
         if (init_timestamp > 0 && 
@@ -302,8 +332,7 @@ static void sip_task(void *pvParameters)
             sip_config.configured &&
             (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >= auto_register_delay_ms) {
             init_timestamp = 0; // Clear flag so we only try once
-            NTP_LOGI(TAG, "Auto-registration triggered after %lu ms delay", auto_register_delay_ms);
-            sip_add_log_entry("info", "Auto-registration starting (WiFi stable)");
+            sip_add_log_entry("info", "Auto-registration triggered after 5000 ms delay");
             registration_requested = true;
         }
         
@@ -313,8 +342,7 @@ static void sip_task(void *pvParameters)
             
             // Recreate socket if it was closed
             if (sip_socket < 0) {
-                NTP_LOGI(TAG, "Recreating SIP socket");
-                sip_add_log_entry("info", "Creating SIP socket");
+                sip_add_log_entry("info", "Recreating SIP socket");
                 
                 sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
                 if (sip_socket < 0) {
@@ -342,23 +370,18 @@ static void sip_task(void *pvParameters)
                     continue;
                 }
                 
-                NTP_LOGI(TAG, "SIP socket recreated and bound to port 5060");
-                sip_add_log_entry("info", "SIP socket ready");
+                sip_add_log_entry("info", "SIP socket recreated and bound to port 5060");
             }
             
-            NTP_LOGI(TAG, "Processing registration request");
-            sip_add_log_entry("info", "Starting SIP registration");
+            sip_add_log_entry("info", "Processing registration request");
             sip_client_register();
         }
         
-        // Yield to other tasks to prevent starving WiFi stack
-        taskYIELD();
-        
         if (sip_socket >= 0) {
-            len = recv(sip_socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
+            len = recv(sip_socket, buffer, buffer_size - 1, MSG_DONTWAIT);
             if (len > 0) {
                 buffer[len] = '\0';
-                NTP_LOGI(TAG, "SIP message received:\n%s", buffer);
+                sip_add_log_entry("received", "SIP message received");
                 
                 // Log received message (truncated for display)
                 char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
@@ -370,19 +393,16 @@ static void sip_task(void *pvParameters)
                 if (strstr(buffer, "SIP/2.0 200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
-                        NTP_LOGI(TAG, "SIP registration successful");
                         sip_add_log_entry("info", "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_CONNECTED;
-                        NTP_LOGI(TAG, "Call connected");
                         sip_add_log_entry("info", "Call connected - State: CONNECTED");
                         audio_start_recording();
                         audio_start_playback();
                     }
                 } else if (strstr(buffer, "SIP/2.0 401 Unauthorized")) {
                     if (current_state == SIP_STATE_REGISTERING) {
-                        NTP_LOGI(TAG, "Authentication required, parsing challenge");
-                        sip_add_log_entry("info", "Authentication required");
+                        sip_add_log_entry("info", "Authentication required, parsing challenge");
                         
                         // Parse authentication challenge
                         last_auth_challenge = parse_www_authenticate(buffer);
@@ -399,7 +419,7 @@ static void sip_task(void *pvParameters)
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
                     // Provisional response, just log it
-                    NTP_LOGI(TAG, "Server processing request");
+                    sip_add_log_entry("info", "Server processing request");
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
                     ESP_LOGE(TAG, "SIP forbidden");
                     sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
@@ -417,12 +437,10 @@ static void sip_task(void *pvParameters)
                     sip_add_log_entry("info", "SIP target busy - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
-                    NTP_LOGI(TAG, "SIP request terminated");
                     sip_add_log_entry("info", "SIP request terminated - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strncmp(buffer, "INVITE sip:", 11) == 0) {
                     // Check for INVITE request (not response)
-                    NTP_LOGI(TAG, "Incoming call");
                     sip_add_log_entry("info", "Incoming call - State: RINGING");
                     current_state = SIP_STATE_RINGING;
                     // Auto-answer after short delay
@@ -430,7 +448,6 @@ static void sip_task(void *pvParameters)
                     sip_client_answer_call();
                 } else if (strncmp(buffer, "BYE sip:", 8) == 0) {
                     // Check for BYE request (not response)
-                    NTP_LOGI(TAG, "Call ended");
                     sip_add_log_entry("info", "Call ended - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                     audio_stop_recording();
@@ -454,12 +471,13 @@ static void sip_task(void *pvParameters)
     }
     
     ESP_LOGI(TAG, "SIP task ended");
+    free(buffer);
     vTaskDelete(NULL);
 }
 
 void sip_client_init(void)
 {
-    NTP_LOGI(TAG, "Initializing SIP client");
+    sip_add_log_entry("info", "Initializing SIP client");
 
     // Set initial state
     current_state = SIP_STATE_IDLE;
@@ -468,7 +486,10 @@ void sip_client_init(void)
     sip_config = sip_load_config();
 
     if (sip_config.configured) {
-        NTP_LOGI(TAG, "SIP configuration loaded: %s@%s", sip_config.username, sip_config.server);
+        char log_msg[128];
+        snprintf(log_msg, sizeof(log_msg), "SIP configuration loaded: %s@%s", 
+                 sip_config.username, sip_config.server);
+        sip_add_log_entry("info", log_msg);
 
         // Create socket
         sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -493,7 +514,7 @@ void sip_client_init(void)
             return;
         }
         
-        NTP_LOGI(TAG, "SIP socket bound to port 5060");
+        sip_add_log_entry("info", "SIP socket bound to port 5060");
 
         // Create SIP task pinned to Core 1 (APP CPU)
         // This isolates SIP from WiFi which runs on Core 0 (PRO CPU)
@@ -519,10 +540,6 @@ void sip_client_init(void)
         
         ESP_LOGI(TAG, "SIP task created on Core 1 (APP CPU)");
         
-        // Subscribe SIP task to watchdog timer
-        esp_task_wdt_add(sip_task_handle);
-        ESP_LOGI(TAG, "SIP task subscribed to watchdog timer");
-
         // Set timestamp for delayed auto-registration
         // This gives WiFi time to stabilize before attempting registration
         init_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
@@ -561,10 +578,8 @@ bool sip_client_register(void)
         return false;
     }
 
-    NTP_LOGI(TAG, "SIP registration with %s", sip_config.server);
-    sip_add_log_entry("info", "Starting DNS lookup");
+    sip_add_log_entry("info", "Starting SIP registration");
     current_state = SIP_STATE_REGISTERING;
-    sip_add_log_entry("info", "State changed to REGISTERING");
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -585,7 +600,6 @@ bool sip_client_register(void)
         return false;
     }
     
-    NTP_LOGI(TAG, "DNS lookup successful");
     sip_add_log_entry("info", "DNS lookup successful");
 
     memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
@@ -617,9 +631,7 @@ bool sip_client_register(void)
         return false;
     }
 
-    ESP_LOGI(TAG, "REGISTER message sent successfully (%d bytes)", sent);
-
-    NTP_LOGI(TAG, "REGISTER message sent");
+    sip_add_log_entry("sent", "REGISTER message sent");
     return true;
 }
 
@@ -631,7 +643,6 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    NTP_LOGI(TAG, "Sending authenticated REGISTER");
     sip_add_log_entry("info", "Sending authenticated REGISTER");
 
     struct sockaddr_in server_addr;
@@ -673,7 +684,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
     );
 
     // Build authenticated REGISTER message (use static to avoid stack allocation)
-    static char register_msg[2048];
+    static char register_msg[1536];  // Reduced from 2048 to 1536
     int call_id = rand();
     int tag = rand();
     int branch = rand();
@@ -733,8 +744,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    NTP_LOGI(TAG, "Authenticated REGISTER sent successfully (%d bytes)", sent);
-    sip_add_log_entry("info", "Authenticated REGISTER sent");
+    sip_add_log_entry("info", "Authenticated REGISTER sent successfully");
     return true;
 }
 
@@ -742,13 +752,11 @@ void sip_client_make_call(const char* uri)
 {
     // Allow calls only when IDLE or REGISTERED
     if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED) {
-        NTP_LOGW(TAG, "Cannot make call - current state: %d (not IDLE or REGISTERED)", current_state);
         sip_add_log_entry("error", "Cannot make call - not in ready state");
         return;
     }
     
     if (!sip_config.configured) {
-        NTP_LOGW(TAG, "Cannot make call - SIP not configured");
         sip_add_log_entry("error", "Cannot make call - SIP not configured");
         return;
     }
@@ -756,7 +764,6 @@ void sip_client_make_call(const char* uri)
     // Remember previous state to restore after call
     sip_state_t previous_state = current_state;
     
-    NTP_LOGI(TAG, "Initiating call to %s", uri);
     sip_add_log_entry("info", "Initiating call - State: CALLING");
     current_state = SIP_STATE_CALLING;
     
@@ -769,7 +776,7 @@ void sip_client_make_call(const char* uri)
     // Simplified INVITE message (use static to avoid stack allocation)
     // In a real implementation, a complete SDP session description would be created here
     static char sdp[256];
-    static char invite_msg[2048];
+    static char invite_msg[1536];  // Reduced from 2048 to 1536
     
     snprintf(sdp, sizeof(sdp), 
              "v=0\r\no=- 0 0 IN IP4 %s\r\ns=-\r\nc=IN IP4 %s\r\nt=0 0\r\nm=audio 5004 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
@@ -782,7 +789,6 @@ void sip_client_make_call(const char* uri)
              sip_config.username, local_ip,
              strlen(sdp), sdp);
     
-    NTP_LOGI(TAG, "INVITE message created (%d bytes)", strlen(invite_msg));
     sip_add_log_entry("sent", "INVITE message prepared");
     
     // TODO: Send INVITE message via socket
@@ -793,21 +799,16 @@ void sip_client_make_call(const char* uri)
     // 3. Send ACK
     // 4. Establish RTP audio stream
     
-    NTP_LOGW(TAG, "Call functionality not fully implemented - returning to ready state");
-    sip_add_log_entry("info", "Call simulation complete (not fully implemented)");
+    sip_add_log_entry("info", "Call functionality not fully implemented - returning to ready state");
     
     // Restore previous state (should be REGISTERED to maintain registration)
     current_state = previous_state;
     
-    static const char* state_names[] = {
-        "IDLE", "REGISTERING", "REGISTERED", "CALLING", "RINGING",
-        "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR",
-        "AUTH_FAILED", "NETWORK_ERROR", "TIMEOUT"
-    };
     const char* state_name = (current_state < 12) ? state_names[current_state] : "UNKNOWN";
     
-    NTP_LOGI(TAG, "State restored to: %s (%d)", state_name, current_state);
-    sip_add_log_entry("info", "Ready for next call");
+    char log_msg[64];
+    snprintf(log_msg, sizeof(log_msg), "State restored to: %s", state_name);
+    sip_add_log_entry("info", log_msg);
 }
 
 void sip_client_hangup(void)
@@ -879,12 +880,6 @@ bool sip_client_test_connection(void)
 
 void sip_get_status(char* buffer, size_t buffer_size)
 {
-    const char* state_names[] = {
-        "IDLE", "REGISTERING", "REGISTERED", "CALLING", "RINGING",
-        "CONNECTED", "DTMF_SENDING", "DISCONNECTED", "ERROR",
-        "AUTH_FAILED", "NETWORK_ERROR", "TIMEOUT"
-    };
-
     sip_state_t state = sip_client_get_state();
     const char* state_name = (state < sizeof(state_names)/sizeof(state_names[0])) ? 
                             state_names[state] : "UNKNOWN";
@@ -1166,8 +1161,7 @@ bool sip_test_configuration(void)
 // Connect to SIP server (start registration)
 bool sip_connect(void)
 {
-    NTP_LOGI(TAG, "SIP connect requested");
-    sip_add_log_entry("info", "SIP connection requested");
+    sip_add_log_entry("info", "SIP connect requested");
     
     if (!sip_config.configured) {
         ESP_LOGE(TAG, "Cannot connect: SIP not configured");
@@ -1176,7 +1170,6 @@ bool sip_connect(void)
     }
     
     if (current_state == SIP_STATE_REGISTERED) {
-        NTP_LOGI(TAG, "Already registered");
         sip_add_log_entry("info", "Already registered to SIP server");
         return true;
     }
@@ -1184,8 +1177,7 @@ bool sip_connect(void)
     // If disconnected, change state to idle so registration can proceed
     if (current_state == SIP_STATE_DISCONNECTED) {
         current_state = SIP_STATE_IDLE;
-        NTP_LOGI(TAG, "State changed from DISCONNECTED to IDLE");
-        sip_add_log_entry("info", "Reconnecting to SIP server");
+        sip_add_log_entry("info", "State changed from DISCONNECTED to IDLE - Reconnecting");
     }
     
     // Set flag to trigger registration in SIP task (non-blocking)
@@ -1198,13 +1190,11 @@ bool sip_connect(void)
 // Disconnect from SIP server
 void sip_disconnect(void)
 {
-    NTP_LOGI(TAG, "SIP disconnect requested");
-    sip_add_log_entry("info", "SIP disconnection requested");
+    sip_add_log_entry("info", "SIP disconnect requested");
     
     // Send REGISTER with Expires: 0 to unregister (if registered)
     if (current_state == SIP_STATE_REGISTERED && sip_socket >= 0) {
-        NTP_LOGI(TAG, "Sending unregister message");
-        sip_add_log_entry("info", "Unregistering from SIP server");
+        sip_add_log_entry("info", "Sending unregister message");
         // TODO: Send REGISTER with Expires: 0
     }
     
@@ -1212,7 +1202,7 @@ void sip_disconnect(void)
     if (sip_socket >= 0) {
         close(sip_socket);
         sip_socket = -1;
-        NTP_LOGI(TAG, "SIP socket closed");
+        sip_add_log_entry("info", "SIP socket closed");
     }
     
     // Clear registration flag
@@ -1220,7 +1210,5 @@ void sip_disconnect(void)
     
     // Update state
     current_state = SIP_STATE_DISCONNECTED;
-    sip_add_log_entry("info", "Disconnected from SIP server");
-    
-    NTP_LOGI(TAG, "SIP client disconnected");
+    sip_add_log_entry("info", "SIP client disconnected");
 }
