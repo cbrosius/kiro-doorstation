@@ -1856,10 +1856,289 @@
       </div>
     </section>
 
-    <!-- Hardware Settings Section -->
+    <!-- Hardware Settings Section (Task 9) -->
     <section class="content-section" id="section-hardware" hidden>
       <h2 tabindex="-1">Hardware Settings</h2>
-      <p>Hardware information will be implemented here.</p>
+      
+      <!-- Task 9.1: Hardware Information Display -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Hardware Information</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          ESP32-S3 hardware specifications and memory status. Information updates every 10 seconds.
+        </p>
+        
+        <div id="hardware-info" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Chip Model</div>
+            <div id="hw-chip-model" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Chip Revision</div>
+            <div id="hw-chip-revision" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Flash Size</div>
+            <div id="hw-flash-size" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Flash Available</div>
+            <div id="hw-flash-free" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">PSRAM Size</div>
+            <div id="hw-psram-size" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">PSRAM Free</div>
+            <div id="hw-psram-free" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Free Heap</div>
+            <div id="hw-free-heap" class="dashboard-info-value">Loading...</div>
+          </div>
+          <div class="dashboard-info-card">
+            <div class="dashboard-info-label">Min Free Heap</div>
+            <div id="hw-min-heap" class="dashboard-info-value">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 9.2: GPIO Pin Assignments -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">GPIO Pin Assignments</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          GPIO pin configuration and current states for all hardware interfaces.
+        </p>
+        
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+                <th style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">GPIO Pin</th>
+                <th style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">Function</th>
+                <th style="padding: var(--spacing-md); text-align: center; font-weight: var(--font-weight-bold); color: var(--color-text);">Current State</th>
+              </tr>
+            </thead>
+            <tbody id="gpio-table-body">
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-weight: var(--font-weight-medium);">GPIO 21</td>
+                <td style="padding: var(--spacing-md);">Doorbell Button 1</td>
+                <td style="padding: var(--spacing-md); text-align: center;">
+                  <span id="gpio-21-state" style="display: inline-block; padding: 4px 12px; border-radius: var(--border-radius-sm); background-color: var(--color-status-inactive); color: var(--color-text-inverse); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium);">Inactive</span>
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-weight: var(--font-weight-medium);">GPIO 4</td>
+                <td style="padding: var(--spacing-md);">Doorbell Button 2</td>
+                <td style="padding: var(--spacing-md); text-align: center;">
+                  <span id="gpio-4-state" style="display: inline-block; padding: 4px 12px; border-radius: var(--border-radius-sm); background-color: var(--color-status-inactive); color: var(--color-text-inverse); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium);">Inactive</span>
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-weight: var(--font-weight-medium);">GPIO 5</td>
+                <td style="padding: var(--spacing-md);">Door Opener Relay</td>
+                <td style="padding: var(--spacing-md); text-align: center;">
+                  <span id="gpio-5-state" style="display: inline-block; padding: 4px 12px; border-radius: var(--border-radius-sm); background-color: var(--color-status-inactive); color: var(--color-text-inverse); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium);">Inactive</span>
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-weight: var(--font-weight-medium);">GPIO 6</td>
+                <td style="padding: var(--spacing-md);">Light Control Relay</td>
+                <td style="padding: var(--spacing-md); text-align: center;">
+                  <span id="gpio-6-state" style="display: inline-block; padding: 4px 12px; border-radius: var(--border-radius-sm); background-color: var(--color-status-inactive); color: var(--color-text-inverse); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium);">Inactive</span>
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-weight: var(--font-weight-medium);">GPIO 0</td>
+                <td style="padding: var(--spacing-md);">BOOT Button (Testing)</td>
+                <td style="padding: var(--spacing-md); text-align: center;">
+                  <span id="gpio-0-state" style="display: inline-block; padding: 4px 12px; border-radius: var(--border-radius-sm); background-color: var(--color-status-inactive); color: var(--color-text-inverse); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium);">Inactive</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Task 9.3: DTMF Control Codes -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">DTMF Control Codes</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          DTMF (Dual-Tone Multi-Frequency) codes that can be sent during a call to control the door station.
+        </p>
+        
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+                <th style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">DTMF Code</th>
+                <th style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">Action</th>
+                <th style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-primary);">*1</td>
+                <td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">Open Door</td>
+                <td style="padding: var(--spacing-md); color: var(--color-text-secondary);">Activates door opener relay for 3 seconds</td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-primary);">*2</td>
+                <td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">Toggle Light</td>
+                <td style="padding: var(--spacing-md); color: var(--color-text-secondary);">Toggles light control relay on/off</td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td style="padding: var(--spacing-md); font-family: monospace; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-primary);">#</td>
+                <td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">Hang Up</td>
+                <td style="padding: var(--spacing-md); color: var(--color-text-secondary);">Ends the current call</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div style="margin-top: var(--spacing-lg); padding: var(--spacing-md); background-color: var(--color-bg); border-left: 4px solid var(--color-info); border-radius: var(--border-radius);">
+          <div style="display: flex; align-items: start; gap: var(--spacing-sm);">
+            <span style="font-size: var(--font-size-xl);">ℹ️</span>
+            <div>
+              <div style="font-weight: var(--font-weight-medium); margin-bottom: var(--spacing-xs);">How to use DTMF codes</div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                During an active call, use your phone's keypad to enter these codes. The door station will respond to the commands in real-time.
+                If PIN protection is enabled in Security Settings, you must enter the correct PIN before using control codes.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 9.4: Button and Relay Assignments -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Button and Relay Assignments</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Physical button assignments and relay output configurations with current states.
+        </p>
+        
+        <!-- Doorbell Buttons -->
+        <h4 style="margin-bottom: var(--spacing-md); font-size: var(--font-size-base); color: var(--color-text);">Doorbell Buttons</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md); margin-bottom: var(--spacing-xl);">
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-2xl);">🔔</span>
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Bell 1 (GPIO 21)</div>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Apartment 1</div>
+              </div>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Action:</div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text);">Calls SIP Target 1</div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Last Press:</div>
+            <div id="bell1-last-press" style="font-size: var(--font-size-sm); color: var(--color-text); font-family: monospace;">Never</div>
+          </div>
+          
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-2xl);">🔔</span>
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Bell 2 (GPIO 4)</div>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Apartment 2</div>
+              </div>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Action:</div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text);">Calls SIP Target 2</div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Last Press:</div>
+            <div id="bell2-last-press" style="font-size: var(--font-size-sm); color: var(--color-text); font-family: monospace;">Never</div>
+          </div>
+        </div>
+        
+        <!-- Relay Outputs -->
+        <h4 style="margin-bottom: var(--spacing-md); font-size: var(--font-size-base); color: var(--color-text);">Relay Outputs</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md);">
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-2xl);">🚪</span>
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Door Opener (GPIO 5)</div>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Electric Strike/Maglock</div>
+              </div>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Current State:</div>
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+              <span id="door-relay-indicator" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: var(--color-status-inactive);"></span>
+              <span id="door-relay-state" style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Inactive</span>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Last Activation:</div>
+            <div id="door-last-activation" style="font-size: var(--font-size-sm); color: var(--color-text); font-family: monospace;">Never</div>
+          </div>
+          
+          <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-2xl);">💡</span>
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Light Control (GPIO 6)</div>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Entrance Light</div>
+              </div>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Current State:</div>
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+              <span id="light-relay-indicator" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: var(--color-status-inactive);"></span>
+              <span id="light-relay-state" style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Off</span>
+            </div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Last Toggle:</div>
+            <div id="light-last-toggle" style="font-size: var(--font-size-sm); color: var(--color-text); font-family: monospace;">Never</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Task 9.5: BOOT Button Testing Information -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">BOOT Button Testing</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          The BOOT button (GPIO 0) can be used for testing and diagnostics during development.
+        </p>
+        
+        <div style="padding: var(--spacing-lg); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: start; gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
+            <div style="flex: 1;">
+              <div style="font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-sm);">GPIO Pin</div>
+              <div style="font-family: monospace; font-size: var(--font-size-lg); color: var(--color-primary);">GPIO 0</div>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-sm);">Function</div>
+              <div style="font-size: var(--font-size-base); color: var(--color-text);">BOOT / Test Button</div>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-sm);">Current State</div>
+              <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                <span id="boot-button-indicator" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: var(--color-status-inactive);"></span>
+                <span id="boot-button-state" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Not Pressed</span>
+              </div>
+            </div>
+          </div>
+          
+          <div style="padding: var(--spacing-md); background-color: var(--color-surface); border-radius: var(--border-radius); border-left: 4px solid var(--color-info);">
+            <div style="font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-sm);">Testing Instructions</div>
+            <ol style="margin-left: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.8;">
+              <li>The BOOT button is typically located on the ESP32-S3 development board</li>
+              <li>Press and hold the BOOT button to test input detection</li>
+              <li>The button state should update in real-time above</li>
+              <li>During firmware upload, hold BOOT while pressing RESET to enter download mode</li>
+              <li>In normal operation, the BOOT button can be used for custom test functions</li>
+            </ol>
+          </div>
+          
+          <div style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-surface); border-radius: var(--border-radius); border-left: 4px solid var(--color-warning);">
+            <div style="display: flex; align-items: start; gap: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-xl);">⚠️</span>
+              <div>
+                <div style="font-weight: var(--font-weight-medium); margin-bottom: var(--spacing-xs); color: var(--color-text);">Note</div>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                  GPIO 0 is a strapping pin. Holding it LOW during boot will put the ESP32-S3 into download mode. 
+                  Only use this button for testing when the device is already running.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Security Settings Section -->
@@ -1953,7 +2232,7 @@
         closeMobileSidebar();
       }
       
-      // Section-specific initialization (Task 7.3, 7.4, Task 8.4)
+      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9)
       if (sectionId === 'sip') {
         // Load SIP configuration from server (Task 7.4)
         loadSIPConfiguration();
@@ -1962,6 +2241,10 @@
       } else if (sectionId === 'network') {
         // Initialize Network Settings section (Task 8.4)
         initNetworkSettings();
+      } else if (sectionId === 'hardware') {
+        // Update Hardware Settings section (Task 9)
+        updateHardwareInfo();
+        updateHardwareStatus();
       }
     }
     
@@ -4462,6 +4745,197 @@
       setInterval(updateNTPStatusInNetworkSection, 10000);
     }
     
+    // ===== Task 9: Hardware Settings Functions =====
+    
+    /**
+     * Task 9.1: Fetch and display hardware information
+     */
+    async function updateHardwareInfo() {
+      try {
+        const response = await apiRequest('/api/system/status');
+        
+        if (response) {
+          // Update chip information
+          document.getElementById('hw-chip-model').textContent = response.chip_model || 'ESP32-S3';
+          document.getElementById('hw-chip-revision').textContent = response.chip_revision ? `Rev ${response.chip_revision}` : 'Unknown';
+          
+          // Update flash information
+          if (response.flash_size) {
+            document.getElementById('hw-flash-size').textContent = formatBytes(response.flash_size);
+          }
+          if (response.flash_free !== undefined) {
+            document.getElementById('hw-flash-free').textContent = formatBytes(response.flash_free);
+          }
+          
+          // Update PSRAM information
+          if (response.psram_size) {
+            document.getElementById('hw-psram-size').textContent = formatBytes(response.psram_size);
+            document.getElementById('hw-psram-free').textContent = formatBytes(response.psram_free || 0);
+          } else {
+            document.getElementById('hw-psram-size').textContent = 'Not Available';
+            document.getElementById('hw-psram-free').textContent = 'N/A';
+          }
+          
+          // Update heap information
+          if (response.free_heap !== undefined) {
+            document.getElementById('hw-free-heap').textContent = formatBytes(response.free_heap);
+          }
+          if (response.min_free_heap !== undefined) {
+            document.getElementById('hw-min-heap').textContent = formatBytes(response.min_free_heap);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch hardware info:', error);
+        // Set error state for all fields
+        const fields = ['hw-chip-model', 'hw-chip-revision', 'hw-flash-size', 'hw-flash-free', 
+                       'hw-psram-size', 'hw-psram-free', 'hw-free-heap', 'hw-min-heap'];
+        fields.forEach(id => {
+          const element = document.getElementById(id);
+          if (element) element.textContent = 'Error';
+        });
+      }
+    }
+    
+    /**
+     * Task 9.2 & 9.4: Update GPIO states and relay information
+     */
+    async function updateHardwareStatus() {
+      try {
+        const response = await apiRequest('/api/hardware/status');
+        
+        if (response) {
+          // Update GPIO states (Task 9.2)
+          updateGPIOState(21, response.buttons?.bell1_active || false);
+          updateGPIOState(4, response.buttons?.bell2_active || false);
+          updateGPIOState(5, response.door?.status === 'open');
+          updateGPIOState(6, response.light?.status === 'on');
+          updateGPIOState(0, response.boot_button?.pressed || false);
+          
+          // Update button last press times (Task 9.4)
+          if (response.buttons?.bell1_last_press) {
+            document.getElementById('bell1-last-press').textContent = 
+              formatRelativeTime(response.buttons.bell1_last_press);
+          }
+          if (response.buttons?.bell2_last_press) {
+            document.getElementById('bell2-last-press').textContent = 
+              formatRelativeTime(response.buttons.bell2_last_press);
+          }
+          
+          // Update relay states (Task 9.4)
+          updateRelayState('door', response.door?.status === 'open');
+          updateRelayState('light', response.light?.status === 'on');
+          
+          // Update relay last activation times
+          if (response.door?.last_activation) {
+            document.getElementById('door-last-activation').textContent = 
+              formatRelativeTime(response.door.last_activation);
+          }
+          if (response.light?.last_toggle) {
+            document.getElementById('light-last-toggle').textContent = 
+              formatRelativeTime(response.light.last_toggle);
+          }
+          
+          // Update BOOT button state (Task 9.5)
+          const bootPressed = response.boot_button?.pressed || false;
+          const bootIndicator = document.getElementById('boot-button-indicator');
+          const bootState = document.getElementById('boot-button-state');
+          if (bootIndicator && bootState) {
+            bootIndicator.style.backgroundColor = bootPressed ? 
+              'var(--color-status-connected)' : 'var(--color-status-inactive)';
+            bootState.textContent = bootPressed ? 'Pressed' : 'Not Pressed';
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch hardware status:', error);
+      }
+    }
+    
+    /**
+     * Update GPIO state indicator
+     * @param {number} gpio - GPIO pin number
+     * @param {boolean} active - Whether the GPIO is active
+     */
+    function updateGPIOState(gpio, active) {
+      const stateElement = document.getElementById(`gpio-${gpio}-state`);
+      if (stateElement) {
+        stateElement.textContent = active ? 'Active' : 'Inactive';
+        stateElement.style.backgroundColor = active ? 
+          'var(--color-status-connected)' : 'var(--color-status-inactive)';
+      }
+    }
+    
+    /**
+     * Update relay state indicator
+     * @param {string} relay - Relay name ('door' or 'light')
+     * @param {boolean} active - Whether the relay is active
+     */
+    function updateRelayState(relay, active) {
+      const indicator = document.getElementById(`${relay}-relay-indicator`);
+      const state = document.getElementById(`${relay}-relay-state`);
+      
+      if (indicator && state) {
+        indicator.style.backgroundColor = active ? 
+          'var(--color-status-connected)' : 'var(--color-status-inactive)';
+        
+        if (relay === 'door') {
+          state.textContent = active ? 'Active' : 'Inactive';
+        } else if (relay === 'light') {
+          state.textContent = active ? 'On' : 'Off';
+        }
+      }
+    }
+    
+    /**
+     * Format timestamp to relative time string
+     * @param {number} timestamp - Unix timestamp in milliseconds
+     * @returns {string} Formatted relative timestamp
+     */
+    function formatRelativeTime(timestamp) {
+      if (!timestamp || timestamp === 0) return 'Never';
+      
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      
+      // If less than 1 minute ago
+      if (diffSecs < 60) {
+        return `${diffSecs} second${diffSecs !== 1 ? 's' : ''} ago`;
+      }
+      // If less than 1 hour ago
+      if (diffMins < 60) {
+        return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+      }
+      // If less than 24 hours ago
+      if (diffHours < 24) {
+        return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+      }
+      // If less than 7 days ago
+      if (diffDays < 7) {
+        return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+      }
+      // Otherwise show full date
+      return date.toLocaleString();
+    }
+    
+    /**
+     * Initialize Hardware Settings section
+     */
+    function initHardwareSettings() {
+      // Initial load
+      updateHardwareInfo();
+      updateHardwareStatus();
+      
+      // Auto-refresh every 10 seconds (Task 9.1 requirement)
+      setInterval(() => {
+        updateHardwareInfo();
+        updateHardwareStatus();
+      }, 10000);
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -4491,6 +4965,9 @@
       
       // Initialize Network Settings section
       initNetworkSettings();
+      
+      // Initialize Hardware Settings section
+      initHardwareSettings();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
