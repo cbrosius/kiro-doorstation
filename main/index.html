@@ -900,7 +900,555 @@
   <div class="search-results" id="search-results" hidden role="listbox"></div>
 
   <script>
-    // JavaScript will be added in task 3
+    // ===== Task 3: Core JavaScript Functionality =====
+    
+    // ===== Task 3.1: Navigation System =====
+    
+    /**
+     * Navigate to a specific section
+     * @param {string} sectionId - The section identifier (e.g., 'dashboard', 'sip')
+     */
+    function navigateToSection(sectionId) {
+      // Hide all sections
+      document.querySelectorAll('.content-section').forEach(section => {
+        section.hidden = true;
+        section.classList.remove('active');
+      });
+      
+      // Show selected section with fade-in
+      const targetSection = document.getElementById(`section-${sectionId}`);
+      if (targetSection) {
+        targetSection.hidden = false;
+        // Small delay to trigger CSS transition
+        setTimeout(() => targetSection.classList.add('active'), 10);
+        
+        // Scroll to top of main content
+        document.getElementById('main-content').scrollTop = 0;
+        
+        // Set focus to section heading for accessibility
+        const heading = targetSection.querySelector('h2');
+        if (heading) {
+          heading.focus();
+        }
+      }
+      
+      // Update sidebar active state
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.section === sectionId);
+        item.setAttribute('aria-current', item.dataset.section === sectionId ? 'page' : 'false');
+      });
+      
+      // Save to sessionStorage for persistence
+      sessionStorage.setItem('activeSection', sectionId);
+      
+      // Close mobile sidebar after navigation
+      if (window.innerWidth < 768) {
+        closeMobileSidebar();
+      }
+    }
+    
+    /**
+     * Initialize navigation system
+     */
+    function initNavigation() {
+      // Add click handlers to nav items
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const section = item.dataset.section;
+          if (section) {
+            navigateToSection(section);
+          }
+        });
+        
+        // Keyboard navigation support
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('role', 'button');
+        item.setAttribute('aria-current', 'false');
+        
+        item.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            const section = item.dataset.section;
+            if (section) {
+              navigateToSection(section);
+            }
+          }
+        });
+      });
+      
+      // Arrow key navigation in sidebar
+      const navItems = Array.from(document.querySelectorAll('.nav-item'));
+      navItems.forEach((item, index) => {
+        item.addEventListener('keydown', (e) => {
+          let targetIndex = -1;
+          
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            targetIndex = (index + 1) % navItems.length;
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            targetIndex = (index - 1 + navItems.length) % navItems.length;
+          }
+          
+          if (targetIndex >= 0) {
+            navItems[targetIndex].focus();
+          }
+        });
+      });
+      
+      // Restore last active section from sessionStorage
+      const savedSection = sessionStorage.getItem('activeSection');
+      if (savedSection) {
+        navigateToSection(savedSection);
+      }
+    }
+    
+    /**
+     * Close mobile sidebar
+     */
+    function closeMobileSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const menuToggle = document.querySelector('.menu-toggle');
+      sidebar.classList.remove('open');
+      if (menuToggle) {
+        menuToggle.setAttribute('aria-expanded', 'false');
+      }
+    }
+    
+    /**
+     * Toggle mobile sidebar
+     */
+    function toggleMobileSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const menuToggle = document.querySelector('.menu-toggle');
+      const isOpen = sidebar.classList.toggle('open');
+      if (menuToggle) {
+        menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      }
+    }
+    
+    // ===== Task 3.2: Theme Toggle Functionality =====
+    
+    /**
+     * Initialize theme system
+     */
+    function initTheme() {
+      // Check localStorage first
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        return;
+      }
+      
+      // Check system preference
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateThemeIcon('dark');
+      } else {
+        updateThemeIcon('light');
+      }
+    }
+    
+    /**
+     * Toggle between light and dark theme
+     */
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+    
+    /**
+     * Update theme toggle button icon
+     * @param {string} theme - Current theme ('light' or 'dark')
+     */
+    function updateThemeIcon(theme) {
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        themeToggle.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
+      }
+    }
+    
+    // ===== Task 3.3: Status Panel Functionality =====
+    
+    /**
+     * Toggle status panel collapse/expand
+     */
+    function toggleStatusPanel() {
+      const panel = document.getElementById('status-panel');
+      const toggle = panel.querySelector('.status-toggle');
+      const isCollapsed = panel.classList.toggle('collapsed');
+      
+      // Update ARIA attributes
+      toggle.setAttribute('aria-expanded', !isCollapsed);
+      
+      // Save state to localStorage
+      localStorage.setItem('statusPanelCollapsed', isCollapsed);
+    }
+    
+    /**
+     * Initialize status panel
+     */
+    function initStatusPanel() {
+      // Restore collapsed state from localStorage
+      const isCollapsed = localStorage.getItem('statusPanelCollapsed') === 'true';
+      const panel = document.getElementById('status-panel');
+      const toggle = panel.querySelector('.status-toggle');
+      
+      if (isCollapsed) {
+        panel.classList.add('collapsed');
+        toggle.setAttribute('aria-expanded', 'false');
+      }
+      
+      // Add click handler
+      toggle.addEventListener('click', toggleStatusPanel);
+      
+      // Start auto-refresh
+      updateAllStatus();
+      setInterval(updateAllStatus, 10000); // Update every 10 seconds
+    }
+    
+    /**
+     * Update all status cards
+     */
+    async function updateAllStatus() {
+      try {
+        await Promise.all([
+          updateWiFiStatus(),
+          updateSIPStatus(),
+          updateDoorStatus(),
+          updateLightStatus()
+        ]);
+      } catch (error) {
+        console.error('Error updating status:', error);
+      }
+    }
+    
+    /**
+     * Update WiFi status card
+     */
+    async function updateWiFiStatus() {
+      try {
+        const response = await apiRequest('/api/wifi/status');
+        const card = document.getElementById('wifi-status');
+        const valueSpan = card.querySelector('.status-value');
+        
+        if (response.status === 'connected') {
+          card.setAttribute('data-status', 'connected');
+          valueSpan.textContent = `Connected (${response.ip || 'N/A'})`;
+        } else if (response.status === 'connecting') {
+          card.setAttribute('data-status', 'connecting');
+          valueSpan.textContent = 'Connecting...';
+        } else {
+          card.setAttribute('data-status', 'disconnected');
+          valueSpan.textContent = 'Disconnected';
+        }
+      } catch (error) {
+        const card = document.getElementById('wifi-status');
+        card.setAttribute('data-status', 'disconnected');
+        card.querySelector('.status-value').textContent = 'Error';
+      }
+    }
+    
+    /**
+     * Update SIP status card
+     */
+    async function updateSIPStatus() {
+      try {
+        const response = await apiRequest('/api/sip/status');
+        const card = document.getElementById('sip-status');
+        const valueSpan = card.querySelector('.status-value');
+        
+        if (response.status === 'registered') {
+          card.setAttribute('data-status', 'registered');
+          valueSpan.textContent = `Registered (${response.state || 'IDLE'})`;
+        } else if (response.status === 'connecting') {
+          card.setAttribute('data-status', 'connecting');
+          valueSpan.textContent = 'Connecting...';
+        } else {
+          card.setAttribute('data-status', 'disconnected');
+          valueSpan.textContent = 'Disconnected';
+        }
+      } catch (error) {
+        const card = document.getElementById('sip-status');
+        card.setAttribute('data-status', 'disconnected');
+        card.querySelector('.status-value').textContent = 'Error';
+      }
+    }
+    
+    /**
+     * Update door status card
+     */
+    async function updateDoorStatus() {
+      try {
+        const response = await apiRequest('/api/hardware/status');
+        const card = document.getElementById('door-status');
+        const valueSpan = card.querySelector('.status-value');
+        
+        if (response.door && response.door.status === 'open') {
+          card.setAttribute('data-status', 'open');
+          valueSpan.textContent = 'Open';
+        } else {
+          card.setAttribute('data-status', 'closed');
+          valueSpan.textContent = 'Closed';
+        }
+      } catch (error) {
+        const card = document.getElementById('door-status');
+        card.setAttribute('data-status', 'closed');
+        card.querySelector('.status-value').textContent = 'Closed';
+      }
+    }
+    
+    /**
+     * Update light status card
+     */
+    async function updateLightStatus() {
+      try {
+        const response = await apiRequest('/api/hardware/status');
+        const card = document.getElementById('light-status');
+        const valueSpan = card.querySelector('.status-value');
+        
+        if (response.light && response.light.status === 'on') {
+          card.setAttribute('data-status', 'on');
+          valueSpan.textContent = 'On';
+        } else {
+          card.setAttribute('data-status', 'off');
+          valueSpan.textContent = 'Off';
+        }
+      } catch (error) {
+        const card = document.getElementById('light-status');
+        card.setAttribute('data-status', 'off');
+        card.querySelector('.status-value').textContent = 'Off';
+      }
+    }
+    
+    // ===== Task 3.4: Toast Notification System =====
+    
+    let toastQueue = [];
+    let isShowingToast = false;
+    
+    /**
+     * Show a toast notification
+     * @param {string} message - The message to display
+     * @param {string} type - Toast type: 'success', 'error', 'warning', 'info'
+     * @param {number} duration - Duration in milliseconds (default: 3000)
+     */
+    function showToast(message, type = 'info', duration = 3000) {
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      
+      const iconMap = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+      };
+      const icon = iconMap[type] || iconMap.info;
+      
+      toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close" aria-label="Close notification">×</button>
+      `;
+      
+      const container = document.getElementById('toast-container');
+      container.appendChild(toast);
+      
+      // Animate in
+      setTimeout(() => toast.classList.add('show'), 10);
+      
+      // Auto-remove
+      const autoRemoveTimeout = setTimeout(() => {
+        removeToast(toast);
+      }, duration);
+      
+      // Manual close
+      const closeBtn = toast.querySelector('.toast-close');
+      closeBtn.addEventListener('click', () => {
+        clearTimeout(autoRemoveTimeout);
+        removeToast(toast);
+      });
+    }
+    
+    /**
+     * Remove a toast notification
+     * @param {HTMLElement} toast - The toast element to remove
+     */
+    function removeToast(toast) {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }
+    
+    /**
+     * Queue a toast notification
+     * @param {string} message - The message to display
+     * @param {string} type - Toast type
+     * @param {number} duration - Duration in milliseconds
+     */
+    function queueToast(message, type = 'info', duration = 3000) {
+      toastQueue.push({ message, type, duration });
+      if (!isShowingToast) {
+        processToastQueue();
+      }
+    }
+    
+    /**
+     * Process the toast queue
+     */
+    function processToastQueue() {
+      if (toastQueue.length === 0) {
+        isShowingToast = false;
+        return;
+      }
+      
+      isShowingToast = true;
+      const { message, type, duration } = toastQueue.shift();
+      showToast(message, type, duration);
+      
+      setTimeout(processToastQueue, duration + 500);
+    }
+    
+    // ===== Task 3.5: API Request Wrapper =====
+    
+    /**
+     * Make an API request with error handling and timeout
+     * @param {string} endpoint - API endpoint URL
+     * @param {Object} options - Fetch options
+     * @param {number} timeout - Request timeout in milliseconds (default: 10000)
+     * @returns {Promise<Object>} Response data
+     */
+    async function apiRequest(endpoint, options = {}, timeout = 10000) {
+      const defaultOptions = {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      const config = { ...defaultOptions, ...options };
+      
+      try {
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout')), timeout);
+        });
+        
+        // Race between fetch and timeout
+        const response = await Promise.race([
+          fetch(endpoint, config),
+          timeoutPromise
+        ]);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error(`API Error [${endpoint}]:`, error);
+        
+        // Show user-friendly error messages
+        if (error.message === 'Request timeout') {
+          showToast('Request timed out. Please try again.', 'error');
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          showToast('Connection error. Please check your network.', 'error');
+        } else {
+          showToast(error.message, 'error');
+        }
+        
+        throw error;
+      }
+    }
+    
+    /**
+     * Show loading state on an element
+     * @param {HTMLElement} element - Element to show loading state on
+     * @param {boolean} isLoading - Whether to show or hide loading state
+     */
+    function setLoadingState(element, isLoading) {
+      if (isLoading) {
+        element.disabled = true;
+        element.classList.add('loading');
+        const spinner = element.querySelector('.btn-spinner');
+        const text = element.querySelector('.btn-text');
+        if (spinner) spinner.hidden = false;
+        if (text) text.hidden = true;
+      } else {
+        element.disabled = false;
+        element.classList.remove('loading');
+        const spinner = element.querySelector('.btn-spinner');
+        const text = element.querySelector('.btn-text');
+        if (spinner) spinner.hidden = true;
+        if (text) text.hidden = false;
+      }
+    }
+    
+    // ===== Initialization =====
+    
+    /**
+     * Initialize the application
+     */
+    function initApp() {
+      // Initialize theme
+      initTheme();
+      
+      // Initialize navigation
+      initNavigation();
+      
+      // Initialize status panel
+      initStatusPanel();
+      
+      // Setup theme toggle
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+      }
+      
+      // Setup mobile menu toggle
+      const menuToggle = document.querySelector('.menu-toggle');
+      if (menuToggle) {
+        menuToggle.addEventListener('click', toggleMobileSidebar);
+      }
+      
+      // Close sidebar when clicking outside on mobile
+      document.addEventListener('click', (e) => {
+        if (window.innerWidth < 768) {
+          const sidebar = document.getElementById('sidebar');
+          const menuToggle = document.querySelector('.menu-toggle');
+          if (sidebar.classList.contains('open') && 
+              !sidebar.contains(e.target) && 
+              !menuToggle.contains(e.target)) {
+            closeMobileSidebar();
+          }
+        }
+      });
+      
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        if (window.innerWidth >= 768) {
+          const sidebar = document.getElementById('sidebar');
+          sidebar.classList.remove('open');
+        }
+      });
+      
+      console.log('ESP32 SIP Door Station initialized');
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
   </script>
 
 </body>
