@@ -5,12 +5,16 @@
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "web_server.h"
+#include "lwip/ip4_addr.h"
+#include <string.h>
 
 static const char *TAG = "WIFI";
 static EventGroupHandle_t wifi_event_group;
 static const int WIFI_CONNECTED_BIT = BIT0;
 static bool is_connected = false;
+static esp_netif_t* sta_netif = NULL;
+static esp_netif_t* ap_netif = NULL;
+static wifi_connection_info_t current_connection = {0};
 static int retry_count = 0;
 static const int MAX_RETRIES = 10;
 static bool is_scanning = false;
@@ -19,6 +23,9 @@ static bool is_scanning = false;
 static wifi_scan_result_t scan_results[MAX_SCAN_RESULTS];
 static int scan_results_count = 0;
 static bool scan_results_valid = false;
+
+// Forward declarations
+static void wifi_clear_scan_results(void);
 
 static const char* wifi_reason_to_string(uint8_t reason) {
     switch (reason) {
@@ -59,8 +66,10 @@ static const char* wifi_reason_to_string(uint8_t reason) {
 }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                               int32_t event_id, void* event_data)
+                                int32_t event_id, void* event_data)
 {
+    ESP_LOGI(TAG, "WiFi event: base=%s, id=%d", event_base == WIFI_EVENT ? "WIFI_EVENT" : "IP_EVENT", (int)event_id);
+
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         if (!is_scanning) {
             ESP_LOGI(TAG, "WiFi STA started, attempting to connect");
@@ -73,6 +82,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         retry_count++;
         ESP_LOGW(TAG, "WiFi disconnected (reason: %d - %s), retry %d/%d", disconnected->reason, wifi_reason_to_string(disconnected->reason), retry_count, MAX_RETRIES);
         is_connected = false;
+        
+        // Clear connection info
+        memset(&current_connection, 0, sizeof(current_connection));
+        
         if (retry_count >= MAX_RETRIES) {
             ESP_LOGW(TAG, "Max retries reached, falling back to AP mode");
             wifi_start_ap_mode();
@@ -89,6 +102,20 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "IP obtained: " IPSTR ", WiFi fully connected", IP2STR(&event->ip_info.ip));
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
+        
+        // Update connection info
+        current_connection.connected = true;
+        snprintf(current_connection.ip_address, sizeof(current_connection.ip_address), 
+                IPSTR, IP2STR(&event->ip_info.ip));
+        
+        // Get SSID and RSSI
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            strncpy(current_connection.ssid, (char*)ap_info.ssid, sizeof(current_connection.ssid) - 1);
+            current_connection.ssid[sizeof(current_connection.ssid) - 1] = '\0';
+            current_connection.rssi = ap_info.rssi;
+        }
+        
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
@@ -130,13 +157,13 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                         strncpy(scan_results[scan_results_count].ssid, (char*)ap_list[i].ssid, WIFI_SSID_MAX_LEN - 1);
                         scan_results[scan_results_count].ssid[WIFI_SSID_MAX_LEN - 1] = '\0';
                         scan_results[scan_results_count].rssi = ap_list[i].rssi;
-                        scan_results[scan_results_count].locked = (ap_list[i].authmode != WIFI_AUTH_OPEN);
+                        scan_results[scan_results_count].secure = (ap_list[i].authmode != WIFI_AUTH_OPEN);
                         scan_results_count++;
 
-                        ESP_LOGI(TAG, "Stored network: %s (RSSI: %d, Locked: %s)",
+                        ESP_LOGI(TAG, "Stored network: %s (RSSI: %d, Secure: %s)",
                                 scan_results[scan_results_count - 1].ssid,
                                 scan_results[scan_results_count - 1].rssi,
-                                scan_results[scan_results_count - 1].locked ? "yes" : "no");
+                                scan_results[scan_results_count - 1].secure ? "yes" : "no");
                     }
                     scan_results_valid = true;
                     ESP_LOGI(TAG, "Stored %d unique scan results", scan_results_count);
@@ -152,52 +179,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-char* wifi_scan_networks(void) {
-    ESP_LOGI(TAG, "ESPHome-style: Checking for stored scan results");
 
-    // ESPHome approach: Serve existing results immediately, no waiting
-    // Background scanning happens independently
-
-    char *json = malloc(4096);
-    if (json == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for JSON");
-        return strdup("[]");
-    }
-
-    // If no results available, return empty array immediately
-    if (!scan_results_valid || scan_results_count == 0) {
-        ESP_LOGI(TAG, "No scan results available yet, returning empty array");
-        strcpy(json, "[]");
-    } else {
-        // Build JSON from stored results (ESPHome pattern)
-        strcpy(json, "[");
-        for (int i = 0; i < scan_results_count; i++) {
-            if (i > 0) {
-                strcat(json, ",");
-            }
-
-            // Escape SSID for JSON
-            char ssid_escaped[66];
-            char *p = ssid_escaped;
-            for (int j = 0; j < 32 && scan_results[i].ssid[j]; j++) {
-                if (scan_results[i].ssid[j] == '"' || scan_results[i].ssid[j] == '\\') {
-                    *p++ = '\\';
-                }
-                *p++ = scan_results[i].ssid[j];
-            }
-            *p = 0;
-
-            strcat(json, "\"");
-            strcat(json, ssid_escaped);
-            strcat(json, "\"");
-        }
-        strcat(json, "]");
-
-        ESP_LOGI(TAG, "ESPHome-style: Serving %d stored scan results", scan_results_count);
-    }
-
-    return json;
-}
 
 void wifi_manager_init(void)
 {
@@ -208,11 +190,19 @@ void wifi_manager_init(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     
-    esp_netif_create_default_wifi_sta();
-    esp_netif_create_default_wifi_ap();
+    sta_netif = esp_netif_create_default_wifi_sta();
+    ap_netif = esp_netif_create_default_wifi_ap();
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // Reduce Block Ack window to avoid timer crashes
+    cfg.ampdu_rx_enable = 0;  // Disable AMPDU RX to prevent ADDBA/DELBA timer issues
+    cfg.ampdu_tx_enable = 0;  // Disable AMPDU TX for consistency
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    
+    // Disable WiFi power save for better stability under load
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    ESP_LOGI(TAG, "WiFi power save disabled for system stability");
+    ESP_LOGI(TAG, "WiFi AMPDU disabled to prevent Block Ack timer crashes");
     
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
@@ -403,4 +393,126 @@ int wifi_get_scan_results(wifi_scan_result_t* results, int max_results)
     memcpy(results, scan_results, count * sizeof(wifi_scan_result_t));
     ESP_LOGI(TAG, "Returning %d scan results", count);
     return count;
+}
+
+wifi_connection_info_t wifi_get_connection_info(void)
+{
+    if (is_connected && current_connection.connected) {
+        // Return cached connection info for better performance
+        return current_connection;
+    }
+    
+    wifi_connection_info_t info = {0};
+    
+    if (is_connected) {
+        // Get current AP info if cache is not available
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            strncpy(info.ssid, (char*)ap_info.ssid, sizeof(info.ssid) - 1);
+            info.ssid[sizeof(info.ssid) - 1] = '\0';
+            info.rssi = ap_info.rssi;
+        }
+        
+        // Get IP address
+        if (sta_netif) {
+            esp_netif_ip_info_t ip_info;
+            if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
+                snprintf(info.ip_address, sizeof(info.ip_address), 
+                        IPSTR, IP2STR(&ip_info.ip));
+            }
+        }
+        
+        info.connected = true;
+    } else {
+        strcpy(info.ip_address, "0.0.0.0");
+        strcpy(info.ssid, "Not connected");
+        info.rssi = 0;
+        info.connected = false;
+    }
+    
+    return info;
+}
+
+int wifi_scan_networks(wifi_scan_result_t** results)
+{
+    ESP_LOGI(TAG, "Starting WiFi network scan");
+    
+    // Clear previous results
+    scan_results_count = 0;
+    scan_results_valid = false;
+    
+    // Configure scan
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time = {
+            .active = {
+                .min = 100,
+                .max = 300
+            }
+        }
+    };
+    
+    // Start synchronous scan
+    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
+        *results = NULL;
+        return 0;
+    }
+    
+    // Get scan results
+    uint16_t ap_count = 0;
+    err = esp_wifi_scan_get_ap_num(&ap_count);
+    if (err != ESP_OK || ap_count == 0) {
+        ESP_LOGW(TAG, "No APs found or error getting AP count");
+        *results = NULL;
+        return 0;
+    }
+    
+    ESP_LOGI(TAG, "Found %d access points", ap_count);
+    
+    // Allocate memory for AP records
+    wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_count);
+    if (ap_list == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for AP list");
+        *results = NULL;
+        return 0;
+    }
+    
+    // Get AP records
+    err = esp_wifi_scan_get_ap_records(&ap_count, ap_list);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get AP records: %s", esp_err_to_name(err));
+        free(ap_list);
+        *results = NULL;
+        return 0;
+    }
+    
+    // Allocate memory for results
+    wifi_scan_result_t *scan_results_ptr = malloc(sizeof(wifi_scan_result_t) * ap_count);
+    if (scan_results_ptr == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for scan results");
+        free(ap_list);
+        *results = NULL;
+        return 0;
+    }
+    
+    // Convert AP records to scan results
+    for (int i = 0; i < ap_count; i++) {
+        strncpy(scan_results_ptr[i].ssid, (char*)ap_list[i].ssid, sizeof(scan_results_ptr[i].ssid) - 1);
+        scan_results_ptr[i].ssid[sizeof(scan_results_ptr[i].ssid) - 1] = '\0';
+        scan_results_ptr[i].rssi = ap_list[i].rssi;
+        scan_results_ptr[i].secure = (ap_list[i].authmode != WIFI_AUTH_OPEN);
+    }
+    
+    free(ap_list);
+    
+    *results = scan_results_ptr;
+    ESP_LOGI(TAG, "Scan completed, returning %d results", ap_count);
+    
+    return ap_count;
 }

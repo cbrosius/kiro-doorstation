@@ -7,6 +7,8 @@ idf_component_register(
         "gpio_handler.c"
         "wifi_manager.c"
         "web_server.c"
+        "ntp_sync.c"
+        "rtp_handler.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -17,4 +19,7 @@ idf_component_register(
         esp_timer
         esp_adc
         json
+        mbedtls
 )
+
+target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)

@@ -1,526 +1,690 @@
-#include "nvs_flash.h"
-#include "esp_log.h"
-#include "esp_system.h"
 #include "web_server.h"
-#include "wifi_manager.h"
 #include "sip_client.h"
+#include "wifi_manager.h"
+#include "ntp_sync.h"
+#include "esp_log.h"
+#include "esp_http_server.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
-static char* url_decode(char *str) {
-    char *p = str;
-    char *q = str;
-    while (*p) {
-        if (*p == '%') {
-            if (p[1] && p[2]) {
-                char hex[3] = {p[1], p[2], 0};
-                *q++ = (char)strtol(hex, NULL, 16);
-                p += 3;
-            } else {
-                *q++ = *p++;
-            }
-        } else if (*p == '+') {
-            *q++ = ' ';
-            p++;
-        } else {
-            *q++ = *p++;
-        }
-    }
-    *q = 0;
-    return str;
-}
+extern const uint8_t index_html_start[] asm("_binary_index_html_start");
+extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 
-static void trim_whitespace(char *str) {
-    char *end;
-    // Trim leading space
-    while (*str == ' ') str++;
-    // Trim trailing space
-    end = str + strlen(str) - 1;
-    while (end > str && *end == ' ') end--;
-    *(end + 1) = 0;
-}
-
-static bool validate_ssid(const char *ssid) {
-    size_t len = strlen(ssid);
-    return len > 0 && len < 32;
-}
-
-static bool validate_password(const char *password) {
-    size_t len = strlen(password);
-    return len > 0 && len < 64;
-}
-
-static esp_err_t favicon_handler(httpd_req_t *req) {
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_set_type(req, "image/x-icon");
-    return ESP_OK;
-}
-
-static const char* get_html_page(bool is_connected) {
-    if (!is_connected) {
-        // AP mode: only WiFi config
-        return
-        "<!DOCTYPE html>"
-        "<html><head><title>ESP32 Door Station Setup</title>"
-        "<meta charset='UTF-8'>"
-        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-        "<style>body{font-family:Arial;margin:20px;background:#f0f0f0}"
-        ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
-        "h1{color:#333;text-align:center;font-size:24px}"
-        ".form-group{margin:15px 0}"
-        "label{display:block;margin-bottom:5px;font-weight:bold}"
-        "input[type=text],input[type=password],select{width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px}"
-        "button{background:#007bff;color:white;padding:12px 24px;border:none;border-radius:5px;cursor:pointer;margin:5px;font-size:16px;width:100%;max-width:200px}"
-        "button:hover{background:#0056b3}"
-        "@media (max-width: 600px) {body{margin:10px}.container{padding:15px}h1{font-size:20px}button{padding:14px}}"
-        "</style></head><body>"
-        "<div class='container'>"
-        "<h1>ESP32 Door Station Setup</h1>"
-        "<p>Welcome! This is the setup page for your ESP32 Door Station. Connect your device to a WiFi network to enable SIP calling and door control features. Use the scan button to find available networks, or enter your network details manually.</p>"
-        "<p>Please connect to your WiFi network:</p>"
-        "<button onclick='triggerNewScan()' style='margin-bottom:10px;' id='new-scan-button'>Scan for Networks</button>"
-        "<p id='scan-status' style='margin-bottom:10px;'></p>"
-        "<form action='/wifi' method='post'>"
-        "<div class='form-group'><label>WiFi SSID:</label><select name='ssid' id='ssid-select' onchange='document.getElementById(\"ssid_manual\").value = this.value;'><option value=''>Scan networks or enter SSID manually</option></select><br><input type='text' id='ssid_manual' name='ssid_manual' placeholder='Or enter manually' required style='margin-top:5px;width:100%;padding:12px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box;font-size:16px;'></div>"
-        "<div class='form-group'><label>WiFi Password:</label><input type='password' name='password' required></div>"
-        "<button type='submit'>Connect to WiFi</button>"
-        "</form>"
-        "<script>"
-        "function triggerNewScan() {"
-        "  console.log('Scan button clicked');"
-        "  var status = document.getElementById('scan-status');"
-        "  var button = document.getElementById('new-scan-button');"
-        "  var select = document.getElementById('ssid-select');"
-        "  if (!status || !button || !select) {"
-        "    console.error('Elements not found');"
-        "    return;"
-        "  }"
-        "  status.textContent = 'Scanning for networks...';"
-        "  button.textContent = 'Scanning...';"
-        "  button.disabled = true;"
-        "  fetch('/scan?new=1')"
-        "    .then(function(response) {"
-        "      console.log('Scan response:', response.status);"
-        "      if (!response.ok) {"
-        "        throw new Error('HTTP ' + response.status);"
-        "      }"
-        "      return response.json();"
-        "    })"
-        "    .then(function(data) {"
-        "      console.log('Scan data:', data);"
-        "      while (select.children.length > 0) {"
-        "        select.removeChild(select.lastChild);"
-        "      }"
-        "      if (data && data.length > 0) {"
-        "        for (var i = 0; i < data.length; i++) {"
-        "          var option = document.createElement('option');"
-        "          option.value = data[i];"
-        "          option.textContent = data[i];"
-        "          select.appendChild(option);"
-        "          console.log('Added network:', data[i]);"
-        "        }"
-        "        status.textContent = 'Found ' + data.length + ' networks';"
-        "        status.style.color = 'green';"
-        "      } else {"
-        "        status.textContent = 'No networks found';"
-        "        status.style.color = 'orange';"
-        "      }"
-        "    })"
-        "    .catch(function(error) {"
-        "      console.error('Scan error:', error);"
-        "      status.textContent = 'Scan error';"
-        "      status.style.color = 'red';"
-        "    })"
-        "    .then(function() {"
-        "      button.textContent = 'Scan for Networks';"
-        "      button.disabled = false;"
-        "    });"
-        "}"
-        "</script>"
-        "</div></body></html>";
-    } else {
-        // Connected mode: full config
-        return
-        "<!DOCTYPE html>"
-        "<html><head><title>ESP32 Door Station</title>"
-        "<meta charset='UTF-8'>"
-        "<style>body{font-family:Arial;margin:40px;background:#f0f0f0}"
-        ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
-        "h1{color:#333;text-align:center}"
-        ".form-group{margin:15px 0}"
-        "label{display:block;margin-bottom:5px;font-weight:bold}"
-        "input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}"
-        "button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer;margin:5px}"
-        "button:hover{background:#0056b3}"
-        ".status{padding:10px;margin:10px 0;border-radius:5px}"
-        ".success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}"
-        ".error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}"
-        "</style></head><body>"
-        "<div class='container'>"
-        "<h1>ESP32 Door Station</h1>"
-        "<div class='status success'>✓ Connected to WiFi</div>"
-        "<h2>SIP Configuration</h2>"
-        "<form action='/sip' method='post'>"
-        "<div class='form-group'><label>SIP Server:</label><input type='text' name='server' placeholder='sip.example.com' required></div>"
-        "<div class='form-group'><label>Username:</label><input type='text' name='username' placeholder='doorbell' required></div>"
-        "<div class='form-group'><label>Password:</label><input type='password' name='password'></div>"
-        "<div class='form-group'><label>Apartment 1 URI:</label><input type='text' name='apt1' placeholder='apartment1@example.com' required></div>"
-        "<div class='form-group'><label>Apartment 2 URI:</label><input type='text' name='apt2' placeholder='apartment2@example.com' required></div>"
-        "<button type='submit'>Save SIP Config</button>"
-        "</form>"
-        "<h2>System</h2>"
-        "<form action='/reset' method='post' onsubmit='return confirm(\"Are you sure you want to reset to factory defaults?\")'>"
-        "<button type='submit' style='background:#dc3545;color:white;'>Factory Reset</button>"
-        "</form>"
-        "<h2>DTMF Codes</h2>"
-        "<p><strong>*1</strong> - Activate door opener</p>"
-        "<p><strong>*2</strong> - Toggle light</p>"
-        "<p><strong>#</strong> - End call</p>"
-        "</div></body></html>";
-    }
-}
-
-static esp_err_t root_handler(httpd_req_t *req)
+static esp_err_t get_sip_status_handler(httpd_req_t *req)
 {
-    bool is_connected = wifi_is_connected();
-    const char* page = get_html_page(is_connected);
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, page, strlen(page));
-    return ESP_OK;
-}
-
-static esp_err_t captive_portal_handler(httpd_req_t *req)
-{
-    httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
-    httpd_resp_send(req, NULL, 0);
-    return ESP_OK;
-}
-
-static esp_err_t wifi_handler(httpd_req_t *req)
-{
-    char buf[1000];
-    int ret, remaining = req->content_len;
-    
-    if (remaining >= sizeof(buf)) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
-        return ESP_FAIL;
-    }
-    
-    ret = httpd_req_recv(req, buf, remaining);
-    if (ret <= 0) {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            httpd_resp_send_408(req);
-        }
-        return ESP_FAIL;
-    }
-    buf[ret] = '\0';
-    
-    // Parse form data
-    char ssid[64] = {0};
-    char password[64] = {0};
-
-    char *ssid_start = strstr(buf, "ssid=");
-    char *ssid_manual_start = strstr(buf, "ssid_manual=");
-    char *password_start = strstr(buf, "password=");
-
-    if (password_start) {
-        password_start += 9; // Skip "password="
-        char *password_end = strchr(password_start, '&');
-        if (password_end) {
-            strncpy(password, password_start, password_end - password_start);
-        } else {
-            strcpy(password, password_start);
-        }
-
-        // Get SSID from select or manual
-        if (ssid_start) {
-            ssid_start += 5; // Skip "ssid="
-            char *ssid_end = strchr(ssid_start, '&');
-            if (ssid_end) {
-                strncpy(ssid, ssid_start, ssid_end - ssid_start);
-            }
-        }
-        if (strlen(ssid) == 0 && ssid_manual_start) {
-            ssid_manual_start += 12; // Skip "ssid_manual="
-            char *ssid_end = strchr(ssid_manual_start, '&');
-            if (ssid_end) {
-                strncpy(ssid, ssid_manual_start, ssid_end - ssid_manual_start);
-            } else {
-                strcpy(ssid, ssid_manual_start);
-            }
-        }
-
-        // URL decode
-        url_decode(ssid);
-        url_decode(password);
-
-        // Trim whitespace
-        trim_whitespace(ssid);
-        trim_whitespace(password);
-
-        // Validate
-        if (!validate_ssid(ssid) || !validate_password(password)) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID or password");
-            return ESP_FAIL;
-        }
-
-        ESP_LOGI(TAG, "WiFi Configuration: SSID=%s", ssid);
-        wifi_save_config(ssid, password);
-
-        const char* response = "<html><body><h1>WiFi Configuration Saved</h1>"
-                              "<p>The device will restart and connect...</p></body></html>";
-        httpd_resp_send(req, response, strlen(response));
-
-        // Restart to apply new WiFi config
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        esp_restart();
-    } else {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form data");
-    }
-    
-    return ESP_OK;
-}
-
-static esp_err_t sip_handler(httpd_req_t *req)
-{
-    char buf[1000];
-    int ret, remaining = req->content_len;
-    
-    if (remaining >= sizeof(buf)) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
-        return ESP_FAIL;
-    }
-    
-    ret = httpd_req_recv(req, buf, remaining);
-    if (ret <= 0) {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            httpd_resp_send_408(req);
-        }
-        return ESP_FAIL;
-    }
-    buf[ret] = '\0';
-    
-    // Parse SIP config (simplified)
-    char server[64] = {0};
-    char username[64] = {0};
-    char sip_password[64] = {0};
-    char apt1[128] = {0};
-    char apt2[128] = {0};
-
-    char *server_start = strstr(buf, "server=");
-    char *username_start = strstr(buf, "username=");
-    char *password_start = strstr(buf, "password=");
-    char *apt1_start = strstr(buf, "apt1=");
-    char *apt2_start = strstr(buf, "apt2=");
-
-    if (server_start) {
-        server_start += 7;
-        char *end = strchr(server_start, '&');
-        if (end) strncpy(server, server_start, end - server_start);
-        else strcpy(server, server_start);
-        url_decode(server);
-        trim_whitespace(server);
-    }
-
-    if (username_start) {
-        username_start += 9;
-        char *end = strchr(username_start, '&');
-        if (end) strncpy(username, username_start, end - username_start);
-        else strcpy(username, username_start);
-        url_decode(username);
-        trim_whitespace(username);
-    }
-
-    if (password_start) {
-        password_start += 9;
-        char *end = strchr(password_start, '&');
-        if (end) strncpy(sip_password, password_start, end - password_start);
-        else strcpy(sip_password, password_start);
-        url_decode(sip_password);
-        trim_whitespace(sip_password);
-    }
-
-    if (apt1_start) {
-        apt1_start += 5;
-        char *end = strchr(apt1_start, '&');
-        if (end) strncpy(apt1, apt1_start, end - apt1_start);
-        else strcpy(apt1, apt1_start);
-        url_decode(apt1);
-        trim_whitespace(apt1);
-    }
-
-    if (apt2_start) {
-        apt2_start += 5;
-        char *end = strchr(apt2_start, '&');
-        if (end) strncpy(apt2, apt2_start, end - apt2_start);
-        else strcpy(apt2, apt2_start);
-        url_decode(apt2);
-        trim_whitespace(apt2);
-    }
-
-    // Validate
-    if (strlen(server) == 0 || strlen(username) == 0 || strlen(apt1) == 0 || strlen(apt2) == 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing required SIP fields");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "SIP Configuration: Server=%s, User=%s", server, username);
-
-    // Save SIP config (placeholder)
-    // sip_save_config(server, username, sip_password, apt1, apt2);
-
-    const char* response = "<html><body><h1>SIP Configuration Saved</h1>"
-                          "<a href='/'>Back</a></body></html>";
-    httpd_resp_send(req, response, strlen(response));
-    
-    return ESP_OK;
-}
-
-static esp_err_t reset_handler(httpd_req_t *req)
-{
-    ESP_LOGW(TAG, "Factory reset requested");
-
-    // Clear WiFi config
-    wifi_clear_config();
-
-    const char* response = "<html><body><h1>Factory Reset Complete</h1>"
-                          "<p>The device will restart...</p></body></html>";
-    httpd_resp_send(req, response, strlen(response));
-
-    // Restart after a short delay
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    esp_restart();
-
-    return ESP_OK;
-}
-
-static esp_err_t scan_handler(httpd_req_t *req)
-{
-    // Check for new scan parameter
-    char buf[32];
-    int ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
-
-    if (ret == ESP_OK) {
-        char param[32];
-        if (httpd_query_key_value(buf, "new", param, sizeof(param)) == ESP_OK) {
-            ESP_LOGI(TAG, "New scan requested, clearing results");
-            wifi_clear_scan_results();
-            wifi_start_background_scan();
-            // Wait a bit for scan to complete
-            vTaskDelay(pdMS_TO_TICKS(4000));
-        }
-    }
-
-    char *json = wifi_scan_networks();
-    if (json == NULL) {
-        ESP_LOGE(TAG, "Scan returned NULL");
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Scan result: %s", json);
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, json, strlen(json));
-    free(json);
+    
+    // Use sip_get_status which returns complete status including state name
+    char status_buffer[512];
+    sip_get_status(status_buffer, sizeof(status_buffer));
+    
+    httpd_resp_send(req, status_buffer, strlen(status_buffer));
     return ESP_OK;
 }
+
+static esp_err_t get_sip_config_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Get SIP configuration values, handling null returns
+    const char* target1 = sip_get_target1();
+    const char* target2 = sip_get_target2();
+    const char* server = sip_get_server();
+    const char* username = sip_get_username();
+    const char* password = sip_get_password();
+
+    cJSON_AddStringToObject(root, "target1", target1 ? target1 : "");
+    cJSON_AddStringToObject(root, "target2", target2 ? target2 : "");
+    cJSON_AddStringToObject(root, "server", server ? server : "");
+    cJSON_AddStringToObject(root, "username", username ? username : "");
+    cJSON_AddStringToObject(root, "password", password ? password : "");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_test_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Test the SIP configuration
+    bool test_result = sip_test_configuration();
+
+    cJSON_AddStringToObject(root, "status", test_result ? "success" : "failed");
+    cJSON_AddStringToObject(root, "message", test_result ?
+        "SIP configuration test passed" :
+        "SIP configuration test failed");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *target = cJSON_GetObjectItem(root, "target");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsString(target) || (target->valuestring == NULL) || strlen(target->valuestring) == 0) {
+        cJSON_AddStringToObject(response, "status", "failed");
+        cJSON_AddStringToObject(response, "message", "Invalid or missing target");
+    } else {
+        // Check if registered before making call
+        if (!sip_is_registered()) {
+            cJSON_AddStringToObject(response, "status", "failed");
+            cJSON_AddStringToObject(response, "message", "Not registered to SIP server. Please connect first.");
+        } else {
+            // Initiate test call
+            ESP_LOGI(TAG, "Test call initiated to: %s", target->valuestring);
+            sip_client_make_call(target->valuestring);
+            
+            cJSON_AddStringToObject(response, "status", "success");
+            cJSON_AddStringToObject(response, "message", "Test call initiated");
+        }
+    }
+
+    const char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(response);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t get_sip_log_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    
+    // Parse query parameter "since"
+    char query[64];
+    uint64_t since_timestamp = 0;
+    
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char param[32];
+        if (httpd_query_key_value(query, "since", param, sizeof(param)) == ESP_OK) {
+            since_timestamp = strtoull(param, NULL, 10);  // Use strtoull for uint64_t
+        }
+    }
+    
+    // Allocate log entries on heap to avoid stack overflow (50 entries * 256 bytes = 12KB+)
+    const int max_entries = 50;
+    sip_log_entry_t *entries = malloc(max_entries * sizeof(sip_log_entry_t));
+    if (!entries) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
+    int count = sip_get_log_entries(entries, max_entries, since_timestamp);
+    
+    cJSON *root = cJSON_CreateObject();
+    cJSON *entries_array = cJSON_CreateArray();
+    
+    for (int i = 0; i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        // Use double for timestamp to preserve precision in JSON
+        cJSON_AddNumberToObject(entry, "timestamp", (double)entries[i].timestamp);
+        cJSON_AddStringToObject(entry, "type", entries[i].type);
+        cJSON_AddStringToObject(entry, "message", entries[i].message);
+        cJSON_AddItemToArray(entries_array, entry);
+    }
+    
+    cJSON_AddItemToObject(root, "entries", entries_array);
+    cJSON_AddNumberToObject(root, "count", count);
+    
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    free(entries);  // Free heap-allocated entries
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_connect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool result = sip_connect();
+
+    cJSON_AddStringToObject(root, "status", result ? "success" : "failed");
+    cJSON_AddStringToObject(root, "message", result ?
+        "SIP connection initiated" :
+        "SIP connection failed - check configuration");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    
+    sip_disconnect();
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "success");
+    cJSON_AddStringToObject(root, "message", "SIP disconnected");
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_sip_config_handler(httpd_req_t *req)
+{
+    char buf[1024];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *target1 = cJSON_GetObjectItem(root, "target1");
+    const cJSON *target2 = cJSON_GetObjectItem(root, "target2");
+    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *username = cJSON_GetObjectItem(root, "username");
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (cJSON_IsString(target1) && (target1->valuestring != NULL)) {
+        sip_set_target1(target1->valuestring);
+    }
+    if (cJSON_IsString(target2) && (target2->valuestring != NULL)) {
+        sip_set_target2(target2->valuestring);
+    }
+    if (cJSON_IsString(server) && (server->valuestring != NULL)) {
+        sip_set_server(server->valuestring);
+    }
+    if (cJSON_IsString(username) && (username->valuestring != NULL)) {
+        sip_set_username(username->valuestring);
+    }
+    if (cJSON_IsString(password) && (password->valuestring != NULL)) {
+        sip_set_password(password->valuestring);
+    }
+
+    cJSON_Delete(root);
+
+    // Save the updated configuration to NVS
+    sip_save_config(sip_get_server(), sip_get_username(), sip_get_password(),
+                   sip_get_target1(), sip_get_target2(), 5060); // Using default port
+
+    sip_reinit(); // Re-initialize SIP client with new settings
+
+    httpd_resp_send(req, "{\"status\":\"success\"}", strlen("{\"status\":\"success\"}"));
+    return ESP_OK;
+}
+
+// WiFi API Handlers
+static esp_err_t get_wifi_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool is_connected = wifi_is_connected();
+    const char* status = is_connected ? "Connected" : "Disconnected";
+    
+    cJSON_AddStringToObject(root, "status", status);
+    cJSON_AddBoolToObject(root, "connected", is_connected);
+
+    if (is_connected) {
+        // Get IP address and other connection info
+        wifi_connection_info_t info = wifi_get_connection_info();
+        cJSON_AddStringToObject(root, "ssid", info.ssid);
+        cJSON_AddStringToObject(root, "ip_address", info.ip_address);
+        cJSON_AddNumberToObject(root, "rssi", info.rssi);
+    }
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+    cJSON *networks_array = cJSON_CreateArray();
+
+    ESP_LOGI(TAG, "Starting WiFi scan");
+    
+    // Trigger WiFi scan
+    wifi_scan_result_t* scan_results = NULL;
+    int network_count = wifi_scan_networks(&scan_results);
+
+    if (network_count > 0 && scan_results != NULL) {
+        for (int i = 0; i < network_count; i++) {
+            cJSON *network = cJSON_CreateObject();
+            cJSON_AddStringToObject(network, "ssid", scan_results[i].ssid);
+            cJSON_AddNumberToObject(network, "rssi", scan_results[i].rssi);
+            cJSON_AddBoolToObject(network, "secure", scan_results[i].secure);
+            cJSON_AddItemToArray(networks_array, network);
+        }
+        free(scan_results);
+    }
+
+    cJSON_AddItemToObject(root, "networks", networks_array);
+    cJSON_AddNumberToObject(root, "count", network_count);
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(ssid) || (ssid->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing SSID");
+        return ESP_FAIL;
+    }
+
+    const char* pwd = (cJSON_IsString(password) && password->valuestring) ? password->valuestring : "";
+
+    ESP_LOGI(TAG, "WiFi connect request: SSID=%s", ssid->valuestring);
+    
+    // Save WiFi configuration
+    wifi_save_config(ssid->valuestring, pwd);
+    
+    // Attempt connection
+    wifi_connect_sta(ssid->valuestring, pwd);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}"));
+    return ESP_OK;
+}
+
+// System API Handlers
+static esp_err_t get_system_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // System uptime
+    uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t uptime_seconds = uptime_ms / 1000;
+    uint32_t hours = uptime_seconds / 3600;
+    uint32_t minutes = (uptime_seconds % 3600) / 60;
+    uint32_t seconds = uptime_seconds % 60;
+    
+    char uptime_str[32];
+    snprintf(uptime_str, sizeof(uptime_str), "%02ld:%02ld:%02ld", hours, minutes, seconds);
+    cJSON_AddStringToObject(root, "uptime", uptime_str);
+
+    // Free heap memory
+    uint32_t free_heap = esp_get_free_heap_size();
+    char heap_str[32];
+    snprintf(heap_str, sizeof(heap_str), "%ld KB", free_heap / 1024);
+    cJSON_AddStringToObject(root, "free_heap", heap_str);
+
+    // IP address
+    wifi_connection_info_t wifi_info = wifi_get_connection_info();
+    cJSON_AddStringToObject(root, "ip_address", wifi_info.ip_address);
+
+    // Firmware version
+    cJSON_AddStringToObject(root, "firmware_version", "v1.0.0");
+
+    // Additional system info
+    cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
+    cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_system_restart_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "System restart requested");
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"System restart initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"System restart initiated\"}"));
+
+    // Restart after a short delay to allow response to be sent
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+    
+    return ESP_OK;
+}
+
+// NTP API Handlers
+static esp_err_t get_ntp_status_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool is_synced = ntp_is_synced();
+    cJSON_AddBoolToObject(root, "synced", is_synced);
+    
+    if (is_synced) {
+        char time_str[64];
+        ntp_get_time_string(time_str, sizeof(time_str));
+        cJSON_AddStringToObject(root, "current_time", time_str);
+        cJSON_AddNumberToObject(root, "timestamp_ms", ntp_get_timestamp_ms());
+    }
+    
+    cJSON_AddStringToObject(root, "server", ntp_get_server());
+    cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t get_ntp_config_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(root, "server", ntp_get_server());
+    cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
+
+    const char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free((void *)json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_ntp_config_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret, remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *server = cJSON_GetObjectItem(root, "server");
+    const cJSON *timezone = cJSON_GetObjectItem(root, "timezone");
+
+    if (!cJSON_IsString(server) || (server->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing server");
+        return ESP_FAIL;
+    }
+
+    const char* tz = (cJSON_IsString(timezone) && timezone->valuestring) ? 
+                     timezone->valuestring : NTP_DEFAULT_TIMEZONE;
+
+    ESP_LOGI(TAG, "NTP config update: server=%s, timezone=%s", server->valuestring, tz);
+    
+    // Update NTP configuration
+    ntp_set_config(server->valuestring, tz);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"NTP configuration updated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"NTP configuration updated\"}"));
+    return ESP_OK;
+}
+
+static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "Manual NTP sync requested");
+    
+    ntp_force_sync();
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"NTP sync initiated\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"NTP sync initiated\"}"));
+    return ESP_OK;
+}
+
+static esp_err_t index_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    const size_t index_html_size = (index_html_end - index_html_start);
+    httpd_resp_send(req, (const char *)index_html_start, index_html_size);
+    return ESP_OK;
+}
+
+static const httpd_uri_t sip_status_uri = {
+    .uri       = "/api/sip/status",
+    .method    = HTTP_GET,
+    .handler   = get_sip_status_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_config_get_uri = {
+    .uri       = "/api/sip/config",
+    .method    = HTTP_GET,
+    .handler   = get_sip_config_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_config_post_uri = {
+    .uri       = "/api/sip/config",
+    .method    = HTTP_POST,
+    .handler   = post_sip_config_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_test_uri = {
+    .uri       = "/api/sip/test",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_test_call_uri = {
+    .uri       = "/api/sip/testcall",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_call_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_log_uri = {
+    .uri       = "/api/sip/log",
+    .method    = HTTP_GET,
+    .handler   = get_sip_log_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_connect_uri = {
+    .uri       = "/api/sip/connect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_connect_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_disconnect_uri = {
+    .uri       = "/api/sip/disconnect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_disconnect_handler,
+    .user_ctx  = NULL
+};
+
+// URI handlers
+static const httpd_uri_t root_uri = {
+    .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_status_uri = {
+    .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_scan_uri = {
+    .uri = "/api/wifi/scan", .method = HTTP_POST, .handler = post_wifi_scan_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_connect_uri = {
+    .uri = "/api/wifi/connect", .method = HTTP_POST, .handler = post_wifi_connect_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_status_uri = {
+    .uri = "/api/system/status", .method = HTTP_GET, .handler = get_system_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_restart_uri = {
+    .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_status_uri = {
+    .uri = "/api/ntp/status", .method = HTTP_GET, .handler = get_ntp_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_get_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_GET, .handler = get_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_post_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_POST, .handler = post_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_sync_uri = {
+    .uri = "/api/ntp/sync", .method = HTTP_POST, .handler = post_ntp_sync_handler, .user_ctx = NULL
+};
 
 void web_server_start(void)
 {
-    ESP_LOGI(TAG, "Starting web server");
-    
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    config.max_uri_handlers = 16;
-    
+    config.max_uri_handlers = 20; // Increase handler limit for NTP endpoints
+
     if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_uri_t root_uri = {
-            .uri = "/",
-            .method = HTTP_GET,
-            .handler = root_handler,
-            .user_ctx = NULL
-        };
+        // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
         
-        httpd_uri_t wifi_uri = {
-            .uri = "/wifi",
-            .method = HTTP_POST,
-            .handler = wifi_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &wifi_uri);
-
-        httpd_uri_t scan_uri = {
-            .uri = "/scan",
-            .method = HTTP_GET,
-            .handler = scan_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &scan_uri);
-
-        httpd_uri_t sip_uri = {
-            .uri = "/sip",
-            .method = HTTP_POST,
-            .handler = sip_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &sip_uri);
-
-        httpd_uri_t reset_uri = {
-            .uri = "/reset",
-            .method = HTTP_POST,
-            .handler = reset_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &reset_uri);
-
-        // Captive portal handlers
-        httpd_uri_t generate_204_uri = {
-            .uri = "/generate_204",
-            .method = HTTP_GET,
-            .handler = captive_portal_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &generate_204_uri);
-
-        httpd_uri_t hotspot_detect_uri = {
-            .uri = "/hotspot-detect.html",
-            .method = HTTP_GET,
-            .handler = captive_portal_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &hotspot_detect_uri);
-
-        httpd_uri_t success_uri = {
-            .uri = "/library/test/success.html",
-            .method = HTTP_GET,
-            .handler = captive_portal_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &success_uri);
-
-        httpd_uri_t ncsi_uri = {
-            .uri = "/ncsi.txt",
-            .method = HTTP_GET,
-            .handler = captive_portal_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &ncsi_uri);
-
-        httpd_uri_t favicon_uri = {
-            .uri = "/favicon.ico",
-            .method = HTTP_GET,
-            .handler = favicon_handler,
-            .user_ctx = NULL
-        };
-        httpd_register_uri_handler(server, &favicon_uri);
-
-        ESP_LOGI(TAG, "Web server started on port %d", config.server_port);
+        // SIP API endpoints
+        httpd_register_uri_handler(server, &sip_status_uri);
+        httpd_register_uri_handler(server, &sip_config_get_uri);
+        httpd_register_uri_handler(server, &sip_config_post_uri);
+        httpd_register_uri_handler(server, &sip_test_uri);
+        httpd_register_uri_handler(server, &sip_test_call_uri);
+        httpd_register_uri_handler(server, &sip_log_uri);
+        httpd_register_uri_handler(server, &sip_connect_uri);
+        httpd_register_uri_handler(server, &sip_disconnect_uri);
+        
+        // WiFi API endpoints
+        httpd_register_uri_handler(server, &wifi_status_uri);
+        httpd_register_uri_handler(server, &wifi_scan_uri);
+        httpd_register_uri_handler(server, &wifi_connect_uri);
+        
+        // System API endpoints
+        httpd_register_uri_handler(server, &system_status_uri);
+        httpd_register_uri_handler(server, &system_restart_uri);
+        
+        // NTP API endpoints
+        httpd_register_uri_handler(server, &ntp_status_uri);
+        httpd_register_uri_handler(server, &ntp_config_get_uri);
+        httpd_register_uri_handler(server, &ntp_config_post_uri);
+        httpd_register_uri_handler(server, &ntp_sync_uri);
+        
+        ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {
-        ESP_LOGE(TAG, "Error starting web server");
+        ESP_LOGE(TAG, "Error starting web server!");
     }
 }
 

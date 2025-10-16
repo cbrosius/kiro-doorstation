@@ -11,7 +11,7 @@
 typedef struct {
     char ssid[WIFI_SSID_MAX_LEN];
     int rssi;
-    bool locked;
+    bool secure;
 } wifi_scan_result_t;
 
 typedef struct {
@@ -20,18 +20,20 @@ typedef struct {
     bool configured;
 } wifi_manager_config_t;
 
+typedef struct {
+    char ssid[WIFI_SSID_MAX_LEN];
+    char ip_address[16];
+    int rssi;
+    bool connected;
+} wifi_connection_info_t;
+
 void wifi_manager_init(void);
 bool wifi_is_connected(void);
 void wifi_start_ap_mode(void);
 void wifi_connect_sta(const char* ssid, const char* password);
 void wifi_save_config(const char* ssid, const char* password);
 wifi_manager_config_t wifi_load_config(void);
-void wifi_clear_config(void);
-char* wifi_scan_networks(void);
-
-// ESPHome-style scan result management
-void wifi_start_background_scan(void);
-int wifi_get_scan_results(wifi_scan_result_t* results, int max_results);
-void wifi_clear_scan_results(void);
+wifi_connection_info_t wifi_get_connection_info(void);
+int wifi_scan_networks(wifi_scan_result_t** results);
 
 #endif

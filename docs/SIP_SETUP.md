@@ -3,9 +3,7 @@
 ## Unterstützte SIP-Server
 
 Das System wurde getestet mit:
-- Asterisk
-- FreePBX
-- 3CX
+- TekSIP
 - FritzBox (AVM)
 
 ## Konfiguration
