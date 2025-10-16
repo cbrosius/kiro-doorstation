@@ -321,6 +321,7 @@ static void sip_task(void *pvParameters)
                     ESP_LOGE(TAG, "Error creating SIP socket");
                     sip_add_log_entry("error", "Failed to create SIP socket");
                     current_state = SIP_STATE_ERROR;
+                    sip_add_log_entry("error", "State changed to ERROR");
                     continue;
                 }
                 
@@ -337,6 +338,7 @@ static void sip_task(void *pvParameters)
                     close(sip_socket);
                     sip_socket = -1;
                     current_state = SIP_STATE_ERROR;
+                    sip_add_log_entry("error", "State changed to ERROR");
                     continue;
                 }
                 
@@ -373,6 +375,7 @@ static void sip_task(void *pvParameters)
                     } else if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_CONNECTED;
                         NTP_LOGI(TAG, "Call connected");
+                        sip_add_log_entry("info", "Call connected - State: CONNECTED");
                         audio_start_recording();
                         audio_start_playback();
                     }
@@ -391,6 +394,7 @@ static void sip_task(void *pvParameters)
                             ESP_LOGE(TAG, "Failed to parse authentication challenge");
                             sip_add_log_entry("error", "Failed to parse auth challenge");
                             current_state = SIP_STATE_AUTH_FAILED;
+                            sip_add_log_entry("error", "State changed to AUTH_FAILED");
                         }
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
@@ -398,28 +402,28 @@ static void sip_task(void *pvParameters)
                     NTP_LOGI(TAG, "Server processing request");
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
                     ESP_LOGE(TAG, "SIP forbidden");
-                    sip_add_log_entry("error", "SIP forbidden");
+                    sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
                     current_state = SIP_STATE_AUTH_FAILED;
                 } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
                     ESP_LOGE(TAG, "SIP target not found");
-                    sip_add_log_entry("error", "SIP target not found");
+                    sip_add_log_entry("error", "SIP target not found - State: ERROR");
                     current_state = SIP_STATE_ERROR;
                 } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
                     ESP_LOGE(TAG, "SIP request timeout");
-                    sip_add_log_entry("error", "SIP request timeout");
+                    sip_add_log_entry("error", "SIP request timeout - State: TIMEOUT");
                     current_state = SIP_STATE_TIMEOUT;
                 } else if (strstr(buffer, "SIP/2.0 486 Busy Here")) {
                     ESP_LOGW(TAG, "SIP target busy");
-                    sip_add_log_entry("info", "SIP target busy");
+                    sip_add_log_entry("info", "SIP target busy - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
                     NTP_LOGI(TAG, "SIP request terminated");
-                    sip_add_log_entry("info", "SIP request terminated");
+                    sip_add_log_entry("info", "SIP request terminated - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strncmp(buffer, "INVITE sip:", 11) == 0) {
                     // Check for INVITE request (not response)
                     NTP_LOGI(TAG, "Incoming call");
-                    sip_add_log_entry("info", "Incoming call");
+                    sip_add_log_entry("info", "Incoming call - State: RINGING");
                     current_state = SIP_STATE_RINGING;
                     // Auto-answer after short delay
                     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -427,7 +431,7 @@ static void sip_task(void *pvParameters)
                 } else if (strncmp(buffer, "BYE sip:", 8) == 0) {
                     // Check for BYE request (not response)
                     NTP_LOGI(TAG, "Call ended");
-                    sip_add_log_entry("info", "Call ended");
+                    sip_add_log_entry("info", "Call ended - State: REGISTERED");
                     current_state = SIP_STATE_REGISTERED;
                     audio_stop_recording();
                     audio_stop_playback();
@@ -560,6 +564,7 @@ bool sip_client_register(void)
     NTP_LOGI(TAG, "SIP registration with %s", sip_config.server);
     sip_add_log_entry("info", "Starting DNS lookup");
     current_state = SIP_STATE_REGISTERING;
+    sip_add_log_entry("info", "State changed to REGISTERING");
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -752,7 +757,7 @@ void sip_client_make_call(const char* uri)
     sip_state_t previous_state = current_state;
     
     NTP_LOGI(TAG, "Initiating call to %s", uri);
-    sip_add_log_entry("info", "Initiating call");
+    sip_add_log_entry("info", "Initiating call - State: CALLING");
     current_state = SIP_STATE_CALLING;
     
     // Get local IP address
@@ -800,6 +805,7 @@ void sip_client_hangup(void)
 {
     if (current_state == SIP_STATE_CONNECTED || current_state == SIP_STATE_CALLING) {
         ESP_LOGI(TAG, "Ending call");
+        sip_add_log_entry("info", "Ending call - State: IDLE");
         current_state = SIP_STATE_IDLE;
         audio_stop_recording();
         audio_stop_playback();
@@ -810,6 +816,7 @@ void sip_client_answer_call(void)
 {
     if (current_state == SIP_STATE_RINGING) {
         ESP_LOGI(TAG, "Answering call");
+        sip_add_log_entry("info", "Answering call - State: CONNECTED");
         current_state = SIP_STATE_CONNECTED;
         audio_start_recording();
         audio_start_playback();
@@ -820,6 +827,7 @@ void sip_client_send_dtmf(char dtmf_digit)
 {
     if (current_state == SIP_STATE_CONNECTED) {
         ESP_LOGI(TAG, "Sending DTMF: %c", dtmf_digit);
+        sip_add_log_entry("info", "Sending DTMF - State: DTMF_SENDING");
         current_state = SIP_STATE_DTMF_SENDING;
 
         // DTMF sending logic would go here
@@ -828,6 +836,7 @@ void sip_client_send_dtmf(char dtmf_digit)
 
         // Return to connected state after DTMF
         current_state = SIP_STATE_CONNECTED;
+        sip_add_log_entry("info", "DTMF sent - State: CONNECTED");
     } else {
         ESP_LOGW(TAG, "Cannot send DTMF - Status: %d", current_state);
     }
