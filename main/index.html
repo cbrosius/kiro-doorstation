@@ -2571,11 +2571,21 @@
         <div style="display: flex; align-items: start; gap: var(--spacing-md);">
           <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">⚠️</span>
           <div>
-            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-warning); font-size: var(--font-size-lg);">Safety Warning</h3>
-            <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm); line-height: 1.6;">
-              <strong>Testing will physically activate relays and may trigger SIP calls.</strong><br>
-              Ensure proper wiring and verify that door mechanisms are safe to operate before testing. 
-              Disconnect any sensitive equipment if necessary. Use the Emergency Stop button to immediately halt all tests.
+            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-warning); font-size: var(--font-size-lg);">⚠️ Safety Warning - Read Before Testing</h3>
+            <p style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text); font-size: var(--font-size-sm); line-height: 1.6;">
+              <strong>Testing will physically activate relays and may trigger SIP calls.</strong>
+            </p>
+            <div style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm); line-height: 1.8;">
+              <strong>Before testing, verify:</strong>
+              <ul style="margin: var(--spacing-xs) 0 0 var(--spacing-lg); padding: 0;">
+                <li><strong>Proper wiring:</strong> All connections are secure and correct</li>
+                <li><strong>Safe operation:</strong> Door mechanisms are safe to activate</li>
+                <li><strong>Clear area:</strong> No one is near the door or equipment</li>
+                <li><strong>Equipment protection:</strong> Disconnect sensitive equipment if necessary</li>
+              </ul>
+            </div>
+            <p style="margin: var(--spacing-md) 0 0 0; color: var(--color-text); font-size: var(--font-size-sm); line-height: 1.6;">
+              <strong>Emergency Stop:</strong> Use the Emergency Stop button below to immediately halt all active tests if needed.
             </p>
           </div>
         </div>
@@ -6948,8 +6958,22 @@
         return;
       }
       
-      // Show confirmation dialog
-      if (!confirm(`Activate door opener for ${durationSeconds} seconds?\n\nThis will physically activate the relay.`)) {
+      // Show confirmation dialog with duration and safety warning
+      const confirmed = await showConfirmDialog(
+        'Activate Door Opener Relay',
+        `<strong>Duration: ${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}</strong><br><br>` +
+        `This will <strong>physically activate the door opener relay</strong> for ${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}.<br><br>` +
+        `⚠️ <strong>Safety Check:</strong><br>` +
+        `• Verify proper wiring connections<br>` +
+        `• Ensure door mechanism is safe to operate<br>` +
+        `• Confirm no one is near the door<br><br>` +
+        `Do you want to proceed?`,
+        'Activate Relay',
+        'Cancel',
+        'warning'
+      );
+      
+      if (!confirmed) {
         return;
       }
       

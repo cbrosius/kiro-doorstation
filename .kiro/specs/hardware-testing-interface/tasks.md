@@ -123,6 +123,7 @@
 
 
 
+
   - Update door relay state indicator (Active/Inactive) with color coding
   - Update light relay state indicator (On/Off) with color coding
   - Update doorbell button state indicators
@@ -130,7 +131,11 @@
   - Hide countdown when door opener is inactive
   - _Requirements: 8.1.4, 8.1.6_
 
-- [ ] 11. Add safety warnings and confirmations
+- [x] 11. Add safety warnings and confirmations
+
+
+
+
   - Display warning box about physical relay activation
   - Add confirmation dialog before door opener activation
   - Display safety warning about proper wiring
