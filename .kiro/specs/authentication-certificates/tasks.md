@@ -25,7 +25,12 @@
   - Store password hash in NVS
   - _Requirements: 3.2, 3.3, 3.4_
 
-- [ ] 3. Implement login functionality
+- [x] 3. Implement login functionality
+
+
+
+
+
   - Implement `auth_login()` function with username/password validation
   - Generate cryptographically random 32-byte session ID
   - Create session with 30-minute timeout
@@ -33,7 +38,12 @@
   - Handle invalid credentials with error messages
   - _Requirements: 1.3, 1.4, 2.1_
 
-- [ ] 4. Implement session management
+- [x] 4. Implement session management
+
+
+
+
+
   - Implement `auth_validate_session()` to check session validity
   - Implement `auth_extend_session()` to reset timeout on activity
   - Implement `auth_logout()` to invalidate session
@@ -41,7 +51,12 @@
   - Store active sessions in RAM (max 5 concurrent sessions)
   - _Requirements: 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 5. Implement login rate limiting
+- [x] 5. Implement login rate limiting
+
+
+
+
+
   - Track failed login attempts by IP address
   - Implement `auth_is_ip_blocked()` to check if IP is blocked
   - Implement `auth_record_failed_attempt()` to increment counter
@@ -49,7 +64,12 @@
   - Clear failed attempts on successful login
   - _Requirements: 1.6_
 
-- [ ] 6. Create certificate manager module
+- [x] 6. Create certificate manager module
+
+
+
+
+
   - Create `main/cert_manager.h` and `main/cert_manager.c` files
   - Define certificate info structure
   - Implement `cert_manager_init()` function
