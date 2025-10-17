@@ -11,12 +11,21 @@
   - Update main/web_server.h to expose auth_filter function
   - _Requirements: 1.4, 6.1, 6.2, 6.3_
 
-- [ ] 2. Move email configuration code to API module
-  - [ ] 2.1 Copy email_config_t structure definition to web_api.c
+- [x] 2. Move email configuration code to API module
+
+
+
+
+
+  - [x] 2.1 Copy email_config_t structure definition to web_api.c
+
+
     - Move typedef struct email_config_t from web_server.c to web_api.c
     - _Requirements: 3.1_
   
-  - [ ] 2.2 Copy email NVS helper functions to web_api.c
+
+  - [x] 2.2 Copy email NVS helper functions to web_api.c
+
     - Move email_save_config() function to web_api.c
     - Move email_load_config() function to web_api.c
     - _Requirements: 3.1_
