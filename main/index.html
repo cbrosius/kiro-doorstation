@@ -3557,8 +3557,8 @@
             style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
-              Chip Model</div>
-            <div id="ota-chip-model"
+              ESP-IDF Version</div>
+            <div id="ota-idf-version"
               style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">
               Loading...</div>
           </div>
@@ -3739,6 +3739,26 @@
             <span>🔄</span>
             <span>Reload Now</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Rollback Section (Task 6) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Rollback to Previous Firmware</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          If you experience issues with the current firmware, you can rollback to the previous version.
+        </p>
+
+        <button type="button" class="btn btn-warning" id="ota-rollback-btn" onclick="handleOTARollback()" disabled>
+          <span class="btn-text">
+            <span>↩️</span>
+            <span>Rollback to Previous Version</span>
+          </span>
+          <span class="btn-spinner" hidden>⏳</span>
+        </button>
+        
+        <div id="ota-rollback-info" style="display: none; margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <span style="font-size: var(--font-size-sm); color: var(--color-text);">ℹ️ Rollback is not available. No previous firmware version found.</span>
         </div>
       </div>
 

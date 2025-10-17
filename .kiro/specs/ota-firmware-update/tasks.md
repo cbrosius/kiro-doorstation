@@ -63,7 +63,12 @@
   - Implement chunked data reception for large firmware files
   - _Requirements: 3.1.3, 3.1.4_
 
-- [ ] 6. Add OTA section to web interface HTML
+- [x] 6. Add OTA section to web interface HTML
+
+
+
+
+
   - Add OTA Update section in Dashboard or System menu
   - Display current firmware version, build date, and ESP-IDF version
   - Create file upload interface with file input and upload button
