@@ -168,7 +168,12 @@
   - Return success or error response
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 10.1_
 
-- [ ] 14. Create logout API endpoint
+- [x] 14. Create logout API endpoint
+
+
+
+
+
   - Add `POST /api/auth/logout` endpoint
   - Extract session ID from cookie
   - Call `auth_logout()` to invalidate session

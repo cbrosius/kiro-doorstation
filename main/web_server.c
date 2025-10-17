@@ -1766,6 +1766,60 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t post_auth_logout_handler(httpd_req_t *req)
+{
+    // Extract session ID from cookie
+    char session_id[AUTH_SESSION_ID_SIZE] = {0};
+    size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
+    
+    if (cookie_len > 0) {
+        char* cookie_str = malloc(cookie_len + 1);
+        if (cookie_str) {
+            if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
+                // Parse session_id from cookie string
+                // Cookie format: "session_id=<value>; other=value"
+                char* session_start = strstr(cookie_str, "session_id=");
+                if (session_start) {
+                    session_start += strlen("session_id=");
+                    char* session_end = strchr(session_start, ';');
+                    size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
+                    
+                    if (session_len < AUTH_SESSION_ID_SIZE) {
+                        strncpy(session_id, session_start, session_len);
+                        session_id[session_len] = '\0';
+                    }
+                }
+            }
+            free(cookie_str);
+        }
+    }
+    
+    // Invalidate session if found
+    if (session_id[0] != '\0') {
+        auth_logout(session_id);
+        ESP_LOGI(TAG, "User logged out, session invalidated");
+    }
+    
+    // Clear session cookie by setting Max-Age=0
+    char cookie[128];
+    snprintf(cookie, sizeof(cookie),
+             "session_id=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/");
+    httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+    
+    // Send success response
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Logout successful");
+    
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     // Check authentication
@@ -1853,6 +1907,13 @@ static const httpd_uri_t auth_login_uri = {
     .uri = "/api/auth/login",
     .method = HTTP_POST,
     .handler = post_auth_login_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_logout_uri = {
+    .uri = "/api/auth/logout",
+    .method = HTTP_POST,
+    .handler = post_auth_logout_handler,
     .user_ctx = NULL
 };
 
@@ -2098,7 +2159,7 @@ void web_server_start(void)
     
     // Configure HTTPS server
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-    config.httpd.max_uri_handlers = 39;  // Increased for auth_login_uri
+    config.httpd.max_uri_handlers = 40;  // Increased for auth endpoints
     config.httpd.server_port = 443;
     config.httpd.ctrl_port = 32768;
     
@@ -2121,6 +2182,7 @@ void web_server_start(void)
         
         // Authentication API endpoints
         httpd_register_uri_handler(server, &auth_login_uri);
+        httpd_register_uri_handler(server, &auth_logout_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);
