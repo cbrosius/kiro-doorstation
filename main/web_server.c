@@ -1091,6 +1091,10 @@ static const httpd_uri_t hardware_state_uri = {
     .uri = "/api/hardware/state", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t hardware_status_uri = {
+    .uri = "/api/hardware/status", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
 static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
 };
@@ -1140,6 +1144,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &hardware_test_door_uri);
         httpd_register_uri_handler(server, &hardware_test_light_uri);
         httpd_register_uri_handler(server, &hardware_state_uri);
+        httpd_register_uri_handler(server, &hardware_status_uri);
         httpd_register_uri_handler(server, &hardware_test_stop_uri);
         
         ESP_LOGI(TAG, "Web server started with all API endpoints");
