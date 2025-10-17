@@ -32,6 +32,7 @@ typedef struct {
     esp_ota_handle_t update_handle;
     const esp_partition_t* update_partition;
     uint32_t start_time;
+    bool header_validated;
 } ota_context_t;
 
 // Firmware information structure
@@ -98,6 +99,23 @@ esp_err_t ota_rollback(void);
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t ota_mark_valid(void);
+
+/**
+ * @brief Validate firmware image before flashing
+ * 
+ * @param data Pointer to firmware image data
+ * @param length Length of firmware data
+ * @param partition Target OTA partition
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t ota_validate_image(const uint8_t* data, size_t length, const esp_partition_t* partition);
+
+/**
+ * @brief Get current OTA context state
+ * 
+ * @return Pointer to current OTA context (read-only)
+ */
+const ota_context_t* ota_get_context(void);
 
 #ifdef __cplusplus
 }

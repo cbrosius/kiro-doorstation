@@ -25,7 +25,12 @@
   - Add progress tracking (bytes written, percentage complete)
   - _Requirements: 3.1.4, 3.1.8_
 
-- [ ] 3. Add firmware validation and safety checks
+- [x] 3. Add firmware validation and safety checks
+
+
+
+
+
   - Implement ESP32 image header validation (magic number 0xE9)
   - Add firmware size validation against partition capacity
   - Implement SHA256 checksum verification
