@@ -266,9 +266,26 @@ void wifi_connect_sta(const char* ssid, const char* password)
     strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
 
+    // Stop WiFi if it's running
+    esp_err_t err = esp_wifi_stop();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Stopped existing WiFi connection");
+    } else if (err != ESP_ERR_WIFI_NOT_INIT) {
+        ESP_LOGW(TAG, "WiFi stop returned: %s", esp_err_to_name(err));
+    }
+    
+    // Set the mode and configuration
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    
+    // Start WiFi
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start WiFi: %s", esp_err_to_name(err));
+        return;
+    }
+    
+    ESP_LOGI(TAG, "WiFi started successfully");
 }
 
 void wifi_save_config(const char* ssid, const char* password)
@@ -435,84 +452,48 @@ wifi_connection_info_t wifi_get_connection_info(void)
 
 int wifi_scan_networks(wifi_scan_result_t** results)
 {
-    ESP_LOGI(TAG, "Starting WiFi network scan");
+    ESP_LOGI(TAG, "WiFi scan requested via API");
     
-    // Clear previous results
-    scan_results_count = 0;
-    scan_results_valid = false;
+    // Start a new async scan
+    wifi_start_background_scan();
     
-    // Configure scan
-    wifi_scan_config_t scan_config = {
-        .ssid = NULL,
-        .bssid = NULL,
-        .channel = 0,
-        .show_hidden = false,
-        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time = {
-            .active = {
-                .min = 100,
-                .max = 300
-            }
+    // Wait for scan to complete (typical scan takes 1-3 seconds)
+    int max_wait_ms = 5000;  // 5 seconds max
+    int wait_interval_ms = 100;
+    int waited_ms = 0;
+    
+    while (waited_ms < max_wait_ms) {
+        vTaskDelay(pdMS_TO_TICKS(wait_interval_ms));
+        waited_ms += wait_interval_ms;
+        
+        // Check if scan completed
+        if (scan_results_valid && !is_scanning) {
+            break;
         }
-    };
+    }
     
-    // Start synchronous scan
-    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
+    // Check if we have valid results
+    if (!scan_results_valid || scan_results_count == 0) {
+        ESP_LOGW(TAG, "Scan timeout or no results after %d ms", waited_ms);
         *results = NULL;
         return 0;
     }
     
-    // Get scan results
-    uint16_t ap_count = 0;
-    err = esp_wifi_scan_get_ap_num(&ap_count);
-    if (err != ESP_OK || ap_count == 0) {
-        ESP_LOGW(TAG, "No APs found or error getting AP count");
-        *results = NULL;
-        return 0;
-    }
+    ESP_LOGI(TAG, "Scan completed with %d results after %d ms", scan_results_count, waited_ms);
     
-    ESP_LOGI(TAG, "Found %d access points", ap_count);
-    
-    // Allocate memory for AP records
-    wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_count);
-    if (ap_list == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for AP list");
-        *results = NULL;
-        return 0;
-    }
-    
-    // Get AP records
-    err = esp_wifi_scan_get_ap_records(&ap_count, ap_list);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get AP records: %s", esp_err_to_name(err));
-        free(ap_list);
-        *results = NULL;
-        return 0;
-    }
-    
-    // Allocate memory for results
-    wifi_scan_result_t *scan_results_ptr = malloc(sizeof(wifi_scan_result_t) * ap_count);
+    // Allocate memory for results to return
+    wifi_scan_result_t *scan_results_ptr = malloc(sizeof(wifi_scan_result_t) * scan_results_count);
     if (scan_results_ptr == NULL) {
         ESP_LOGE(TAG, "Failed to allocate memory for scan results");
-        free(ap_list);
         *results = NULL;
         return 0;
     }
     
-    // Convert AP records to scan results
-    for (int i = 0; i < ap_count; i++) {
-        strncpy(scan_results_ptr[i].ssid, (char*)ap_list[i].ssid, sizeof(scan_results_ptr[i].ssid) - 1);
-        scan_results_ptr[i].ssid[sizeof(scan_results_ptr[i].ssid) - 1] = '\0';
-        scan_results_ptr[i].rssi = ap_list[i].rssi;
-        scan_results_ptr[i].secure = (ap_list[i].authmode != WIFI_AUTH_OPEN);
-    }
-    
-    free(ap_list);
+    // Copy results from global array
+    memcpy(scan_results_ptr, scan_results, sizeof(wifi_scan_result_t) * scan_results_count);
     
     *results = scan_results_ptr;
-    ESP_LOGI(TAG, "Scan completed, returning %d results", ap_count);
+    ESP_LOGI(TAG, "Returning %d scan results to caller", scan_results_count);
     
-    return ap_count;
+    return scan_results_count;
 }

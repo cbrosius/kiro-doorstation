@@ -1933,7 +1933,7 @@
         </div>
 
         <!-- WiFi Connection Form -->
-        <form id="wifi-form" data-api="/api/wifi/connect">
+        <form class="config-form" id="wifi-form" data-api="/api/wifi/connect" novalidate="true">
           <div class="form-group">
             <label for="wifi-ssid">
               Network Name (SSID)
@@ -1950,7 +1950,7 @@
               Password
             </label>
             <input type="password" id="wifi-password" name="password" minlength="8" maxlength="63"
-              autocomplete="current-password" data-error="Password must be 8-63 characters" placeholder="••••••••">
+              autocomplete="current-password" data-error="Password must be 8-63 characters" placeholder="">
             <span class="error-message" hidden></span>
             <span class="form-help">Leave empty for open networks</span>
           </div>
@@ -1972,7 +1972,7 @@
           Configure network IP settings. Use DHCP for automatic configuration or Static IP for manual setup.
         </p>
 
-        <form id="ip-config-form" data-api="/api/network/ip">
+        <form class="config-form" id="ip-config-form" data-api="/api/network/ip">
           <!-- DHCP/Static Toggle -->
           <div class="form-group">
             <label>IP Address Mode</label>
@@ -2087,7 +2087,7 @@
           Configure Network Time Protocol (NTP) settings for automatic time synchronization.
         </p>
 
-        <form id="ntp-config-form" data-api="/api/ntp/config">
+        <form class="config-form" id="ntp-config-form" data-api="/api/ntp/config">
           <div class="form-group">
             <label for="ntp-server">
               NTP Server
@@ -4620,8 +4620,11 @@
       event.preventDefault();
       const form = event.target;
 
+      console.log('Form submit handler called for:', form.id);
+
       // Validate form
       if (!validateForm(form)) {
+        console.log('Form validation failed for:', form.id);
         showToast('Please fix the errors in the form', 'error');
         // Focus on first invalid input
         const firstInvalid = form.querySelector('.invalid');
@@ -4629,6 +4632,47 @@
           firstInvalid.focus();
         }
         return;
+      }
+
+      console.log('Form validation passed for:', form.id);
+
+      // Special confirmation for WiFi form
+      if (form.id === 'wifi-form') {
+        // Check if password is empty
+        const passwordInput = document.getElementById('wifi-password');
+        const password = passwordInput ? passwordInput.value : '';
+
+        if (!password || password.trim() === '') {
+          console.log('Empty password detected, asking for confirmation...');
+          const openNetworkConfirmed = await showConfirmDialog(
+            'Open Network Warning',
+            'You are about to connect to a network without a password. This means the network is open and unencrypted. Anyone within range can intercept your data. Are you sure you want to connect to an open network?',
+            'Yes, Connect',
+            'Cancel',
+            'warning'
+          );
+
+          if (!openNetworkConfirmed) {
+            console.log('User cancelled open network connection');
+            return;
+          }
+        }
+
+        console.log('WiFi form detected, showing confirmation dialog...');
+        const confirmed = await showConfirmDialog(
+          'Network Connection Warning',
+          'Changing WiFi settings will disconnect the device from the current network. You may need to reconnect to the new network to access the web interface. The device will attempt to connect to the new network and may take up to 30 seconds. Continue?',
+          'Continue',
+          'Cancel',
+          'warning'
+        );
+
+        console.log('User confirmation result:', confirmed);
+        if (!confirmed) {
+          console.log('User cancelled WiFi connection');
+          return;
+        }
+        console.log('User confirmed, proceeding with WiFi connection...');
       }
 
       // Get API endpoint from form data attribute
@@ -4649,6 +4693,11 @@
       try {
         // Get form data
         const formData = getFormData(form);
+
+        // Debug logging for WiFi form (without sensitive data)
+        if (form.id === 'wifi-form') {
+          console.log('WiFi form submitting - SSID:', formData.ssid);
+        }
 
         // Make API request
         const response = await apiRequest(endpoint, {
@@ -6292,18 +6341,35 @@
      * @param {string} ssid - Network SSID
      */
     function selectWiFiNetwork(ssid) {
+      console.log('selectWiFiNetwork called with SSID:', ssid);
+
       const ssidInput = document.getElementById('wifi-ssid');
       const passwordInput = document.getElementById('wifi-password');
+      const form = document.getElementById('wifi-form');
+
+      console.log('Found elements:', { ssidInput: !!ssidInput, passwordInput: !!passwordInput, form: !!form });
 
       if (ssidInput) {
+        console.log('Setting SSID to:', ssid);
         ssidInput.value = ssid;
         // Trigger change event to update form tracking
         ssidInput.dispatchEvent(new Event('input', { bubbles: true }));
       }
 
-      // Focus password field
+      // Clear password field and placeholder when selecting a new network
       if (passwordInput) {
+        console.log('Clearing password field, current value:', passwordInput.value);
+        passwordInput.value = '';
+        passwordInput.placeholder = ''; // Clear the placeholder too
+        console.log('Password field after clear:', passwordInput.value);
+        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
         passwordInput.focus();
+      }
+
+      // Trigger form change tracking to enable submit button
+      if (form) {
+        console.log('Triggering form change tracking');
+        trackFormChanges(form);
       }
 
       showToast(`Selected network: ${ssid}`, 'info', 2000);
@@ -6317,9 +6383,21 @@
         const response = await apiRequest('/api/wifi/config');
 
         const ssidInput = document.getElementById('wifi-ssid');
+        const passwordInput = document.getElementById('wifi-password');
 
         if (ssidInput && response.ssid) {
           ssidInput.value = response.ssid;
+        }
+
+        // Update password placeholder based on whether WiFi is configured
+        if (passwordInput) {
+          if (response.configured && response.ssid) {
+            // Password exists (network is configured)
+            passwordInput.placeholder = '••• (saved)';
+          } else {
+            // No password saved
+            passwordInput.placeholder = '';
+          }
         }
 
         // Save initial state for change tracking
@@ -6554,6 +6632,19 @@
 
       // Auto-refresh NTP status every 10 seconds
       setInterval(updateNTPStatusInNetworkSection, 10000);
+
+      // Debug: Add click listener to WiFi submit button
+      const wifiSubmitBtn = document.querySelector('#wifi-form button[type="submit"]');
+      if (wifiSubmitBtn) {
+        wifiSubmitBtn.addEventListener('click', (e) => {
+          console.log('WiFi submit button clicked!');
+          console.log('Button disabled:', wifiSubmitBtn.disabled);
+          console.log('Form data:', {
+            ssid: document.getElementById('wifi-ssid')?.value,
+            password: document.getElementById('wifi-password')?.value ? '***' : '(empty)'
+          });
+        });
+      }
     }
 
     // ===== Task 9: Hardware Settings Functions =====
