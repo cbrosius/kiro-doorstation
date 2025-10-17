@@ -5412,21 +5412,21 @@
 
         // Update uptime
         const uptimeElement = document.getElementById('system-uptime');
-        if (uptimeElement && response.uptime !== undefined) {
-          uptimeElement.textContent = formatUptime(response.uptime);
+        if (uptimeElement && response.uptime_ms !== undefined) {
+          uptimeElement.textContent = formatUptime(response.uptime_ms);
         }
 
         // Update free heap
         const heapElement = document.getElementById('system-heap');
-        if (heapElement && response.free_heap !== undefined) {
-          heapElement.textContent = formatBytes(response.free_heap);
+        if (heapElement && response.free_heap_bytes !== undefined) {
+          heapElement.textContent = formatBytes(response.free_heap_bytes);
         }
 
         // Update IP address
         const ipElement = document.getElementById('system-ip');
         if (ipElement) {
           // Try to get IP from system status or WiFi status
-          const ip = response.ip || response.network?.wifi?.ip || 'N/A';
+          const ip = response.ip_address || response.ip || response.network?.wifi?.ip || 'N/A';
           ipElement.textContent = ip;
         }
 
@@ -6733,36 +6733,35 @@
      */
     async function updateHardwareInfo() {
       try {
-        const response = await apiRequest('/api/system/state');
+        const response = await apiRequest('/api/system/info');
 
         if (response) {
           // Update chip information
           document.getElementById('hw-chip-model').textContent = response.chip_model || 'ESP32-S3';
-          document.getElementById('hw-chip-revision').textContent = response.chip_revision ? `Rev ${response.chip_revision}` : 'Unknown';
+          document.getElementById('hw-chip-revision').textContent = response.chip_revision !== undefined ? `Rev ${response.chip_revision}` : 'Unknown';
 
           // Update flash information
-          if (response.flash_size) {
-            document.getElementById('hw-flash-size').textContent = formatBytes(response.flash_size);
+          if (response.flash_size_mb) {
+            document.getElementById('hw-flash-size').textContent = `${response.flash_size_mb} MB`;
           }
-          if (response.flash_free !== undefined) {
-            document.getElementById('hw-flash-free').textContent = formatBytes(response.flash_free);
+          // Flash free is not available from API
+          const flashFreeElement = document.getElementById('hw-flash-free');
+          if (flashFreeElement) {
+            flashFreeElement.textContent = 'N/A';
           }
 
-          // Update PSRAM information
-          if (response.psram_size) {
-            document.getElementById('hw-psram-size').textContent = formatBytes(response.psram_size);
-            document.getElementById('hw-psram-free').textContent = formatBytes(response.psram_free || 0);
-          } else {
-            document.getElementById('hw-psram-size').textContent = 'Not Available';
-            document.getElementById('hw-psram-free').textContent = 'N/A';
-          }
+          // Update PSRAM information - not available from API
+          document.getElementById('hw-psram-size').textContent = 'Not Available';
+          document.getElementById('hw-psram-free').textContent = 'N/A';
 
           // Update heap information
-          if (response.free_heap !== undefined) {
-            document.getElementById('hw-free-heap').textContent = formatBytes(response.free_heap);
+          if (response.free_heap_bytes !== undefined) {
+            document.getElementById('hw-free-heap').textContent = formatBytes(response.free_heap_bytes);
           }
-          if (response.min_free_heap !== undefined) {
-            document.getElementById('hw-min-heap').textContent = formatBytes(response.min_free_heap);
+          // Min free heap is not available from API
+          const minHeapElement = document.getElementById('hw-min-heap');
+          if (minHeapElement) {
+            minHeapElement.textContent = 'N/A';
           }
         }
       } catch (error) {
