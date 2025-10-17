@@ -2349,6 +2349,68 @@
         </div>
       </div>
       
+      <!-- Admin Password Change Form -->
+      <form class="config-form" id="password-change-form" onsubmit="handlePasswordChange(event)">
+        <h3>Admin Password</h3>
+        <p class="form-help">Change the administrator password for web interface access.</p>
+        
+        <div class="form-group">
+          <label for="current-password">
+            Current Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="current-password" 
+                 name="current_password" 
+                 required
+                 autocomplete="current-password"
+                 placeholder="Enter current password"
+                 data-error="Current password is required">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="new-password">
+            New Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="new-password" 
+                 name="new_password" 
+                 required
+                 autocomplete="new-password"
+                 minlength="8"
+                 placeholder="Enter new password"
+                 data-error="Password must be at least 8 characters with uppercase, lowercase, and digit"
+                 aria-describedby="password-requirements">
+          <span class="error-message" hidden></span>
+          <span class="form-help" id="password-requirements">
+            Must be at least 8 characters with uppercase, lowercase, and digit
+          </span>
+        </div>
+        
+        <div class="form-group">
+          <label for="confirm-new-password">
+            Confirm New Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="confirm-new-password" 
+                 name="confirm_password" 
+                 required
+                 autocomplete="new-password"
+                 minlength="8"
+                 placeholder="Re-enter new password"
+                 data-error="Passwords must match">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">
+            <span class="btn-text">Change Password</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Clear</button>
+        </div>
+      </form>
+      
       <!-- DTMF Security Configuration Form (Task 10.1) -->
       <form class="config-form" id="security-form" data-api="/api/dtmf/security" data-on-success="onSecuritySaved">
         <h3>DTMF PIN Protection</h3>
@@ -6276,6 +6338,107 @@
       loadSecurityConfiguration();
       
       console.log('Security configuration saved and status updated');
+    }
+    
+    /**
+     * Handle admin password change
+     * @param {Event} event - Form submit event
+     */
+    async function handlePasswordChange(event) {
+      event.preventDefault();
+      
+      const form = event.target;
+      const submitButton = form.querySelector('button[type="submit"]');
+      const btnText = submitButton.querySelector('.btn-text');
+      const btnSpinner = submitButton.querySelector('.btn-spinner');
+      
+      // Get form values
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-new-password').value;
+      
+      // Clear previous error messages
+      form.querySelectorAll('.error-message').forEach(el => {
+        el.hidden = true;
+        el.textContent = '';
+      });
+      form.querySelectorAll('input').forEach(input => input.classList.remove('invalid'));
+      
+      // Validate passwords match
+      if (newPassword !== confirmPassword) {
+        const confirmInput = document.getElementById('confirm-new-password');
+        const errorMsg = confirmInput.nextElementSibling;
+        if (errorMsg && errorMsg.classList.contains('error-message')) {
+          errorMsg.textContent = 'Passwords do not match';
+          errorMsg.hidden = false;
+        }
+        confirmInput.classList.add('invalid');
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+      
+      // Validate password strength
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        const newPasswordInput = document.getElementById('new-password');
+        const errorMsg = newPasswordInput.nextElementSibling;
+        if (errorMsg && errorMsg.classList.contains('error-message')) {
+          errorMsg.textContent = 'Password must be at least 8 characters with uppercase, lowercase, and digit';
+          errorMsg.hidden = false;
+        }
+        newPasswordInput.classList.add('invalid');
+        showToast('Password does not meet security requirements', 'error');
+        return;
+      }
+      
+      // Set loading state
+      submitButton.disabled = true;
+      btnText.textContent = 'Changing Password...';
+      btnSpinner.hidden = false;
+      
+      try {
+        const response = await apiRequest('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword
+          })
+        });
+        
+        if (response && response.success) {
+          showToast('Password changed successfully. You will be logged out.', 'success');
+          
+          // Clear form
+          form.reset();
+          
+          // Redirect to login page after 2 seconds
+          setTimeout(() => {
+            window.location.href = '/login.html';
+          }, 2000);
+        } else {
+          const errorMessage = response?.error || 'Failed to change password';
+          showToast(errorMessage, 'error');
+          
+          // Highlight current password field if it's wrong
+          if (errorMessage.toLowerCase().includes('current password')) {
+            const currentPasswordInput = document.getElementById('current-password');
+            currentPasswordInput.classList.add('invalid');
+            const errorMsg = currentPasswordInput.nextElementSibling;
+            if (errorMsg && errorMsg.classList.contains('error-message')) {
+              errorMsg.textContent = 'Current password is incorrect';
+              errorMsg.hidden = false;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Password change error:', error);
+        showToast('Failed to change password. Please try again.', 'error');
+      } finally {
+        // Reset button state
+        submitButton.disabled = false;
+        btnText.textContent = 'Change Password';
+        btnSpinner.hidden = true;
+      }
     }
     
     /**

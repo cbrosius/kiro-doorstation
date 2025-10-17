@@ -117,6 +117,8 @@ extern const uint8_t documentation_html_start[] asm("_binary_documentation_html_
 extern const uint8_t documentation_html_end[] asm("_binary_documentation_html_end");
 extern const uint8_t login_html_start[] asm("_binary_login_html_start");
 extern const uint8_t login_html_end[] asm("_binary_login_html_end");
+extern const uint8_t setup_html_start[] asm("_binary_setup_html_start");
+extern const uint8_t setup_html_end[] asm("_binary_setup_html_end");
 
 /**
  * @brief Check if a URI is a public endpoint that doesn't require authentication
@@ -135,6 +137,7 @@ static bool is_public_endpoint(const char* uri) {
         "/api/auth/login",           // Login endpoint
         "/api/auth/set-password",    // Initial password setup
         "/login.html",               // Login page
+        "/setup.html",               // Setup page
         "/favicon.ico",              // Browser favicon requests
         NULL
     };
@@ -164,10 +167,23 @@ static esp_err_t auth_filter(httpd_req_t *req) {
         return ESP_OK;
     }
     
-    // Check if password is set - if not, allow access for initial setup
+    // Check if password is set - if not, redirect to setup page
     if (!auth_is_password_set()) {
-        ESP_LOGW(TAG, "No password set - allowing access for initial setup");
-        return ESP_OK;
+        ESP_LOGW(TAG, "No password set - redirecting to setup page");
+        
+        // Check if this is an API request or HTML page request
+        if (strncmp(req->uri, "/api/", 5) == 0) {
+            // API request - return JSON error
+            httpd_resp_set_status(req, "403 Forbidden");
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_send(req, "{\"error\":\"Initial setup required\"}", -1);
+        } else {
+            // HTML page request - redirect to setup page
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "/setup.html");
+            httpd_resp_send(req, NULL, 0);
+        }
+        return ESP_FAIL;
     }
     
     // Extract session cookie
@@ -2068,6 +2084,11 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    // Save username for logging (before deleting JSON object)
+    char username_str[AUTH_USERNAME_MAX_LEN];
+    strncpy(username_str, username->valuestring, sizeof(username_str) - 1);
+    username_str[sizeof(username_str) - 1] = '\0';
+    
     // Authenticate user
     auth_result_t result = auth_login(username->valuestring, password->valuestring, client_ip);
 
@@ -2094,7 +2115,7 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
         free(json_string);
         cJSON_Delete(response);
 
-        ESP_LOGI(TAG, "User '%s' logged in successfully from %s", username->valuestring, client_ip);
+        ESP_LOGI(TAG, "User '%s' logged in successfully from %s", username_str, client_ip);
     } else {
         // Record failed attempt
         auth_record_failed_attempt(client_ip);
@@ -2112,7 +2133,7 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
         cJSON_Delete(response);
 
         ESP_LOGW(TAG, "Failed login attempt for user '%s' from %s: %s", 
-                 username->valuestring, client_ip, result.error_message);
+                 username_str, client_ip, result.error_message);
     }
 
     return ESP_OK;
@@ -2226,6 +2247,19 @@ static esp_err_t post_auth_set_password_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
 
     if (err == ESP_OK) {
+        // Generate self-signed certificate if one doesn't exist
+        if (!cert_exists()) {
+            ESP_LOGI(TAG, "Generating self-signed certificate during initial setup");
+            esp_err_t cert_err = cert_generate_self_signed("doorstation.local", 3650);
+            if (cert_err != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to generate certificate during setup: %s", esp_err_to_name(cert_err));
+                // Don't fail the setup if certificate generation fails
+                // The certificate can be generated later
+            } else {
+                ESP_LOGI(TAG, "Self-signed certificate generated successfully");
+            }
+        }
+        
         // Send success response
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", true);
@@ -2460,6 +2494,14 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 
 static esp_err_t index_handler(httpd_req_t *req)
 {
+    // If password is not set, redirect to setup page
+    if (!auth_is_password_set()) {
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/setup.html");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
         return ESP_FAIL;
@@ -2486,10 +2528,35 @@ static esp_err_t documentation_handler(httpd_req_t *req)
 
 static esp_err_t login_handler(httpd_req_t *req)
 {
+    // If password is not set, redirect to setup page
+    if (!auth_is_password_set()) {
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/setup.html");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    
     // Login page is public - no authentication required
     httpd_resp_set_type(req, "text/html");
     const size_t login_html_size = (uintptr_t)login_html_end - (uintptr_t)login_html_start;
     httpd_resp_send(req, (const char *)login_html_start, login_html_size);
+    return ESP_OK;
+}
+
+static esp_err_t setup_handler(httpd_req_t *req)
+{
+    // If password is already set, redirect to login page
+    if (auth_is_password_set()) {
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/login.html");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    
+    // Setup page is public - no authentication required
+    httpd_resp_set_type(req, "text/html");
+    const size_t setup_html_size = (uintptr_t)setup_html_end - (uintptr_t)setup_html_start;
+    httpd_resp_send(req, (const char *)setup_html_start, setup_html_size);
     return ESP_OK;
 }
 
@@ -2632,6 +2699,10 @@ static const httpd_uri_t documentation_uri = {
 
 static const httpd_uri_t login_uri = {
     .uri = "/login.html", .method = HTTP_GET, .handler = login_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t setup_uri = {
+    .uri = "/setup.html", .method = HTTP_GET, .handler = setup_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t wifi_config_get_uri = {
@@ -2888,6 +2959,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &documentation_uri);
         httpd_register_uri_handler(server, &login_uri);
+        httpd_register_uri_handler(server, &setup_uri);
         
         // Authentication API endpoints
         httpd_register_uri_handler(server, &auth_login_uri);
