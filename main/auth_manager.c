@@ -668,3 +668,51 @@ int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs) {
     ESP_LOGI(TAG, "Successfully retrieved %d audit logs", count);
     return count;
 }
+
+esp_err_t auth_reset_password(void) {
+    ESP_LOGW(TAG, "Password reset initiated - deleting password from NVS");
+    
+    // Open NVS
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(AUTH_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // Delete password from NVS
+    err = nvs_erase_key(nvs_handle, AUTH_NVS_PASSWORD_KEY);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(nvs_handle);
+        ESP_LOGE(TAG, "Failed to erase password: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // Delete username from NVS
+    err = nvs_erase_key(nvs_handle, AUTH_NVS_USERNAME_KEY);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(nvs_handle);
+        ESP_LOGE(TAG, "Failed to erase username: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    err = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // Invalidate all sessions
+    memset(active_sessions, 0, sizeof(active_sessions));
+    
+    // Log password reset event
+    add_audit_log("admin", "physical-reset", "password deleted - setup required", true);
+    
+    ESP_LOGW(TAG, "Password deleted from NVS - initial setup wizard will be triggered");
+    
+    return ESP_OK;
+}
+
+

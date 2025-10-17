@@ -28,6 +28,15 @@ void door_relay_activate(void);
 void light_relay_toggle(void);
 bool is_doorbell_pressed(doorbell_t bell);
 
+/**
+ * @brief Start monitoring BOOT button for password reset and doorbell simulation
+ * 
+ * Monitors the BOOT button (GPIO 0):
+ * - Short press (1 second): Triggers doorbell call (for testing)
+ * - Long press (10 seconds): Triggers password reset
+ */
+void gpio_start_reset_monitor(void);
+
 // Doorbell queue for hardware testing access
 extern QueueHandle_t doorbell_queue;
 

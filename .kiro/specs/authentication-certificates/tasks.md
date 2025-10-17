@@ -288,14 +288,24 @@
   - Offer option to generate new self-signed certificate
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-- [ ] 23. Update CMakeLists.txt to include authentication modules
+- [x] 23. Update CMakeLists.txt to include authentication modules
+
+
+
+
   - Add `auth_manager.c` to `main/CMakeLists.txt` SRCS list
   - Add `cert_manager.c` to `main/CMakeLists.txt` SRCS list
   - Verify mbedtls component is linked
   - Verify esp_https_server component is linked
   - _Requirements: 1.1, 6.1_
 
-- [ ]* 24. Implement password reset mechanism
+- [x] 24. Implement password reset mechanism
+
+
+
+
+
+
   - Add physical reset button GPIO handler
   - Reset admin password to default when button held for 10 seconds
   - Log password reset event
@@ -303,7 +313,8 @@
   - Invalidate all sessions on password reset
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
 
-- [ ]* 25. Add comprehensive security logging
+- [ ] 25. Add comprehensive security logging
+
   - Log all authentication events (login, logout, password change)
   - Log certificate operations (upload, generate, delete)
   - Log rate limiting events (IP blocks, unblocks)

@@ -210,6 +210,17 @@ bool auth_verify_password(const char* password, const password_hash_t* stored_ha
  */
 int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs);
 
+/**
+ * @brief Reset admin password by deleting from NVS
+ * 
+ * This function deletes the admin password and username from NVS,
+ * invalidates all sessions, and triggers the initial setup wizard.
+ * Should only be called from physical reset button handler.
+ * 
+ * @return esp_err_t ESP_OK on success, error code otherwise
+ */
+esp_err_t auth_reset_password(void);
+
 #ifdef __cplusplus
 }
 #endif

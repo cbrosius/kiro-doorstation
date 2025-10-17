@@ -34,6 +34,9 @@ void app_main(void)
     // Initialize GPIO
     gpio_handler_init();
     
+    // Start password reset monitor (BOOT button)
+    gpio_start_reset_monitor();
+    
     // Initialize Hardware Test (after GPIO)
     hardware_test_init();
     

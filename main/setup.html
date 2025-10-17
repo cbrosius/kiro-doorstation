@@ -237,6 +237,14 @@
       box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
     }
     
+    .form-group input.valid {
+      border-color: var(--color-success);
+    }
+    
+    .form-group input.valid:focus {
+      box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
+    }
+    
     .form-hint {
       font-size: var(--font-size-xs);
       color: var(--color-text-muted);
@@ -501,6 +509,33 @@
     const setupBtn = document.getElementById('setup-btn');
     const btnText = document.getElementById('btn-text');
     const messageDiv = document.getElementById('message');
+
+    // Live password match validation (visual only - no error messages)
+    function validatePasswordMatch() {
+      const password = passwordInput.value;
+      const confirmPassword = confirmPasswordInput.value;
+      
+      // Only validate if confirm password field has content
+      if (confirmPassword.length > 0) {
+        if (password === confirmPassword) {
+          // Passwords match - show green border
+          confirmPasswordInput.classList.remove('invalid');
+          confirmPasswordInput.classList.add('valid');
+        } else {
+          // Passwords don't match - show red border
+          confirmPasswordInput.classList.remove('valid');
+          confirmPasswordInput.classList.add('invalid');
+        }
+      } else {
+        // Empty field - remove all validation classes
+        confirmPasswordInput.classList.remove('invalid');
+        confirmPasswordInput.classList.remove('valid');
+      }
+    }
+
+    // Add event listeners for live validation
+    passwordInput.addEventListener('input', validatePasswordMatch);
+    confirmPasswordInput.addEventListener('input', validatePasswordMatch);
 
     // Show message
     function showMessage(message, type) {
