@@ -1675,6 +1675,23 @@
               style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">
               Loading...</div>
           </div>
+          <div style="flex: 1; min-width: 200px;">
+            <div
+              style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
+              Last Synced</div>
+            <div id="ntp-last-sync"
+              style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">
+              Never</div>
+          </div>
+        </div>
+        <div style="margin-top: var(--spacing-md);">
+          <button class="btn btn-info btn-sm" onclick="handleForceNTPSync()" id="force-ntp-sync-btn">
+            <span class="btn-text">
+              <span>🔄</span>
+              <span>Force Sync Now</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
         </div>
       </div>
 
@@ -5569,6 +5586,7 @@
         const indicatorElement = document.getElementById('ntp-sync-indicator');
         const textElement = document.getElementById('ntp-sync-text');
         const timeElement = document.getElementById('ntp-current-time');
+        const lastSyncElement = document.getElementById('ntp-last-sync');
 
         if (response.synced) {
           if (indicatorElement) indicatorElement.textContent = '✅';
@@ -5588,11 +5606,21 @@
           timeElement.textContent = response.current_time;
         }
 
+        // Update last sync time
+        if (lastSyncElement) {
+          if (response.last_sync_time && response.last_sync_time !== 'Never') {
+            lastSyncElement.textContent = response.last_sync_time;
+          } else {
+            lastSyncElement.textContent = 'Never';
+          }
+        }
+
       } catch (error) {
         console.error('Error updating NTP status:', error);
         const indicatorElement = document.getElementById('ntp-sync-indicator');
         const textElement = document.getElementById('ntp-sync-text');
         const timeElement = document.getElementById('ntp-current-time');
+        const lastSyncElement = document.getElementById('ntp-last-sync');
 
         if (indicatorElement) indicatorElement.textContent = '❌';
         if (textElement) {
@@ -5600,6 +5628,7 @@
           textElement.style.color = 'var(--color-danger)';
         }
         if (timeElement) timeElement.textContent = 'N/A';
+        if (lastSyncElement) lastSyncElement.textContent = 'Error';
       }
     }
 
@@ -5612,6 +5641,35 @@
 
       // Auto-refresh every 10 seconds
       setInterval(updateNTPStatus, 10000);
+    }
+
+    /**
+     * Handle force NTP sync button
+     */
+    async function handleForceNTPSync() {
+      const button = document.getElementById('force-ntp-sync-btn');
+      if (button) setLoadingState(button, true);
+
+      try {
+        showToast('Forcing NTP time synchronization...', 'info');
+        const response = await apiRequest('/api/ntp/sync', { method: 'POST' });
+
+        if (response && response.success) {
+          showToast('NTP sync initiated successfully', 'success');
+
+          // Wait a moment then refresh status
+          setTimeout(() => {
+            updateNTPStatus();
+          }, 2000);
+        } else {
+          showToast(response?.message || 'Failed to initiate NTP sync', 'error');
+        }
+      } catch (error) {
+        console.error('Error forcing NTP sync:', error);
+        // Error already shown by apiRequest
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
     }
 
     // ===== Task 6.4: Recent Activity Summary =====

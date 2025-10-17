@@ -8,6 +8,7 @@
 
 static const char *TAG = "NTP";
 static bool time_synced = false;
+static time_t last_sync_time = 0;
 static ntp_config_t current_config = {
     .server = NTP_DEFAULT_SERVER,
     .timezone = NTP_DEFAULT_TIMEZONE,
@@ -113,6 +114,9 @@ static void time_sync_notification_cb(struct timeval *tv)
 {
     ESP_LOGI(TAG, "Time synchronized with NTP server");
     time_synced = true;
+    
+    // Update last sync time
+    time(&last_sync_time);
     
     // Log the synchronized time
     char time_str[64];
@@ -277,6 +281,11 @@ void ntp_force_sync(void)
     esp_sntp_stop();
     esp_sntp_init();
     time_synced = false;
+}
+
+time_t ntp_get_last_sync_time(void)
+{
+    return last_sync_time;
 }
 
 // Custom log function with real timestamps

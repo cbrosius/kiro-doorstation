@@ -1355,6 +1355,22 @@ static esp_err_t get_ntp_state_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "timestamp_ms", (double)ntp_get_timestamp_ms());
     }
     
+    // Add last sync time
+    time_t last_sync = ntp_get_last_sync_time();
+    if (last_sync > 0) {
+        cJSON_AddNumberToObject(root, "last_sync_timestamp", (double)last_sync);
+        
+        // Format last sync time as string
+        struct tm timeinfo;
+        localtime_r(&last_sync, &timeinfo);
+        char last_sync_str[64];
+        strftime(last_sync_str, sizeof(last_sync_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        cJSON_AddStringToObject(root, "last_sync_time", last_sync_str);
+    } else {
+        cJSON_AddNumberToObject(root, "last_sync_timestamp", 0);
+        cJSON_AddStringToObject(root, "last_sync_time", "Never");
+    }
+    
     cJSON_AddStringToObject(root, "server", ntp_get_server());
     cJSON_AddStringToObject(root, "timezone", ntp_get_timezone());
 

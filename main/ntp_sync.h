@@ -68,6 +68,11 @@ const char* ntp_get_timezone(void);
 void ntp_force_sync(void);
 
 /**
+ * Get last sync timestamp in seconds since epoch (0 if never synced)
+ */
+time_t ntp_get_last_sync_time(void);
+
+/**
  * Get timestamp for logging (returns 0 if not synced)
  * Format: "YYYY-MM-DD HH:MM:SS"
  */
