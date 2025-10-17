@@ -12,6 +12,7 @@
 #include "sip_client.h"
 #include "audio_handler.h"
 #include "gpio_handler.h"
+#include "hardware_test.h"
 #include "dtmf_decoder.h"
 #include "ntp_sync.h"
 
@@ -31,6 +32,9 @@ void app_main(void)
     
     // Initialize GPIO
     gpio_handler_init();
+    
+    // Initialize Hardware Test (after GPIO)
+    hardware_test_init();
     
     // Initialize Audio
     audio_handler_init();

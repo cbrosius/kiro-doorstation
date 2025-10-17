@@ -2,6 +2,8 @@
 #define GPIO_HANDLER_H
 
 #include <stdbool.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 // Pin-Definitionen
 #define DOORBELL_1_PIN      21
@@ -25,5 +27,8 @@ void gpio_handler_init(void);
 void door_relay_activate(void);
 void light_relay_toggle(void);
 bool is_doorbell_pressed(doorbell_t bell);
+
+// Doorbell queue for hardware testing access
+extern QueueHandle_t doorbell_queue;
 
 #endif

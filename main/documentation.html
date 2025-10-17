@@ -1,0 +1,856 @@
+<!-- Documentation Content (Task 15) -->
+<!-- This file contains the complete documentation that is loaded into the main interface -->
+
+<!-- Documentation Header with Version Info (Task 15.11) -->
+<div class="config-form" style="margin-bottom: var(--spacing-lg);">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md);">
+    <div>
+      <p style="margin: 0; color: var(--color-text-secondary);">
+        <strong>Firmware Version:</strong> <span id="docs-firmware-version">Loading...</span><br>
+        <strong>Build Date:</strong> <span id="docs-build-date">Loading...</span>
+      </p>
+    </div>
+    <div style="display: flex; gap: var(--spacing-sm);">
+      <button type="button" class="btn btn-info btn-sm" onclick="window.open('https://github.com/yourusername/esp32-sip-doorstation', '_blank')">
+        <span>📦</span>
+        <span>GitHub</span>
+      </button>
+      <button type="button" class="btn btn-warning btn-sm" onclick="reportIssue()">
+        <span>🐛</span>
+        <span>Report Issue</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Documentation Search (Task 15.10) -->
+<div class="config-form" style="margin-bottom: var(--spacing-lg);">
+  <div class="form-group" style="margin-bottom: 0;">
+    <input type="search" 
+           id="docs-search" 
+           class="docs-search-input"
+           placeholder="Search documentation..." 
+           autocomplete="off"
+           oninput="searchDocumentation(this.value)"
+           style="width: 100%;">
+  </div>
+</div>
+
+<!-- Table of Contents (Task 15.1) -->
+<div class="config-form">
+  <h3 style="margin-top: 0;">Table of Contents</h3>
+  <nav class="docs-toc">
+    <ul style="list-style: none; padding-left: 0;">
+      <li><a href="#docs-quickstart" class="docs-toc-link" onclick="scrollToDocsSection('quickstart'); return false;">Quick Start Guide</a></li>
+      <li><a href="#docs-hardware" class="docs-toc-link" onclick="scrollToDocsSection('hardware'); return false;">Hardware Reference</a></li>
+      <li><a href="#docs-sip" class="docs-toc-link" onclick="scrollToDocsSection('sip'); return false;">SIP Configuration</a></li>
+      <li><a href="#docs-dtmf" class="docs-toc-link" onclick="scrollToDocsSection('dtmf'); return false;">DTMF Commands</a></li>
+      <li><a href="#docs-network" class="docs-toc-link" onclick="scrollToDocsSection('network'); return false;">Network Configuration</a></li>
+      <li><a href="#docs-api" class="docs-toc-link" onclick="scrollToDocsSection('api'); return false;">API Reference</a></li>
+      <li><a href="#docs-troubleshooting" class="docs-toc-link" onclick="scrollToDocsSection('troubleshooting'); return false;">Troubleshooting</a></li>
+      <li><a href="#docs-faq" class="docs-toc-link" onclick="scrollToDocsSection('faq'); return false;">FAQ</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- Quick Start Guide (Task 15.2) -->
+<div class="config-form docs-section" id="docs-quickstart">
+  <div class="docs-section-header" onclick="toggleDocsSection('quickstart')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>Quick Start Guide</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-quickstart-content">
+    
+    <h4>1. Initial Setup</h4>
+    <p>Follow these steps to get your ESP32 SIP Door Station up and running:</p>
+    <ol>
+      <li><strong>Power On:</strong> Connect the ESP32-S3 to a 5V power supply via USB-C or external power.</li>
+      <li><strong>First Boot:</strong> On first boot, the device will create a WiFi access point named "ESP32-DoorStation-XXXX".</li>
+      <li><strong>Connect:</strong> Connect your phone or computer to this WiFi network (password: "doorstation").</li>
+      <li><strong>Access Interface:</strong> Open a web browser and navigate to <code>http://192.168.4.1</code></li>
+    </ol>
+    
+    <h4>2. WiFi Configuration</h4>
+    <p>Configure the device to connect to your home/office WiFi network:</p>
+    <ol>
+      <li>Navigate to the <strong>Network</strong> section in the sidebar.</li>
+      <li>Click <strong>Scan Networks</strong> to see available WiFi networks.</li>
+      <li>Select your network from the list or manually enter the SSID.</li>
+      <li>Enter your WiFi password.</li>
+      <li>Click <strong>Connect to WiFi</strong>.</li>
+      <li>Wait for the device to connect (status indicator will turn green).</li>
+      <li>Note the IP address displayed in the status panel.</li>
+      <li>Reconnect your device to your regular WiFi network.</li>
+      <li>Access the interface using the new IP address (e.g., <code>http://192.168.1.100</code>).</li>
+    </ol>
+    
+    <h4>3. SIP Registration</h4>
+    <p>Configure SIP settings to enable calling functionality:</p>
+    <ol>
+      <li>Navigate to the <strong>SIP Settings</strong> section.</li>
+      <li>Enter your SIP server address (e.g., <code>sip.yourprovider.com</code>).</li>
+      <li>Enter your SIP username and password.</li>
+      <li>Configure Target 1 and Target 2 (the SIP addresses to call when doorbell buttons are pressed).</li>
+      <li>Click <strong>Save Configuration</strong>.</li>
+      <li>Click <strong>Connect to SIP</strong> to register with the server.</li>
+      <li>Verify the SIP status indicator shows "Registered".</li>
+      <li>Use the <strong>Test Call</strong> buttons to verify calling works.</li>
+    </ol>
+    
+    <h4>4. Test Hardware</h4>
+    <p>Verify hardware functionality:</p>
+    <ol>
+      <li>Navigate to the <strong>Hardware Testing</strong> section.</li>
+      <li>Click <strong>Simulate Bell 1</strong> to test the first doorbell button.</li>
+      <li>Verify a call is initiated to Target 1.</li>
+      <li>Test the door opener relay (ensure nothing is physically connected during testing).</li>
+      <li>Test the light relay toggle.</li>
+    </ol>
+    
+    <h4>5. Optional: Configure Security</h4>
+    <p>Enable DTMF PIN protection for door opener:</p>
+    <ol>
+      <li>Navigate to the <strong>Security</strong> section.</li>
+      <li>Enable PIN protection.</li>
+      <li>Set a 4-8 digit PIN code.</li>
+      <li>Configure timeout and max attempts.</li>
+      <li>Click <strong>Save Configuration</strong>.</li>
+    </ol>
+    
+  </div>
+</div>
+
+<!-- Hardware Reference (Task 15.3) -->
+<div class="config-form docs-section" id="docs-hardware">
+  <div class="docs-section-header" onclick="toggleDocsSection('hardware')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>Hardware Reference</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-hardware-content">
+    
+    <h4>GPIO Pinout</h4>
+    <p>Default GPIO pin assignments for ESP32-S3:</p>
+    <table style="width: 100%; border-collapse: collapse; margin: var(--spacing-md) 0;">
+      <thead>
+        <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+          <th style="padding: var(--spacing-sm); text-align: left;">GPIO Pin</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Function</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Type</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>GPIO 0</code></td>
+          <td style="padding: var(--spacing-sm);">BOOT Button</td>
+          <td style="padding: var(--spacing-sm);">Input (Pull-up)</td>
+          <td style="padding: var(--spacing-sm);">Built-in button, active low</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>GPIO 4</code></td>
+          <td style="padding: var(--spacing-sm);">Doorbell Button 2</td>
+          <td style="padding: var(--spacing-sm);">Input (Pull-up)</td>
+          <td style="padding: var(--spacing-sm);">Active low, calls Target 2</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>GPIO 5</code></td>
+          <td style="padding: var(--spacing-sm);">Door Opener Relay</td>
+          <td style="padding: var(--spacing-sm);">Output</td>
+          <td style="padding: var(--spacing-sm);">Active high, 3 second pulse</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>GPIO 6</code></td>
+          <td style="padding: var(--spacing-sm);">Light Control Relay</td>
+          <td style="padding: var(--spacing-sm);">Output</td>
+          <td style="padding: var(--spacing-sm);">Active high, toggle on/off</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>GPIO 21</code></td>
+          <td style="padding: var(--spacing-sm);">Doorbell Button 1</td>
+          <td style="padding: var(--spacing-sm);">Input (Pull-up)</td>
+          <td style="padding: var(--spacing-sm);">Active low, calls Target 1</td>
+        </tr>
+      </tbody>
+    </table>
+    
+    <h4>Wiring Diagram</h4>
+    <pre style="background-color: var(--color-bg); padding: var(--spacing-md); border-radius: var(--border-radius-sm); overflow-x: auto; font-size: var(--font-size-sm);">
+ESP32-S3 Connections:
+
+Doorbell Buttons:
+  Button 1: GPIO 21 ──┬── [Button] ── GND
+                      └── 10kΩ ── 3.3V (internal pull-up)
+  
+  Button 2: GPIO 4  ──┬── [Button] ── GND
+                      └── 10kΩ ── 3.3V (internal pull-up)
+
+Relays (use optocoupler for isolation):
+  Door Relay:  GPIO 5 ── [Optocoupler] ── [Relay Coil] ── 12V/GND
+  Light Relay: GPIO 6 ── [Optocoupler] ── [Relay Coil] ── 12V/GND
+
+Power:
+  USB-C: 5V input (recommended: 2A minimum)
+  External: 5V via VIN pin (if not using USB)
+
+Audio (I2S):
+  Microphone: I2S MEMS microphone on I2S0
+  Speaker: I2S amplifier on I2S1
+    </pre>
+    
+    <h4>Specifications</h4>
+    <ul>
+      <li><strong>Microcontroller:</strong> ESP32-S3-WROOM-1 (Dual-core Xtensa LX7, 240 MHz)</li>
+      <li><strong>Flash:</strong> 8 MB</li>
+      <li><strong>PSRAM:</strong> 2 MB (optional, recommended)</li>
+      <li><strong>WiFi:</strong> 802.11 b/g/n (2.4 GHz)</li>
+      <li><strong>Audio:</strong> I2S interface for microphone and speaker</li>
+      <li><strong>Power:</strong> 5V via USB-C or external supply</li>
+      <li><strong>Operating Temperature:</strong> -40°C to +85°C</li>
+      <li><strong>Relay Ratings:</strong> 10A @ 250VAC / 10A @ 30VDC (typical)</li>
+    </ul>
+    
+  </div>
+</div>
+
+<!-- SIP Configuration Guide (Task 15.4) -->
+<div class="config-form docs-section" id="docs-sip">
+  <div class="docs-section-header" onclick="toggleDocsSection('sip')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>SIP Configuration Guide</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-sip-content">
+    
+    <h4>Server Setup</h4>
+    <p>The ESP32 SIP Door Station supports standard SIP/VoIP servers. You can use:</p>
+    <ul>
+      <li><strong>Asterisk:</strong> Open-source PBX system</li>
+      <li><strong>FreePBX:</strong> Web-based GUI for Asterisk</li>
+      <li><strong>3CX:</strong> Commercial PBX solution</li>
+      <li><strong>FritzBox:</strong> Popular router with built-in SIP support</li>
+      <li><strong>Cloud Providers:</strong> VoIP.ms, Twilio, etc.</li>
+    </ul>
+    
+    <h4>Required Settings</h4>
+    <table style="width: 100%; border-collapse: collapse; margin: var(--spacing-md) 0;">
+      <thead>
+        <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+          <th style="padding: var(--spacing-sm); text-align: left;">Setting</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Description</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>SIP Server</strong></td>
+          <td style="padding: var(--spacing-sm);">Hostname or IP of your SIP server</td>
+          <td style="padding: var(--spacing-sm);"><code>192.168.1.10</code> or <code>sip.example.com</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>SIP Port</strong></td>
+          <td style="padding: var(--spacing-sm);">UDP port for SIP signaling</td>
+          <td style="padding: var(--spacing-sm);"><code>5060</code> (default)</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>Username</strong></td>
+          <td style="padding: var(--spacing-sm);">SIP account username/extension</td>
+          <td style="padding: var(--spacing-sm);"><code>doorstation</code> or <code>1001</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>Password</strong></td>
+          <td style="padding: var(--spacing-sm);">SIP account password</td>
+          <td style="padding: var(--spacing-sm);"><code>********</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>Target 1</strong></td>
+          <td style="padding: var(--spacing-sm);">SIP URI to call for Button 1</td>
+          <td style="padding: var(--spacing-sm);"><code>sip:1002@192.168.1.10</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><strong>Target 2</strong></td>
+          <td style="padding: var(--spacing-sm);">SIP URI to call for Button 2</td>
+          <td style="padding: var(--spacing-sm);"><code>sip:1003@192.168.1.10</code></td>
+        </tr>
+      </tbody>
+    </table>
+    
+    <h4>Authentication</h4>
+    <p>The device supports standard SIP digest authentication:</p>
+    <ul>
+      <li>Username and password are sent securely using MD5 digest</li>
+      <li>Credentials are stored in non-volatile storage (NVS)</li>
+      <li>Re-registration occurs automatically every 3600 seconds</li>
+      <li>Authentication failures are logged in the System Logs</li>
+    </ul>
+    
+    <h4>Troubleshooting SIP Issues</h4>
+    
+    <h5>Registration Failed</h5>
+    <ul>
+      <li>Verify server address and port are correct</li>
+      <li>Check username and password</li>
+      <li>Ensure firewall allows UDP port 5060</li>
+      <li>Check System Logs for detailed error messages</li>
+      <li>Verify network connectivity in Network section</li>
+    </ul>
+    
+    <h5>Calls Not Connecting</h5>
+    <ul>
+      <li>Verify Target SIP URIs are correct</li>
+      <li>Check that target devices are registered</li>
+      <li>Test with "Test Call" buttons first</li>
+      <li>Ensure RTP ports (10000-20000) are not blocked</li>
+      <li>Check audio codec compatibility (G.711 μ-law/a-law)</li>
+    </ul>
+    
+    <h5>Audio Issues</h5>
+    <ul>
+      <li>Verify microphone and speaker are properly connected</li>
+      <li>Test hardware in Hardware Testing section</li>
+      <li>Check I2S configuration matches your hardware</li>
+      <li>Ensure adequate power supply (2A minimum)</li>
+      <li>Try adjusting audio levels on the SIP server</li>
+    </ul>
+    
+    <h5>Frequent Disconnections</h5>
+    <ul>
+      <li>Check WiFi signal strength in Network section</li>
+      <li>Verify router is not blocking SIP traffic</li>
+      <li>Increase registration expiry time on server</li>
+      <li>Check for IP address conflicts</li>
+      <li>Consider using static IP instead of DHCP</li>
+    </ul>
+    
+  </div>
+</div>
+
+<!-- DTMF Commands (Task 15.5) -->
+<div class="config-form docs-section" id="docs-dtmf">
+  <div class="docs-section-header" onclick="toggleDocsSection('dtmf')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>DTMF Commands</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-dtmf-content">
+    
+    <p>During an active call, you can send DTMF tones from your phone to control the door station:</p>
+    
+    <h4>Control Commands</h4>
+    <table style="width: 100%; border-collapse: collapse; margin: var(--spacing-md) 0;">
+      <thead>
+        <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+          <th style="padding: var(--spacing-sm); text-align: left;">DTMF Code</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Function</th>
+          <th style="padding: var(--spacing-sm); text-align: left;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>1</code></td>
+          <td style="padding: var(--spacing-sm);">Open Door</td>
+          <td style="padding: var(--spacing-sm);">Activates door opener relay for 3 seconds (requires PIN if enabled)</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>2</code></td>
+          <td style="padding: var(--spacing-sm);">Toggle Light</td>
+          <td style="padding: var(--spacing-sm);">Toggles light relay on/off</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>9</code></td>
+          <td style="padding: var(--spacing-sm);">Hang Up</td>
+          <td style="padding: var(--spacing-sm);">Ends the current call</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>*</code></td>
+          <td style="padding: var(--spacing-sm);">Status Announcement</td>
+          <td style="padding: var(--spacing-sm);">Plays audio feedback with current status</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--color-border-light);">
+          <td style="padding: var(--spacing-sm);"><code>#</code></td>
+          <td style="padding: var(--spacing-sm);">Reserved</td>
+          <td style="padding: var(--spacing-sm);">Reserved for future use</td>
+        </tr>
+      </tbody>
+    </table>
+    
+    <h4>PIN Protection</h4>
+    <p>When PIN protection is enabled in the Security section:</p>
+    <ol>
+      <li>Press <code>1</code> to initiate door opener</li>
+      <li>You will hear a tone prompting for PIN</li>
+      <li>Enter your 4-8 digit PIN code</li>
+      <li>Press <code>#</code> to confirm</li>
+      <li>Door will open if PIN is correct</li>
+      <li>After 3 failed attempts, the system locks for 60 seconds</li>
+    </ol>
+    
+    <h4>Example Usage</h4>
+    <pre style="background-color: var(--color-bg); padding: var(--spacing-md); border-radius: var(--border-radius-sm); overflow-x: auto; font-size: var(--font-size-sm);">
+Scenario 1: Open door without PIN
+  1. Doorbell rings, you answer the call
+  2. Press '1' on your phone keypad
+  3. Door opens immediately
+
+Scenario 2: Open door with PIN (PIN: 1234)
+  1. Doorbell rings, you answer the call
+  2. Press '1' on your phone keypad
+  3. Hear tone prompting for PIN
+  4. Press '1', '2', '3', '4', '#'
+  5. Door opens if PIN is correct
+
+Scenario 3: Toggle light
+  1. During active call
+  2. Press '2' on your phone keypad
+  3. Light toggles on/off
+    </pre>
+    
+    <h4>Audio Feedback</h4>
+    <p>The system provides audio feedback for DTMF commands:</p>
+    <ul>
+      <li><strong>Success:</strong> Two short beeps</li>
+      <li><strong>Error:</strong> One long beep</li>
+      <li><strong>PIN Required:</strong> Three short beeps</li>
+      <li><strong>Access Denied:</strong> One long low-pitched beep</li>
+    </ul>
+    
+  </div>
+</div>
+
+<!-- Network Configuration Guide (Task 15.6) -->
+<div class="config-form docs-section" id="docs-network">
+  <div class="docs-section-header" onclick="toggleDocsSection('network')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>Network Configuration Guide</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-network-content">
+    
+    <h4>WiFi Setup</h4>
+    
+    <h5>Access Point Mode (Default)</h5>
+    <p>On first boot or when WiFi credentials are not configured:</p>
+    <ul>
+      <li><strong>SSID:</strong> ESP32-DoorStation-XXXX (XXXX = last 4 digits of MAC)</li>
+      <li><strong>Password:</strong> doorstation</li>
+      <li><strong>IP Address:</strong> 192.168.4.1</li>
+      <li><strong>DHCP Range:</strong> 192.168.4.2 - 192.168.4.20</li>
+    </ul>
+    
+    <h5>Station Mode (Normal Operation)</h5>
+    <p>After configuring WiFi credentials:</p>
+    <ul>
+      <li>Device connects to your WiFi network</li>
+      <li>Obtains IP via DHCP (default) or uses static IP</li>
+      <li>Access point is disabled</li>
+      <li>mDNS hostname: <code>doorstation.local</code></li>
+    </ul>
+    
+    <h4>Static IP Configuration</h4>
+    <p>To configure a static IP address:</p>
+    <ol>
+      <li>Navigate to Network section</li>
+      <li>Enable "Use Static IP"</li>
+      <li>Enter IP Address (e.g., 192.168.1.100)</li>
+      <li>Enter Subnet Mask (e.g., 255.255.255.0)</li>
+      <li>Enter Gateway (e.g., 192.168.1.1)</li>
+      <li>Enter DNS Server (e.g., 192.168.1.1 or 8.8.8.8)</li>
+      <li>Click "Save Configuration"</li>
+      <li>Device will reconnect with new settings</li>
+    </ol>
+    
+    <h4>NTP Time Synchronization</h4>
+    <p>The device uses NTP to synchronize time for logs and timestamps:</p>
+    <ul>
+      <li><strong>Default NTP Server:</strong> pool.ntp.org</li>
+      <li><strong>Timezone:</strong> Configurable (default: UTC)</li>
+      <li><strong>Sync Interval:</strong> Every hour</li>
+      <li><strong>Fallback:</strong> Uses last known time if NTP fails</li>
+    </ul>
+    
+    <p>To configure NTP:</p>
+    <ol>
+      <li>Navigate to Network section</li>
+      <li>Enter NTP Server address (or use default)</li>
+      <li>Select your timezone from dropdown</li>
+      <li>Click "Save Configuration"</li>
+      <li>Time will sync automatically</li>
+    </ol>
+    
+    <h4>Network Troubleshooting</h4>
+    
+    <h5>Cannot Connect to WiFi</h5>
+    <ul>
+      <li>Verify SSID and password are correct</li>
+      <li>Check WiFi signal strength (use Scan Networks)</li>
+      <li>Ensure router is on 2.4 GHz (ESP32 doesn't support 5 GHz)</li>
+      <li>Check router MAC filtering settings</li>
+      <li>Try rebooting the router</li>
+      <li>Reset WiFi settings and reconfigure</li>
+    </ul>
+    
+    <h5>Frequent Disconnections</h5>
+    <ul>
+      <li>Check WiFi signal strength (should be > -70 dBm)</li>
+      <li>Move device closer to router or add WiFi extender</li>
+      <li>Check for interference from other 2.4 GHz devices</li>
+      <li>Update router firmware</li>
+      <li>Try changing WiFi channel on router</li>
+      <li>Use static IP instead of DHCP</li>
+    </ul>
+    
+    <h5>Cannot Access Web Interface</h5>
+    <ul>
+      <li>Verify device is connected (check status LED)</li>
+      <li>Check IP address in router's DHCP client list</li>
+      <li>Try accessing via mDNS: <code>http://doorstation.local</code></li>
+      <li>Ensure your device is on the same network</li>
+      <li>Check firewall settings</li>
+      <li>Try different browser or clear cache</li>
+    </ul>
+    
+  </div>
+</div>
+
+<!-- API Reference (Task 15.7) -->
+<div class="config-form docs-section" id="docs-api">
+  <div class="docs-section-header" onclick="toggleDocsSection('api')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>API Reference</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-api-content">
+    
+    <p>The ESP32 SIP Door Station provides a REST API for programmatic control and monitoring.</p>
+    
+    <h4>Base URL</h4>
+    <pre style="background-color: var(--color-bg); padding: var(--spacing-md); border-radius: var(--border-radius-sm); overflow-x: auto; font-size: var(--font-size-sm);">http://&lt;device-ip&gt;/api</pre>
+    
+    <h4>System Status</h4>
+    <div class="api-endpoint">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-info); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">GET</span>
+        <code style="flex: 1;">/api/system/status</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Get current system status including WiFi, SIP, and hardware states.</p>
+      <p><strong>Response:</strong></p>
+      <pre style="background-color: var(--color-bg); padding: var(--spacing-md); border-radius: var(--border-radius-sm); overflow-x: auto; font-size: var(--font-size-sm);">{
+  "wifi": {
+    "connected": true,
+    "ssid": "MyNetwork",
+    "ip": "192.168.1.100",
+    "rssi": -45
+  },
+  "sip": {
+    "registered": true,
+    "server": "192.168.1.10"
+  },
+  "hardware": {
+    "doorRelay": "off",
+    "lightRelay": "off"
+  },
+  "uptime": 3600,
+  "freeHeap": 180000
+}</pre>
+    </div>
+
+    <h4>SIP Control</h4>
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/sip/connect</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Connect and register to SIP server.</p>
+      <p><strong>Response:</strong> <code>{"success": true, "message": "Connecting to SIP server"}</code></p>
+    </div>
+    
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/sip/disconnect</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Disconnect from SIP server.</p>
+      <p><strong>Response:</strong> <code>{"success": true, "message": "Disconnecting from SIP server"}</code></p>
+    </div>
+    
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/sip/call</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Initiate a call to specified target.</p>
+      <p><strong>Request Body:</strong></p>
+      <pre style="background-color: var(--color-bg); padding: var(--spacing-md); border-radius: var(--border-radius-sm); overflow-x: auto; font-size: var(--font-size-sm);">{"target": "sip:1002@192.168.1.10"}</pre>
+      <p><strong>Response:</strong> <code>{"success": true, "message": "Call initiated"}</code></p>
+    </div>
+
+    <h4>Hardware Control</h4>
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/hardware/door/open</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Activate door opener relay for 3 seconds.</p>
+      <p><strong>Response:</strong> <code>{"success": true, "message": "Door opener activated"}</code></p>
+    </div>
+    
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/hardware/light/toggle</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Toggle light relay on/off.</p>
+      <p><strong>Response:</strong> <code>{"success": true, "state": "on"}</code></p>
+    </div>
+    
+    <h4>Configuration</h4>
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-info); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">GET</span>
+        <code style="flex: 1;">/api/config/sip</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Get current SIP configuration (password excluded).</p>
+    </div>
+    
+    <div class="api-endpoint" style="margin-top: var(--spacing-md);">
+      <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+        <span class="api-method" style="background-color: var(--color-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">POST</span>
+        <code style="flex: 1;">/api/config/sip</code>
+        <button class="btn btn-sm" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Copy</button>
+      </div>
+      <p><strong>Description:</strong> Update SIP configuration.</p>
+      <p><strong>Request Body:</strong> JSON object with SIP settings</p>
+    </div>
+    
+  </div>
+</div>
+
+<!-- Troubleshooting Guide (Task 15.8) -->
+<div class="config-form docs-section" id="docs-troubleshooting">
+  <div class="docs-section-header" onclick="toggleDocsSection('troubleshooting')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>Troubleshooting Guide</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-troubleshooting-content">
+    
+    <h4>Device Won't Power On</h4>
+    <p><strong>Symptoms:</strong> No lights, no response</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Check power supply is connected and working (5V, minimum 2A)</li>
+      <li>Try different USB cable (some cables are charge-only)</li>
+      <li>Check for short circuits in wiring</li>
+      <li>Verify ESP32 is properly seated (if using development board)</li>
+      <li>Try powering via USB-C directly without external connections</li>
+    </ul>
+    
+    <h4>Cannot Access Web Interface</h4>
+    <p><strong>Symptoms:</strong> Browser shows "Cannot connect" or timeout</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Verify device is powered on (check LED indicators)</li>
+      <li>Check you're connected to correct WiFi network</li>
+      <li>Try accessing via IP address instead of hostname</li>
+      <li>Clear browser cache and cookies</li>
+      <li>Try different browser (Chrome, Firefox, Safari)</li>
+      <li>Check firewall isn't blocking connection</li>
+      <li>Reset device and reconfigure WiFi</li>
+    </ul>
+
+    <h4>SIP Registration Fails</h4>
+    <p><strong>Symptoms:</strong> Status shows "Disconnected" or "Error"</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Verify SIP server address and port are correct</li>
+      <li>Check username and password (case-sensitive)</li>
+      <li>Ensure SIP account is active on server</li>
+      <li>Check System Logs for specific error messages</li>
+      <li>Verify network connectivity (ping SIP server)</li>
+      <li>Check firewall allows UDP port 5060</li>
+      <li>Try registering from another SIP client to verify credentials</li>
+    </ul>
+    
+    <h4>No Audio During Calls</h4>
+    <p><strong>Symptoms:</strong> Call connects but no sound</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Verify microphone and speaker are properly connected</li>
+      <li>Check I2S pin configuration matches your hardware</li>
+      <li>Test hardware in Hardware Testing section</li>
+      <li>Ensure adequate power supply (audio requires more current)</li>
+      <li>Check audio codec settings on SIP server (use G.711)</li>
+      <li>Verify RTP ports (10000-20000) are not blocked</li>
+      <li>Try adjusting volume levels on SIP server</li>
+    </ul>
+    
+    <h4>Doorbell Button Not Working</h4>
+    <p><strong>Symptoms:</strong> Pressing button doesn't initiate call</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Check button wiring (should connect GPIO to GND)</li>
+      <li>Verify correct GPIO pins are configured</li>
+      <li>Test button with multimeter (should show continuity when pressed)</li>
+      <li>Check System Logs for button press events</li>
+      <li>Use Hardware Testing section to simulate button press</li>
+      <li>Ensure SIP is registered before pressing button</li>
+      <li>Check debounce settings if button triggers multiple times</li>
+    </ul>
+
+    <h4>Door Relay Not Activating</h4>
+    <p><strong>Symptoms:</strong> DTMF command sent but door doesn't open</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Check relay wiring and power supply</li>
+      <li>Verify GPIO pin configuration</li>
+      <li>Test relay in Hardware Testing section</li>
+      <li>Check if PIN protection is enabled (enter correct PIN)</li>
+      <li>Verify relay is rated for your door opener voltage/current</li>
+      <li>Use optocoupler for isolation (recommended)</li>
+      <li>Check System Logs for relay activation events</li>
+    </ul>
+    
+    <h4>Frequent WiFi Disconnections</h4>
+    <p><strong>Symptoms:</strong> Device keeps losing WiFi connection</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Check WiFi signal strength (should be > -70 dBm)</li>
+      <li>Move device closer to router or add WiFi extender</li>
+      <li>Check for interference from other 2.4 GHz devices</li>
+      <li>Update router firmware</li>
+      <li>Try different WiFi channel on router</li>
+      <li>Use static IP instead of DHCP</li>
+      <li>Check power supply is adequate (weak power causes WiFi issues)</li>
+    </ul>
+    
+    <h4>Device Keeps Rebooting</h4>
+    <p><strong>Symptoms:</strong> Device restarts randomly</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Check power supply (must provide stable 5V, 2A minimum)</li>
+      <li>Look for short circuits in wiring</li>
+      <li>Check System Logs for crash information</li>
+      <li>Disconnect all external hardware and test</li>
+      <li>Update to latest firmware</li>
+      <li>Check for overheating (ensure adequate ventilation)</li>
+      <li>Factory reset and reconfigure</li>
+    </ul>
+    
+  </div>
+</div>
+
+<!-- FAQ Section (Task 15.9) -->
+<div class="config-form docs-section" id="docs-faq">
+  <div class="docs-section-header" onclick="toggleDocsSection('faq')">
+    <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
+      <span class="docs-toggle-icon">▼</span>
+      <span>Frequently Asked Questions</span>
+    </h3>
+  </div>
+  <div class="docs-section-content" id="docs-faq-content">
+    
+    <h4>General Questions</h4>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: What SIP servers are compatible?</strong></p>
+      <p>A: The device supports standard SIP/2.0 protocol and works with most SIP servers including Asterisk, FreePBX, 3CX, FritzBox, and cloud providers like VoIP.ms and Twilio.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Can I use this with my existing door intercom system?</strong></p>
+      <p>A: Yes, the relay outputs can control most electric door openers. Ensure proper voltage isolation using optocouplers.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Does it support video?</strong></p>
+      <p>A: No, this is an audio-only door station. Video support would require additional hardware and is not currently implemented.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: What audio codecs are supported?</strong></p>
+      <p>A: The device supports G.711 μ-law and a-law codecs, which are standard for VoIP and provide good quality for voice communication.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Can I access the device remotely over the internet?</strong></p>
+      <p>A: Yes, but you'll need to configure port forwarding on your router and implement proper security measures. Consider using a VPN for secure remote access.</p>
+    </div>
+
+    <h4>Technical Questions</h4>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Why doesn't it support 5 GHz WiFi?</strong></p>
+      <p>A: The ESP32-S3 chip only supports 2.4 GHz WiFi (802.11 b/g/n). This is sufficient for VoIP and provides better range through walls.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: How much power does it consume?</strong></p>
+      <p>A: Typical consumption is 200-500mA at 5V (1-2.5W) depending on WiFi activity and audio usage. Peak consumption during calls can reach 800mA.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Can I customize the GPIO pins?</strong></p>
+      <p>A: Yes, GPIO assignments can be modified in the Hardware Settings section. Ensure you don't use pins reserved for flash or USB.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: What's the maximum WiFi range?</strong></p>
+      <p>A: Typical indoor range is 30-50 meters depending on obstacles. For better range, use a WiFi extender or mesh network.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: How do I update the firmware?</strong></p>
+      <p>A: Use the OTA Update section to upload new firmware. You can also update via USB using ESP-IDF tools or Arduino IDE.</p>
+    </div>
+    
+    <h4>Security Questions</h4>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Is the web interface password protected?</strong></p>
+      <p>A: Currently no, but you can enable PIN protection for door opener control. Future versions may add web authentication.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Are SIP credentials stored securely?</strong></p>
+      <p>A: Yes, credentials are stored in ESP32's encrypted NVS (Non-Volatile Storage) and are not exposed via the API.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Can someone hack the door opener?</strong></p>
+      <p>A: Enable PIN protection in Security settings to require a code before opening the door. Keep firmware updated and use strong SIP passwords.</p>
+    </div>
+    
+    <h4>Troubleshooting Questions</h4>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: Why can't I hear the caller?</strong></p>
+      <p>A: Check microphone connections, verify I2S configuration, ensure adequate power supply, and check audio codec settings on your SIP server.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: The device keeps disconnecting from WiFi, what should I do?</strong></p>
+      <p>A: Check signal strength, move closer to router, use static IP, ensure adequate power supply, and check for 2.4 GHz interference.</p>
+    </div>
+    
+    <div class="faq-item" style="margin-bottom: var(--spacing-lg);">
+      <p><strong>Q: How do I reset to factory defaults?</strong></p>
+      <p>A: Navigate to System section and click "Factory Reset". This will erase all settings and restart the device in AP mode.</p>
+    </div>
+    
+  </div>
+</div>

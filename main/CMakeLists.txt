@@ -9,6 +9,7 @@ idf_component_register(
         "web_server.c"
         "ntp_sync.c"
         "rtp_handler.c"
+        "hardware_test.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -23,3 +24,4 @@ idf_component_register(
 )
 
 target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "documentation.html" TEXT)
