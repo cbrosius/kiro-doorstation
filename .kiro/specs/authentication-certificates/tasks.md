@@ -194,7 +194,15 @@
   - Invalidate all sessions after password change
   - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6_
 
-- [ ] 16. Create certificate management API endpoints
+- [x] 16. Create certificate management API endpoints
+
+
+
+
+
+
+
+
   - Add `GET /api/cert/info` endpoint to retrieve certificate details
   - Add `POST /api/cert/upload` endpoint for custom certificate upload
   - Add `POST /api/cert/generate` endpoint for self-signed generation

@@ -1636,6 +1636,336 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// Certificate Management API Handlers
+static esp_err_t get_cert_info_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    // Check if certificate exists
+    if (!cert_exists()) {
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_send(req, "{\"error\":\"No certificate found\"}", -1);
+        return ESP_OK;
+    }
+    
+    // Get certificate information
+    cert_info_t info;
+    esp_err_t err = cert_get_info(&info);
+    
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_send(req, "{\"error\":\"Failed to retrieve certificate information\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Build JSON response
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "exists", true);
+    cJSON_AddBoolToObject(root, "is_self_signed", info.is_self_signed);
+    cJSON_AddStringToObject(root, "common_name", info.common_name);
+    cJSON_AddStringToObject(root, "issuer", info.issuer);
+    cJSON_AddStringToObject(root, "not_before", info.not_before);
+    cJSON_AddStringToObject(root, "not_after", info.not_after);
+    cJSON_AddNumberToObject(root, "days_until_expiry", info.days_until_expiry);
+    cJSON_AddBoolToObject(root, "is_expired", info.is_expired);
+    cJSON_AddBoolToObject(root, "is_expiring_soon", info.is_expiring_soon);
+    
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    
+    return ESP_OK;
+}
+
+static esp_err_t post_cert_upload_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    // Allocate buffer for request body
+    size_t content_len = req->content_len;
+    if (content_len > 16384) {  // 16KB max for certificate upload
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too large (max 16KB)");
+        return ESP_FAIL;
+    }
+    
+    char *buf = malloc(content_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
+    // Receive request body
+    int ret = httpd_req_recv(req, buf, content_len);
+    if (ret <= 0) {
+        free(buf);
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+    
+    // Parse JSON
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    
+    const cJSON *cert_pem = cJSON_GetObjectItem(root, "certificate");
+    const cJSON *key_pem = cJSON_GetObjectItem(root, "private_key");
+    const cJSON *chain_pem = cJSON_GetObjectItem(root, "chain");
+    
+    // Validate required fields
+    if (!cJSON_IsString(cert_pem) || (cert_pem->valuestring == NULL) ||
+        !cJSON_IsString(key_pem) || (key_pem->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing certificate or private_key\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Get chain if provided (optional)
+    const char* chain_str = NULL;
+    if (cJSON_IsString(chain_pem) && chain_pem->valuestring != NULL) {
+        chain_str = chain_pem->valuestring;
+    }
+    
+    // Upload certificate
+    esp_err_t err = cert_upload_custom(cert_pem->valuestring, key_pem->valuestring, chain_str);
+    
+    cJSON_Delete(root);
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    if (err == ESP_OK) {
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Certificate uploaded successfully. Server restart required for changes to take effect.");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGI(TAG, "Custom certificate uploaded successfully");
+    } else {
+        httpd_resp_set_status(req, "400 Bad Request");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        
+        // Provide specific error messages
+        if (err == ESP_ERR_INVALID_ARG) {
+            cJSON_AddStringToObject(response, "error", "Invalid certificate format or private key does not match certificate");
+        } else if (err == ESP_ERR_INVALID_SIZE) {
+            cJSON_AddStringToObject(response, "error", "Certificate or key too large");
+        } else {
+            cJSON_AddStringToObject(response, "error", "Failed to upload certificate");
+        }
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGW(TAG, "Certificate upload failed: %s", esp_err_to_name(err));
+    }
+    
+    return ESP_OK;
+}
+
+static esp_err_t post_cert_generate_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+    
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+    
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+    
+    // Parse JSON
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    
+    const cJSON *common_name = cJSON_GetObjectItem(root, "common_name");
+    const cJSON *validity_days = cJSON_GetObjectItem(root, "validity_days");
+    
+    // Use defaults if not provided
+    const char* cn = (cJSON_IsString(common_name) && common_name->valuestring) ? 
+                     common_name->valuestring : "doorstation.local";
+    uint32_t validity = (cJSON_IsNumber(validity_days)) ? 
+                        (uint32_t)validity_days->valueint : 3650;  // Default 10 years
+    
+    cJSON_Delete(root);
+    
+    // Validate validity period (1 day to 20 years)
+    if (validity < 1 || validity > 7300) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Validity days must be between 1 and 7300 (20 years)\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Generating self-signed certificate: CN=%s, validity=%d days", cn, validity);
+    
+    // Generate certificate (this may take a few seconds)
+    esp_err_t err = cert_generate_self_signed(cn, validity);
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    if (err == ESP_OK) {
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Self-signed certificate generated successfully. Server restart required for changes to take effect.");
+        cJSON_AddStringToObject(response, "common_name", cn);
+        cJSON_AddNumberToObject(response, "validity_days", validity);
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGI(TAG, "Self-signed certificate generated successfully");
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Failed to generate certificate");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGE(TAG, "Certificate generation failed: %s", esp_err_to_name(err));
+    }
+    
+    return ESP_OK;
+}
+
+static esp_err_t get_cert_download_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    // Check if certificate exists
+    if (!cert_exists()) {
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"No certificate found\"}", -1);
+        return ESP_OK;
+    }
+    
+    // Get certificate PEM
+    char* cert_pem = NULL;
+    size_t cert_size = 0;
+    esp_err_t err = cert_get_pem(&cert_pem, &cert_size);
+    
+    if (err != ESP_OK || !cert_pem) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Failed to retrieve certificate\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Set headers for file download
+    httpd_resp_set_type(req, "application/x-pem-file");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"certificate.pem\"");
+    
+    // Send certificate
+    httpd_resp_send(req, cert_pem, cert_size - 1);  // -1 to exclude null terminator
+    
+    free(cert_pem);
+    
+    ESP_LOGI(TAG, "Certificate downloaded");
+    
+    return ESP_OK;
+}
+
+static esp_err_t delete_cert_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    // Check if certificate exists
+    if (!cert_exists()) {
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"No certificate found\"}", -1);
+        return ESP_OK;
+    }
+    
+    // Delete certificate
+    esp_err_t err = cert_delete();
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    if (err == ESP_OK) {
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Certificate deleted successfully. A new certificate must be generated or uploaded before restarting the server.");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGI(TAG, "Certificate deleted successfully");
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Failed to delete certificate");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGE(TAG, "Certificate deletion failed: %s", esp_err_to_name(err));
+    }
+    
+    return ESP_OK;
+}
+
 // Authentication API Handlers
 static esp_err_t post_auth_login_handler(httpd_req_t *req)
 {
@@ -2124,6 +2454,42 @@ static const httpd_uri_t auth_change_password_uri = {
     .user_ctx = NULL
 };
 
+// Certificate Management API URI handlers
+static const httpd_uri_t cert_info_uri = {
+    .uri = "/api/cert/info",
+    .method = HTTP_GET,
+    .handler = get_cert_info_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_upload_uri = {
+    .uri = "/api/cert/upload",
+    .method = HTTP_POST,
+    .handler = post_cert_upload_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_generate_uri = {
+    .uri = "/api/cert/generate",
+    .method = HTTP_POST,
+    .handler = post_cert_generate_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_download_uri = {
+    .uri = "/api/cert/download",
+    .method = HTTP_GET,
+    .handler = get_cert_download_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_delete_uri = {
+    .uri = "/api/cert",
+    .method = HTTP_DELETE,
+    .handler = delete_cert_handler,
+    .user_ctx = NULL
+};
+
 // URI handlers
 static const httpd_uri_t root_uri = {
     .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
@@ -2392,6 +2758,13 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &auth_logout_uri);
         httpd_register_uri_handler(server, &auth_set_password_uri);
         httpd_register_uri_handler(server, &auth_change_password_uri);
+        
+        // Certificate Management API endpoints
+        httpd_register_uri_handler(server, &cert_info_uri);
+        httpd_register_uri_handler(server, &cert_upload_uri);
+        httpd_register_uri_handler(server, &cert_generate_uri);
+        httpd_register_uri_handler(server, &cert_download_uri);
+        httpd_register_uri_handler(server, &cert_delete_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);
