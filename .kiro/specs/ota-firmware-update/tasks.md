@@ -38,7 +38,12 @@
   - Implement error handling for validation failures
   - _Requirements: 3.1.4, 3.1.9_
 
-- [ ] 4. Implement rollback functionality
+- [x] 4. Implement rollback functionality
+
+
+
+
+
   - Implement `ota_rollback()` to revert to previous firmware
   - Implement `ota_mark_valid()` to prevent auto-rollback
   - Add logic to detect and enable rollback button when previous firmware exists
