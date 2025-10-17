@@ -125,7 +125,8 @@ static const httpd_uri_t wifi_config_post_uri;
 static const httpd_uri_t wifi_state_uri;
 static const httpd_uri_t wifi_scan_uri;
 static const httpd_uri_t wifi_connect_uri;
-static const httpd_uri_t network_ip_uri;
+static const httpd_uri_t network_ip_get_uri;
+static const httpd_uri_t network_ip_post_uri;
 static const httpd_uri_t email_config_get_uri;
 static const httpd_uri_t email_config_post_uri;
 static const httpd_uri_t ota_version_uri;
@@ -184,8 +185,9 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &wifi_scan_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &wifi_connect_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register Network API handlers (1 endpoint)
-    if (httpd_register_uri_handler(server, &network_ip_uri) == ESP_OK) registered_count++; else failed_count++;
+    // Register Network API handlers (2 endpoints)
+    if (httpd_register_uri_handler(server, &network_ip_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &network_ip_post_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register Email API handlers (2 endpoints)
     if (httpd_register_uri_handler(server, &email_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -874,6 +876,23 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
     cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_network_ip_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    // For now, static IP configuration is not implemented
+    // Just return success to prevent errors
+    ESP_LOGW(TAG, "Static IP configuration not yet implemented");
+    
+    httpd_resp_set_type(req, "application/json");
+    const char *response = "{\"status\":\"success\",\"message\":\"Static IP configuration will be implemented in a future update. Currently using DHCP.\"}";
+    httpd_resp_send(req, response, strlen(response));
     return ESP_OK;
 }
 
@@ -2676,8 +2695,12 @@ static const httpd_uri_t wifi_connect_uri = {
 };
 
 // Network API URI handlers
-static const httpd_uri_t network_ip_uri = {
+static const httpd_uri_t network_ip_get_uri = {
     .uri = "/api/network/ip", .method = HTTP_GET, .handler = get_network_ip_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t network_ip_post_uri = {
+    .uri = "/api/network/ip", .method = HTTP_POST, .handler = post_network_ip_handler, .user_ctx = NULL
 };
 
 // Email API URI handlers
