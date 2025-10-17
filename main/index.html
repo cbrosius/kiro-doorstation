@@ -1266,6 +1266,50 @@
         padding: 0;
       }
     }
+    
+    /* Hardware Testing State Indicators */
+    .state-item.state-active {
+      border-color: var(--color-status-connected) !important;
+      background-color: rgba(76, 175, 80, 0.05);
+    }
+    
+    .state-item.state-inactive {
+      border-color: var(--color-status-inactive) !important;
+    }
+    
+    .state-item.state-on {
+      border-color: var(--color-warning) !important;
+      background-color: rgba(255, 193, 7, 0.05);
+    }
+    
+    .state-item.state-off {
+      border-color: var(--color-status-inactive) !important;
+    }
+    
+    .state-item.state-pressed {
+      border-color: var(--color-primary) !important;
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+    
+    .state-value-active {
+      color: var(--color-status-connected) !important;
+    }
+    
+    .state-value-inactive {
+      color: var(--color-status-inactive) !important;
+    }
+    
+    .state-value-on {
+      color: var(--color-warning) !important;
+    }
+    
+    .state-value-off {
+      color: var(--color-status-inactive) !important;
+    }
+    
+    .state-value-pressed {
+      color: var(--color-primary) !important;
+    }
   </style>
 </head>
 <body>
@@ -6736,6 +6780,8 @@
      * Initialize hardware testing section
      */
     function initHardwareTesting() {
+      // Hardware testing initialization is handled by navigation
+      // Polling starts when section becomes active via navigateToSection
       console.log('Hardware Testing section initialized');
     }
     
