@@ -1998,13 +1998,33 @@
               <div
                 style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-md);">
                 <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Mode</div>
+                  <div id="current-mode" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
+                    Loading...</div>
+                </div>
+                <div>
                   <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">IP Address</div>
                   <div id="current-ip" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
                     Loading...</div>
                 </div>
                 <div>
-                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Mode</div>
-                  <div id="current-mode" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Subnet Mask</div>
+                  <div id="current-subnet" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
+                    Loading...</div>
+                </div>
+                <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Gateway</div>
+                  <div id="current-gateway" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
+                    Loading...</div>
+                </div>
+                <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">DNS 1</div>
+                  <div id="current-dns1" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
+                    Loading...</div>
+                </div>
+                <div>
+                  <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">DNS 2</div>
+                  <div id="current-dns2" style="font-weight: var(--font-weight-medium); color: var(--color-text);">
                     Loading...</div>
                 </div>
               </div>
@@ -6435,6 +6455,30 @@
       } else {
         // Show static IP fields
         staticFields.style.display = 'block';
+
+        // Prefill static fields with current DHCP values if fields are empty
+        const ipInput = document.getElementById('static-ip');
+        const subnetInput = document.getElementById('subnet-mask');
+        const gatewayInput = document.getElementById('gateway');
+        const dns1Input = document.getElementById('dns1');
+        const dns2Input = document.getElementById('dns2');
+
+        if (ipInput && !ipInput.value && currentDHCPValues.ip) {
+          ipInput.value = currentDHCPValues.ip;
+        }
+        if (subnetInput && !subnetInput.value && currentDHCPValues.subnet) {
+          subnetInput.value = currentDHCPValues.subnet;
+        }
+        if (gatewayInput && !gatewayInput.value && currentDHCPValues.gateway) {
+          gatewayInput.value = currentDHCPValues.gateway;
+        }
+        if (dns1Input && !dns1Input.value && currentDHCPValues.dns1) {
+          dns1Input.value = currentDHCPValues.dns1;
+        }
+        if (dns2Input && !dns2Input.value && currentDHCPValues.dns2) {
+          dns2Input.value = currentDHCPValues.dns2;
+        }
+
         // Add required attribute to static IP inputs (except dns2)
         staticInputs.forEach(input => {
           if (input.id !== 'dns2') {
@@ -6457,16 +6501,40 @@
       try {
         const response = await apiRequest('/api/network/ip');
 
-        // Update current IP display
+        // Store DHCP values for later use when switching to static
+        currentDHCPValues = {
+          ip: response.ip || '',
+          subnet: response.subnet || '',
+          gateway: response.gateway || '',
+          dns1: response.dns1 || '',
+          dns2: response.dns2 || ''
+        };
+
+        // Update current IP display - all fields
         const currentIPElement = document.getElementById('current-ip');
         const currentModeElement = document.getElementById('current-mode');
-
-        if (currentIPElement && response.ip) {
-          currentIPElement.textContent = response.ip;
-        }
+        const currentSubnetElement = document.getElementById('current-subnet');
+        const currentGatewayElement = document.getElementById('current-gateway');
+        const currentDns1Element = document.getElementById('current-dns1');
+        const currentDns2Element = document.getElementById('current-dns2');
 
         if (currentModeElement && response.mode) {
           currentModeElement.textContent = response.mode.toUpperCase();
+        }
+        if (currentIPElement) {
+          currentIPElement.textContent = response.ip || 'Not connected';
+        }
+        if (currentSubnetElement) {
+          currentSubnetElement.textContent = response.subnet || 'N/A';
+        }
+        if (currentGatewayElement) {
+          currentGatewayElement.textContent = response.gateway || 'N/A';
+        }
+        if (currentDns1Element) {
+          currentDns1Element.textContent = response.dns1 || 'N/A';
+        }
+        if (currentDns2Element) {
+          currentDns2Element.textContent = response.dns2 || 'N/A';
         }
 
         // Set mode radio buttons
@@ -6506,12 +6574,22 @@
       } catch (error) {
         console.error('Error loading IP configuration:', error);
         // Set error state
-        const currentIPElement = document.getElementById('current-ip');
-        const currentModeElement = document.getElementById('current-mode');
-        if (currentIPElement) currentIPElement.textContent = 'Error';
-        if (currentModeElement) currentModeElement.textContent = 'Error';
+        const elements = ['current-mode', 'current-ip', 'current-subnet', 'current-gateway', 'current-dns1', 'current-dns2'];
+        elements.forEach(id => {
+          const element = document.getElementById(id);
+          if (element) element.textContent = 'Error';
+        });
       }
     }
+
+    // Store current DHCP values for prefilling static fields
+    let currentDHCPValues = {
+      ip: '',
+      subnet: '',
+      gateway: '',
+      dns1: '',
+      dns2: ''
+    };
 
     // ===== Task 8.3: NTP Configuration =====
 
