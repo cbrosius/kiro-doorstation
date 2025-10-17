@@ -999,6 +999,76 @@
       background: var(--color-text-secondary);
     }
     
+    /* ===== Documentation Styles (Task 15) ===== */
+    
+    .docs-section {
+      margin-bottom: var(--spacing-md);
+    }
+    
+    .docs-section-header {
+      cursor: pointer;
+      user-select: none;
+      transition: background-color var(--transition-fast);
+      padding: var(--spacing-sm);
+      margin: calc(var(--spacing-md) * -1);
+      margin-bottom: var(--spacing-md);
+      border-radius: var(--border-radius);
+    }
+    
+    .docs-section-header:hover {
+      background-color: var(--color-hover);
+    }
+    
+    .docs-toggle-icon {
+      display: inline-block;
+      transition: transform var(--transition-base);
+      font-size: var(--font-size-sm);
+    }
+    
+    .docs-section.collapsed .docs-toggle-icon {
+      transform: rotate(-90deg);
+    }
+    
+    .docs-section-content {
+      max-height: 5000px;
+      overflow: hidden;
+      transition: max-height var(--transition-slow), opacity var(--transition-slow);
+      opacity: 1;
+    }
+    
+    .docs-section.collapsed .docs-section-content {
+      max-height: 0;
+      opacity: 0;
+    }
+    
+    .docs-toc-link {
+      display: block;
+      padding: var(--spacing-sm) var(--spacing-md);
+      color: var(--color-text);
+      text-decoration: none;
+      border-radius: var(--border-radius-sm);
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+    }
+    
+    .docs-toc-link:hover {
+      background-color: var(--color-hover);
+      color: var(--color-primary);
+    }
+    
+    .docs-search-highlight {
+      background-color: var(--color-warning);
+      color: var(--color-text);
+      padding: 2px 4px;
+      border-radius: var(--border-radius-sm);
+    }
+    
+    .api-endpoint {
+      padding: var(--spacing-md);
+      background-color: var(--color-bg);
+      border-radius: var(--border-radius-sm);
+      border-left: 4px solid var(--color-primary);
+    }
+    
     /* ===== Responsive Design (Task 2.4) ===== */
     
     /* Mobile: < 768px */
@@ -2907,10 +2977,16 @@
       
     </section>
 
-    <!-- Documentation Section -->
+    <!-- Documentation Section (Task 15) -->
     <section class="content-section" id="section-docs" hidden>
       <h2 tabindex="-1">Documentation</h2>
-      <p>Documentation will be implemented here.</p>
+      
+      <!-- Documentation content will be loaded here -->
+      <div id="documentation-container">
+        <p style="text-align: center; padding: var(--spacing-xl); color: var(--color-text-secondary);">
+          Loading documentation...
+        </p>
+      </div>
     </section>
 
   </main>
@@ -2993,6 +3069,11 @@
       } else if (sectionId === 'ota') {
         // Load OTA firmware information (Task 14.1)
         loadOTAFirmwareInfo();
+      } else if (sectionId === 'docs') {
+        // Ensure documentation is loaded (Task 15)
+        if (!document.getElementById('documentation-container').querySelector('.docs-section')) {
+          loadDocumentation();
+        }
       }
     }
     
@@ -7472,6 +7553,227 @@
       console.log('OTA Update section initialized');
     }
     
+    // ===== Task 15: Documentation Section =====
+    
+    /**
+     * Task 15.1: Load documentation content from external file
+     */
+    async function loadDocumentation() {
+      try {
+        const response = await fetch('documentation.html');
+        if (response.ok) {
+          const html = await response.text();
+          document.getElementById('documentation-container').innerHTML = html;
+          
+          // Load firmware version info (Task 15.11)
+          loadDocsFirmwareInfo();
+          
+          console.log('Documentation loaded successfully');
+        } else {
+          document.getElementById('documentation-container').innerHTML = 
+            '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Failed to load documentation.</p>';
+        }
+      } catch (error) {
+        console.error('Error loading documentation:', error);
+        document.getElementById('documentation-container').innerHTML = 
+          '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Error loading documentation.</p>';
+      }
+    }
+    
+    /**
+     * Task 15.1: Toggle documentation section collapse/expand
+     */
+    function toggleDocsSection(sectionId) {
+      const section = document.getElementById(`docs-${sectionId}`);
+      if (section) {
+        section.classList.toggle('collapsed');
+      }
+    }
+    
+    /**
+     * Task 15.1: Scroll to specific documentation section
+     */
+    function scrollToDocsSection(sectionId) {
+      const section = document.getElementById(`docs-${sectionId}`);
+      if (section) {
+        // Expand section if collapsed
+        section.classList.remove('collapsed');
+        
+        // Scroll to section
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        // Highlight section briefly
+        section.style.backgroundColor = 'var(--color-hover)';
+        setTimeout(() => {
+          section.style.backgroundColor = '';
+        }, 1000);
+      }
+    }
+    
+    /**
+     * Task 15.10: Search documentation content
+     */
+    function searchDocumentation(query) {
+      if (!query || query.length < 2) {
+        // Clear highlights
+        clearDocumentationHighlights();
+        return;
+      }
+      
+      // Clear previous highlights
+      clearDocumentationHighlights();
+      
+      const container = document.getElementById('documentation-container');
+      const searchQuery = query.toLowerCase();
+      let matchCount = 0;
+      
+      // Search through all text nodes
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+      
+      const nodesToHighlight = [];
+      let node;
+      
+      while (node = walker.nextNode()) {
+        const text = node.textContent.toLowerCase();
+        if (text.includes(searchQuery)) {
+          nodesToHighlight.push(node);
+        }
+      }
+      
+      // Highlight matches
+      nodesToHighlight.forEach(node => {
+        const parent = node.parentNode;
+        if (parent && parent.nodeName !== 'SCRIPT' && parent.nodeName !== 'STYLE') {
+          const text = node.textContent;
+          const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+          const highlightedHTML = text.replace(regex, '<span class="docs-search-highlight">$1</span>');
+          
+          const span = document.createElement('span');
+          span.innerHTML = highlightedHTML;
+          parent.replaceChild(span, node);
+          matchCount++;
+        }
+      });
+      
+      // Expand all sections if matches found
+      if (matchCount > 0) {
+        document.querySelectorAll('.docs-section').forEach(section => {
+          section.classList.remove('collapsed');
+        });
+      }
+    }
+    
+    /**
+     * Task 15.10: Clear documentation search highlights
+     */
+    function clearDocumentationHighlights() {
+      const highlights = document.querySelectorAll('.docs-search-highlight');
+      highlights.forEach(highlight => {
+        const parent = highlight.parentNode;
+        parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+        parent.normalize();
+      });
+    }
+    
+    /**
+     * Helper: Escape regex special characters
+     */
+    function escapeRegex(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    /**
+     * Task 15.11: Load firmware version info for documentation
+     */
+    async function loadDocsFirmwareInfo() {
+      try {
+        const response = await fetch('/api/system/info');
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('docs-firmware-version').textContent = data.version || 'v1.0.0';
+          document.getElementById('docs-build-date').textContent = data.buildDate || new Date().toLocaleDateString();
+        }
+      } catch (error) {
+        console.error('Error loading firmware info for docs:', error);
+        document.getElementById('docs-firmware-version').textContent = 'v1.0.0';
+        document.getElementById('docs-build-date').textContent = new Date().toLocaleDateString();
+      }
+    }
+    
+    /**
+     * Task 15.11: Report issue with pre-filled template
+     */
+    function reportIssue() {
+      // Get system information
+      const firmwareVersion = document.getElementById('docs-firmware-version')?.textContent || 'Unknown';
+      const buildDate = document.getElementById('docs-build-date')?.textContent || 'Unknown';
+      
+      // Create issue template
+      const issueTemplate = encodeURIComponent(
+        `**Describe the issue:**\n\n` +
+        `\n\n` +
+        `**Steps to reproduce:**\n` +
+        `1. \n` +
+        `2. \n` +
+        `3. \n\n` +
+        `**Expected behavior:**\n\n` +
+        `\n\n` +
+        `**System Information:**\n` +
+        `- Firmware Version: ${firmwareVersion}\n` +
+        `- Build Date: ${buildDate}\n` +
+        `- Browser: ${navigator.userAgent}\n`
+      );
+      
+      // Open GitHub issues page with template
+      const githubIssueUrl = `https://github.com/yourusername/esp32-sip-doorstation/issues/new?body=${issueTemplate}`;
+      window.open(githubIssueUrl, '_blank');
+    }
+    
+    /**
+     * Task 15.7: Copy text to clipboard
+     */
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('Copied to clipboard', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showToast('Failed to copy to clipboard', 'error');
+        });
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showToast('Copied to clipboard', 'success');
+        } catch (err) {
+          console.error('Failed to copy:', err);
+          showToast('Failed to copy to clipboard', 'error');
+        }
+        document.body.removeChild(textArea);
+      }
+    }
+    
+    /**
+     * Initialize Documentation section
+     */
+    function initDocumentation() {
+      // Load documentation content
+      loadDocumentation();
+      
+      console.log('Documentation section initialized');
+    }
+    
     // ===== Initialization =====
     
     /**
@@ -7513,6 +7815,9 @@
       
       // Initialize OTA Update section
       initOTASection();
+      
+      // Initialize Documentation section
+      initDocumentation();
       
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
