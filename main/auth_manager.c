@@ -188,6 +188,7 @@ static void add_audit_log(const char* username, const char* ip_address, const ch
 
 void auth_manager_init(void) {
     ESP_LOGI(TAG, "Initializing authentication manager");
+    ESP_LOGI(TAG, "All sessions cleared - RAM-based storage reset on boot");
     
     // Initialize session storage
     memset(active_sessions, 0, sizeof(active_sessions));

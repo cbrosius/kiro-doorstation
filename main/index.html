@@ -5545,13 +5545,18 @@
 
       try {
         showToast('Restarting system...', 'info');
-        await apiRequest('/api/system/restart', { method: 'POST' });
-        showToast('System is restarting. Page will reload automatically.', 'info', 5000);
+        const response = await apiRequest('/api/system/restart', { method: 'POST' });
+        
+        // Check if session will be invalidated (device restart)
+        if (response && response.session_invalidated) {
+          showToast('System is restarting. You will need to log in again.', 'info', 5000);
+          sessionStorage.setItem('ota_session_invalidated', 'true');
+        } else {
+          showToast('System is restarting. Page will reload automatically.', 'info', 5000);
+        }
 
-        // Reload page after delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
+        // Show restart countdown and redirect to login
+        showRestartCountdown();
       } catch (error) {
         // Error already shown by apiRequest
       }
@@ -5653,15 +5658,6 @@
      * @param {number} bytes - Number of bytes
      * @returns {string} Formatted bytes string
      */
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-    }
 
     /**
      * Initialize system information display with auto-refresh
@@ -7469,11 +7465,6 @@
     /**
      * Helper function to escape HTML
      */
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
 
     /**
      * Task 20: Initialize login logs auto-refresh
@@ -9698,157 +9689,6 @@
       console.log('OTA Update section initialized');
     }
 
-    /**
-     * Task 7: Upload firmware with confirmation dialog and progress tracking
-     * This function implements the complete OTA upload workflow as specified in requirements
-     */
-    async function uploadFirmware() {
-      // Validate file is selected
-      if (!otaSelectedFile) {
-        showToast('Please select a firmware file first', 'error');
-        return;
-      }
-
-      // Validate file extension (.bin)
-      if (!otaSelectedFile.name.endsWith('.bin')) {
-        showToast('Invalid file format. Please select a .bin file.', 'error');
-        return;
-      }
-
-      // Show confirmation dialog before starting update (Requirement 3.1.6)
-      const confirmed = await showConfirmDialog(
-        'Upload Firmware?',
-        `You are about to upload firmware file "${otaSelectedFile.name}" (${formatFileSize(otaSelectedFile.size)}). The device will need to restart after upload to apply the update. Do you want to continue?`,
-        'Upload',
-        'warning'
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      const uploadBtn = document.getElementById('ota-upload-btn');
-      setLoadingState(uploadBtn, true);
-
-      // Show progress container
-      const progressContainer = document.getElementById('ota-progress-container');
-      progressContainer.style.display = 'block';
-
-      // Reset progress
-      otaUploadStartTime = Date.now();
-      otaUploadedBytes = 0;
-      updateOTAProgress(0, 'Preparing upload...');
-
-      try {
-        // Read file as ArrayBuffer for raw binary upload
-        // Note: We send raw binary data, not FormData, because the ESP32
-        // backend expects the raw firmware binary without multipart encoding
-        const fileData = await otaSelectedFile.arrayBuffer();
-
-        // Create XMLHttpRequest for upload with progress tracking
-        const xhr = new XMLHttpRequest();
-
-        // Start polling OTA status for real-time backend updates (Task 8)
-        startOTAStatusPolling();
-
-        // Upload progress event handler (Requirement 3.1.5)
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = (e.loaded / e.total) * 100;
-            otaUploadedBytes = e.loaded;
-
-            // Calculate speed and time remaining
-            const elapsedTime = (Date.now() - otaUploadStartTime) / 1000; // seconds
-            const speed = e.loaded / elapsedTime; // bytes per second
-            const remainingBytes = e.total - e.loaded;
-            const timeRemaining = remainingBytes / speed; // seconds
-
-            // Update progress bar with percentage (upload progress)
-            // Note: Backend status polling will update with firmware write progress
-            updateOTAProgress(percentComplete, 'Uploading...', speed, timeRemaining);
-          }
-        });
-
-        // Success handler (Requirement 3.1.7)
-        xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              updateOTAProgress(100, 'Upload complete!');
-              showToast('Firmware uploaded successfully! You can now apply the update.', 'success');
-
-              // Stop status polling after successful upload
-              // Note: Polling will continue briefly to show final backend status
-              setTimeout(() => {
-                stopOTAStatusPolling();
-              }, 2000);
-
-              // Show apply section
-              document.getElementById('ota-apply-section').style.display = 'block';
-
-              // Scroll to apply section for user convenience
-              setTimeout(() => {
-                document.getElementById('ota-apply-section').scrollIntoView({ 
-                  behavior: 'smooth', 
-                  block: 'nearest' 
-                });
-              }, 500);
-
-            } catch (error) {
-              // Error handler - invalid response
-              stopOTAStatusPolling();
-              updateOTAProgress(0, 'Upload failed');
-              showToast('Upload failed: Invalid response from server', 'error');
-            }
-          } else {
-            // Error handler - HTTP error status
-            stopOTAStatusPolling();
-            let errorMessage = `Upload failed with status ${xhr.status}`;
-            try {
-              const errorResponse = JSON.parse(xhr.responseText);
-              if (errorResponse.error) {
-                errorMessage = errorResponse.error;
-              }
-            } catch (e) {
-              // Use default error message
-            }
-            updateOTAProgress(0, 'Upload failed');
-            showToast(errorMessage, 'error');
-          }
-          setLoadingState(uploadBtn, false);
-        });
-
-        // Error handler - network error (Requirement 3.1.8)
-        xhr.addEventListener('error', () => {
-          stopOTAStatusPolling();
-          updateOTAProgress(0, 'Upload failed');
-          showToast('Upload failed: Network error. Please check your connection and try again.', 'error');
-          setLoadingState(uploadBtn, false);
-        });
-
-        // Error handler - upload cancelled
-        xhr.addEventListener('abort', () => {
-          stopOTAStatusPolling();
-          updateOTAProgress(0, 'Upload cancelled');
-          showToast('Upload was cancelled', 'warning');
-          setLoadingState(uploadBtn, false);
-        });
-
-        // Send POST request to /api/ota/upload with raw binary data
-        xhr.open('POST', '/api/ota/upload');
-        // Set content type to application/octet-stream for binary data
-        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-        xhr.send(fileData);
-
-      } catch (error) {
-        // Error handler - unexpected error
-        console.error('Error uploading firmware:', error);
-        showToast('Upload failed: ' + error.message, 'error');
-        updateOTAProgress(0, 'Upload failed');
-        setLoadingState(uploadBtn, false);
-      }
-    }
-
     // ===== Task 15: Documentation Section =====
 
     /**
@@ -9980,9 +9820,6 @@
     /**
      * Helper: Escape regex special characters
      */
-    function escapeRegex(string) {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
 
     /**
      * Task 15.11: Load firmware version info for documentation
@@ -10719,11 +10556,16 @@
     }
 
     /**
-     * Poll device for availability and reload page when ready
+     * Poll device for availability and redirect to login page when ready
+     * OTA updates invalidate all RAM-based sessions, so redirect to login
      */
     function startDeviceReconnectPolling() {
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
+      
+      // Check if session was invalidated by OTA update
+      const sessionInvalidated = sessionStorage.getItem('ota_session_invalidated') === 'true';
+      console.log('OTA reconnect polling started, session invalidated:', sessionInvalidated);
 
       const pollInterval = setInterval(async () => {
         attempts++;
@@ -10739,6 +10581,10 @@
           if (response.ok) {
             // Device is back online!
             clearInterval(pollInterval);
+            console.log('Device back online after OTA, redirecting to login page');
+
+            // Clear session invalidation flag
+            sessionStorage.removeItem('ota_session_invalidated');
 
             // Show success message briefly
             const overlay = document.querySelector('div[style*="z-index: 9999"]');
@@ -10751,13 +10597,13 @@
                     Device Online!
                   </h2>
                   <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
-                    Reloading page...
+                    ${sessionInvalidated ? 'Redirecting to login page...' : 'Reloading page...'}
                   </p>
                 `;
               }
             }
 
-            // Redirect to login page after OTA update
+            // Redirect to login page (OTA updates invalidate all sessions)
             setTimeout(() => {
               window.location.href = '/login.html';
             }, 1000);
@@ -10770,6 +10616,7 @@
         // Give up after max attempts
         if (attempts >= maxAttempts) {
           clearInterval(pollInterval);
+          console.log('Reconnect timeout - redirecting to login page');
 
           const overlay = document.querySelector('div[style*="z-index: 9999"]');
           if (overlay) {
@@ -10785,7 +10632,7 @@
                 </p>
                 <button class="btn btn-primary" onclick="window.location.href='/login.html'">
                   <span>🔄</span>
-                  <span>Reload Page Now</span>
+                  <span>Go to Login Page</span>
                 </button>
               `;
             }
@@ -10800,7 +10647,7 @@
     async function handleOTARollback() {
       const confirmed = await showConfirmDialog(
         'Rollback Firmware',
-        'This will rollback to the previous firmware version and restart the device. You will lose connection temporarily. Continue?',
+        'This will rollback to the previous firmware version and restart the device. You will need to log in again after restart. Continue?',
         'Rollback and Restart',
         'Cancel',
         'warning'
@@ -10819,7 +10666,13 @@
         });
 
         if (response && response.success) {
-          showToast('Rollback initiated. Device will restart...', 'success');
+          // Check if session will be invalidated (device restart)
+          if (response.session_invalidated) {
+            showToast('Rollback initiated. Device will restart. You will need to log in again.', 'success');
+            sessionStorage.setItem('ota_session_invalidated', 'true');
+          } else {
+            showToast('Rollback initiated. Device will restart...', 'success');
+          }
 
           // Show restart countdown
           showRestartCountdown();

@@ -1221,11 +1221,14 @@ static esp_err_t post_ota_upload_handler(httpd_req_t *req)
     
     // Success - send response
     ESP_LOGI(TAG, "OTA update completed successfully");
+    ESP_LOGI(TAG, "Sending success response to client, device will restart in 5 seconds");
     
     httpd_resp_set_type(req, "application/json");
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
     cJSON_AddStringToObject(response, "message", "Firmware update successful. Device will restart in 5 seconds.");
+    cJSON_AddBoolToObject(response, "session_invalidated", true);
+    cJSON_AddStringToObject(response, "redirect_to", "/login.html");
     
     char *json_string = cJSON_Print(response);
     httpd_resp_send(req, json_string, strlen(json_string));
@@ -1233,6 +1236,7 @@ static esp_err_t post_ota_upload_handler(httpd_req_t *req)
     cJSON_Delete(response);
     
     // Schedule restart after 5 seconds to allow response to be sent
+    ESP_LOGI(TAG, "Restarting device NOW - all RAM sessions will be invalidated");
     vTaskDelay(pdMS_TO_TICKS(5000));
     esp_restart();
     
@@ -1257,12 +1261,15 @@ static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", true);
         cJSON_AddStringToObject(response, "message", "Rollback prepared. Device will restart in 5 seconds.");
+        cJSON_AddBoolToObject(response, "session_invalidated", true);
+        cJSON_AddStringToObject(response, "redirect_to", "/login.html");
         
         char *json_string = cJSON_Print(response);
         httpd_resp_send(req, json_string, strlen(json_string));
         free(json_string);
         cJSON_Delete(response);
         
+        ESP_LOGI(TAG, "OTA rollback - device will restart, all sessions will be invalidated");
         // Schedule restart after 5 seconds
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
@@ -1443,11 +1450,19 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     
-    ESP_LOGI(TAG, "System restart requested");
+    ESP_LOGI(TAG, "System restart requested - all sessions will be invalidated");
     
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"System restart initiated\"}", 
-                    strlen("{\"status\":\"success\",\"message\":\"System restart initiated\"}"));
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddStringToObject(response, "message", "System restart initiated");
+    cJSON_AddBoolToObject(response, "session_invalidated", true);
+    cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+    
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
 
     // Restart after a short delay to allow response to be sent
     vTaskDelay(pdMS_TO_TICKS(1000));
