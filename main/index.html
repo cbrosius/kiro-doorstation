@@ -3074,6 +3074,12 @@
      * @param {string} sectionId - The section identifier (e.g., 'dashboard', 'sip')
      */
     function navigateToSection(sectionId) {
+      // Stop hardware state polling if leaving testing section
+      const currentSection = sessionStorage.getItem('activeSection');
+      if (currentSection === 'testing' && sectionId !== 'testing') {
+        stopHardwareStatePolling();
+      }
+      
       // Hide all sections
       document.querySelectorAll('.content-section').forEach(section => {
         section.hidden = true;
@@ -3130,6 +3136,9 @@
       } else if (sectionId === 'logs') {
         // Initialize System Logs section (Task 11)
         initLogsSection();
+      } else if (sectionId === 'testing') {
+        // Start hardware state polling for testing section
+        startHardwareStatePolling();
       } else if (sectionId === 'email') {
         // Load Email Reports configuration (Task 13.5)
         loadEmailConfiguration();
@@ -6723,17 +6732,132 @@
     
     // ===== Task 12: Hardware Testing Section Functions =====
     
-    // ===== Task 12.1: Doorbell Button Simulation =====
+    /**
+     * Initialize hardware testing section
+     */
+    function initHardwareTesting() {
+      console.log('Hardware Testing section initialized');
+    }
+    
+    // ===== Task 9: Hardware Testing JavaScript Functions =====
+    
+    /**
+     * Update hardware state display with 500ms polling interval
+     * Polls the /api/hardware/state endpoint and updates the UI
+     */
+    let hardwareStateInterval = null;
+    
+    async function updateHardwareState() {
+      try {
+        const response = await apiRequest('/api/hardware/state');
+        
+        // Update door relay state
+        const doorRelayState = document.getElementById('hw-door-relay-state');
+        const doorRelayCard = document.getElementById('hw-door-relay-card');
+        const doorCountdown = document.getElementById('hw-door-countdown');
+        const doorRemaining = document.getElementById('hw-door-remaining');
+        
+        if (doorRelayState && doorRelayCard) {
+          if (response.door_relay_active) {
+            doorRelayState.textContent = 'Active';
+            doorRelayCard.style.borderColor = 'var(--color-status-connected)';
+            
+            // Show countdown if remaining time is available
+            if (doorCountdown && doorRemaining && response.door_relay_remaining_ms > 0) {
+              const remainingSeconds = Math.ceil(response.door_relay_remaining_ms / 1000);
+              doorRemaining.textContent = remainingSeconds;
+              doorCountdown.hidden = false;
+            }
+          } else {
+            doorRelayState.textContent = 'Inactive';
+            doorRelayCard.style.borderColor = 'var(--color-border)';
+            if (doorCountdown) {
+              doorCountdown.hidden = true;
+            }
+          }
+        }
+        
+        // Update light relay state
+        const lightRelayState = document.getElementById('hw-light-relay-state');
+        const lightRelayCard = document.getElementById('hw-light-relay-card');
+        
+        if (lightRelayState && lightRelayCard) {
+          if (response.light_relay_active) {
+            lightRelayState.textContent = 'On';
+            lightRelayCard.style.borderColor = 'var(--color-warning)';
+          } else {
+            lightRelayState.textContent = 'Off';
+            lightRelayCard.style.borderColor = 'var(--color-border)';
+          }
+        }
+        
+        // Update bell 1 state
+        const bell1State = document.getElementById('hw-bell1-state');
+        const bell1Card = document.getElementById('hw-bell1-card');
+        
+        if (bell1State && bell1Card) {
+          if (response.bell1_pressed) {
+            bell1State.textContent = 'Pressed';
+            bell1Card.style.borderColor = 'var(--color-primary)';
+          } else {
+            bell1State.textContent = 'Not Pressed';
+            bell1Card.style.borderColor = 'var(--color-border)';
+          }
+        }
+        
+        // Update bell 2 state
+        const bell2State = document.getElementById('hw-bell2-state');
+        const bell2Card = document.getElementById('hw-bell2-card');
+        
+        if (bell2State && bell2Card) {
+          if (response.bell2_pressed) {
+            bell2State.textContent = 'Pressed';
+            bell2Card.style.borderColor = 'var(--color-primary)';
+          } else {
+            bell2State.textContent = 'Not Pressed';
+            bell2Card.style.borderColor = 'var(--color-border)';
+          }
+        }
+        
+      } catch (error) {
+        console.error('Error updating hardware state:', error);
+        // Don't show error toast for polling failures
+      }
+    }
+    
+    /**
+     * Start hardware state polling when testing section is active
+     */
+    function startHardwareStatePolling() {
+      // Clear any existing interval
+      if (hardwareStateInterval) {
+        clearInterval(hardwareStateInterval);
+      }
+      
+      // Initial update
+      updateHardwareState();
+      
+      // Poll every 500ms
+      hardwareStateInterval = setInterval(updateHardwareState, 500);
+    }
+    
+    /**
+     * Stop hardware state polling
+     */
+    function stopHardwareStatePolling() {
+      if (hardwareStateInterval) {
+        clearInterval(hardwareStateInterval);
+        hardwareStateInterval = null;
+      }
+    }
     
     /**
      * Test doorbell button press
-     * @param {number} buttonNumber - Button number (1 or 2)
+     * @param {number} bell - Bell number (1 or 2)
      */
-    async function testDoorbellButton(buttonNumber) {
-      const btnId = `test-bell${buttonNumber}-btn`;
+    async function testDoorbell(bell) {
+      const btnId = `test-bell${bell}-btn`;
       const btn = document.getElementById(btnId);
-      const feedbackDiv = document.getElementById('bell-test-feedback');
-      const feedbackText = feedbackDiv.querySelector('p');
       
       if (!btn) return;
       
@@ -6741,27 +6865,18 @@
         // Show loading state
         setLoadingState(btn, true);
         
-        // Hide previous feedback
-        feedbackDiv.style.display = 'none';
-        
         // Make API request
-        const response = await apiRequest('/api/hardware/test/bell', {
+        const response = await apiRequest('/api/hardware/test/doorbell', {
           method: 'POST',
-          body: JSON.stringify({ button: buttonNumber })
+          body: JSON.stringify({ bell: bell })
         });
         
         // Show success feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
-        feedbackText.textContent = `✅ Bell ${buttonNumber} test successful! ${response.message || 'Button press simulated.'}`;
-        feedbackDiv.style.display = 'block';
-        
-        showToast(`Bell ${buttonNumber} test successful`, 'success');
+        showFeedback('success', `Doorbell ${bell} test successful! ${response.message || 'Button press simulated.'}`);
         
       } catch (error) {
         // Show error feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
-        feedbackText.textContent = `❌ Bell ${buttonNumber} test failed: ${error.message}`;
-        feedbackDiv.style.display = 'block';
+        showFeedback('error', `Doorbell ${bell} test failed: ${error.message}`);
         
       } finally {
         // Reset button state
@@ -6769,44 +6884,26 @@
       }
     }
     
-    // ===== Task 12.2: Door Opener Relay Testing =====
-    
     /**
-     * Update door relay state indicator
-     * @param {string} state - Relay state ('active' or 'inactive')
-     */
-    function updateDoorRelayState(state) {
-      const stateDiv = document.getElementById('door-relay-state');
-      const statusSpan = document.getElementById('door-relay-status');
-      
-      if (!stateDiv || !statusSpan) return;
-      
-      if (state === 'active') {
-        stateDiv.style.borderColor = 'var(--color-status-connected)';
-        statusSpan.textContent = 'Active';
-        statusSpan.style.color = 'var(--color-status-connected)';
-      } else {
-        stateDiv.style.borderColor = 'var(--color-status-inactive)';
-        statusSpan.textContent = 'Inactive';
-        statusSpan.style.color = 'var(--color-text)';
-      }
-    }
-    
-    /**
-     * Test door opener relay
+     * Test door opener relay with duration from slider
      */
     async function testDoorOpener() {
       const btn = document.getElementById('test-door-btn');
       const durationInput = document.getElementById('door-duration');
-      const feedbackDiv = document.getElementById('door-test-feedback');
-      const feedbackText = feedbackDiv.querySelector('p');
       
       if (!btn || !durationInput) return;
       
+      // Get duration in seconds from slider
+      const durationSeconds = parseInt(durationInput.value);
+      
       // Validate duration
-      const duration = parseInt(durationInput.value);
-      if (isNaN(duration) || duration < 1 || duration > 10) {
-        showToast('Duration must be between 1 and 10 seconds', 'error');
+      if (isNaN(durationSeconds) || durationSeconds < 1 || durationSeconds > 10) {
+        showFeedback('error', 'Duration must be between 1 and 10 seconds');
+        return;
+      }
+      
+      // Show confirmation dialog
+      if (!confirm(`Activate door opener for ${durationSeconds} seconds?\n\nThis will physically activate the relay.`)) {
         return;
       }
       
@@ -6814,65 +6911,22 @@
         // Show loading state
         setLoadingState(btn, true);
         
-        // Hide previous feedback
-        feedbackDiv.style.display = 'none';
-        
-        // Update relay state to active
-        updateDoorRelayState('active');
-        
-        // Make API request
+        // Make API request (convert to milliseconds)
         const response = await apiRequest('/api/hardware/test/door', {
           method: 'POST',
-          body: JSON.stringify({ duration: duration * 1000 }) // Convert to milliseconds
+          body: JSON.stringify({ duration: durationSeconds * 1000 })
         });
         
         // Show success feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
-        feedbackText.textContent = `✅ Door opener activated for ${duration} seconds. ${response.message || ''}`;
-        feedbackDiv.style.display = 'block';
-        
-        showToast(`Door opener activated for ${duration}s`, 'success');
-        
-        // Reset relay state after duration
-        setTimeout(() => {
-          updateDoorRelayState('inactive');
-        }, duration * 1000);
+        showFeedback('success', `Door opener activated for ${durationSeconds} seconds. ${response.message || ''}`);
         
       } catch (error) {
         // Show error feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
-        feedbackText.textContent = `❌ Door opener test failed: ${error.message}`;
-        feedbackDiv.style.display = 'block';
-        
-        // Reset relay state on error
-        updateDoorRelayState('inactive');
+        showFeedback('error', `Door opener test failed: ${error.message}`);
         
       } finally {
         // Reset button state
         setLoadingState(btn, false);
-      }
-    }
-    
-    // ===== Task 12.3: Light Relay Testing =====
-    
-    /**
-     * Update light relay state indicator
-     * @param {string} state - Relay state ('on' or 'off')
-     */
-    function updateLightRelayState(state) {
-      const stateDiv = document.getElementById('light-relay-state');
-      const statusSpan = document.getElementById('light-relay-status');
-      
-      if (!stateDiv || !statusSpan) return;
-      
-      if (state === 'on') {
-        stateDiv.style.borderColor = 'var(--color-warning)';
-        statusSpan.textContent = 'On';
-        statusSpan.style.color = 'var(--color-warning)';
-      } else {
-        stateDiv.style.borderColor = 'var(--color-status-inactive)';
-        statusSpan.textContent = 'Off';
-        statusSpan.style.color = 'var(--color-text)';
       }
     }
     
@@ -6881,8 +6935,6 @@
      */
     async function testLightToggle() {
       const btn = document.getElementById('test-light-btn');
-      const feedbackDiv = document.getElementById('light-test-feedback');
-      const feedbackText = feedbackDiv.querySelector('p');
       
       if (!btn) return;
       
@@ -6890,30 +6942,19 @@
         // Show loading state
         setLoadingState(btn, true);
         
-        // Hide previous feedback
-        feedbackDiv.style.display = 'none';
-        
         // Make API request
         const response = await apiRequest('/api/hardware/test/light', {
-          method: 'POST'
+          method: 'POST',
+          body: JSON.stringify({})
         });
         
-        // Update relay state based on response
-        const newState = response.state || 'off';
-        updateLightRelayState(newState);
-        
-        // Show success feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-success)';
-        feedbackText.textContent = `✅ Light toggled ${newState.toUpperCase()}. ${response.message || ''}`;
-        feedbackDiv.style.display = 'block';
-        
-        showToast(`Light toggled ${newState}`, 'success');
+        // Show success feedback with new state
+        const newState = response.state || 'unknown';
+        showFeedback('success', `Light toggled ${newState.toUpperCase()}. ${response.message || ''}`);
         
       } catch (error) {
         // Show error feedback
-        feedbackDiv.style.borderLeftColor = 'var(--color-danger)';
-        feedbackText.textContent = `❌ Light toggle failed: ${error.message}`;
-        feedbackDiv.style.display = 'block';
+        showFeedback('error', `Light toggle failed: ${error.message}`);
         
       } finally {
         // Reset button state
@@ -6921,36 +6962,87 @@
       }
     }
     
-    // ===== Task 12.4: Initialize Hardware Testing Section =====
+    /**
+     * Emergency stop - immediately deactivate all active tests
+     */
+    async function emergencyStop() {
+      const btn = document.getElementById('emergency-stop-btn');
+      
+      if (!btn) return;
+      
+      try {
+        // Show loading state
+        setLoadingState(btn, true);
+        
+        // Make API request
+        const response = await apiRequest('/api/hardware/test/stop', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        
+        // Show success feedback
+        showFeedback('success', response.message || 'All tests stopped');
+        
+        // Force immediate state update
+        updateHardwareState();
+        
+      } catch (error) {
+        // Show error feedback
+        showFeedback('error', `Emergency stop failed: ${error.message}`);
+        
+      } finally {
+        // Reset button state
+        setLoadingState(btn, false);
+      }
+    }
     
     /**
-     * Initialize hardware testing section
+     * Update duration display when slider value changes
+     * @param {number} value - Duration value in seconds
      */
-    function initHardwareTesting() {
-      // Setup doorbell button test handlers
-      const bell1Btn = document.getElementById('test-bell1-btn');
-      if (bell1Btn) {
-        bell1Btn.addEventListener('click', () => testDoorbellButton(1));
+    function updateDurationDisplay(value) {
+      const displayElement = document.getElementById('door-duration-value');
+      if (displayElement) {
+        displayElement.textContent = value;
       }
+    }
+    
+    /**
+     * Show feedback message in the test feedback area
+     * @param {string} type - Feedback type ('success', 'error', 'info')
+     * @param {string} message - Feedback message to display
+     */
+    function showFeedback(type, message) {
+      const feedbackArea = document.getElementById('test-feedback');
+      const feedbackIcon = document.getElementById('test-feedback-icon');
+      const feedbackMessage = document.getElementById('test-feedback-message');
       
-      const bell2Btn = document.getElementById('test-bell2-btn');
-      if (bell2Btn) {
-        bell2Btn.addEventListener('click', () => testDoorbellButton(2));
-      }
+      if (!feedbackArea || !feedbackIcon || !feedbackMessage) return;
       
-      // Setup door opener test handler
-      const doorBtn = document.getElementById('test-door-btn');
-      if (doorBtn) {
-        doorBtn.addEventListener('click', testDoorOpener);
-      }
+      // Set icon based on type
+      const icons = {
+        'success': '✅',
+        'error': '❌',
+        'info': 'ℹ️'
+      };
       
-      // Setup light toggle test handler
-      const lightBtn = document.getElementById('test-light-btn');
-      if (lightBtn) {
-        lightBtn.addEventListener('click', testLightToggle);
-      }
+      feedbackIcon.textContent = icons[type] || 'ℹ️';
+      feedbackMessage.textContent = message;
       
-      console.log('Hardware Testing section initialized');
+      // Set border color based on type
+      const colors = {
+        'success': 'var(--color-success)',
+        'error': 'var(--color-danger)',
+        'info': 'var(--color-info)'
+      };
+      
+      feedbackArea.style.borderLeftColor = colors[type] || 'var(--color-info)';
+      feedbackArea.style.display = 'block';
+      
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        feedbackArea.style.display = 'none';
+      }, 5000);
     }
     
     // ===== Task 13: Email Reports Section Functions =====
