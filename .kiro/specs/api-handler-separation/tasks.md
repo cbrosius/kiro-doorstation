@@ -213,7 +213,12 @@
     - Keep only HTML page handler registrations
     - _Requirements: 1.1, 1.3_
 
-- [ ] 7. Add necessary includes to web_api.c
+- [x] 7. Add necessary includes to web_api.c
+
+
+
+
+
   - Add all required ESP-IDF headers (esp_log.h, esp_http_server.h, esp_system.h, etc.)
   - Add all component headers (sip_client.h, wifi_manager.h, ntp_sync.h, etc.)
   - Add web_server.h to access auth_filter function
