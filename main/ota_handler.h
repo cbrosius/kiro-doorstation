@@ -29,9 +29,12 @@ typedef struct {
     size_t written_size;
     uint8_t progress_percent;
     char error_message[128];
+    char status_message[128];
     esp_ota_handle_t update_handle;
     const esp_partition_t* update_partition;
     uint32_t start_time;
+    uint32_t last_report_time;
+    size_t last_report_bytes;
     bool header_validated;
 } ota_context_t;
 

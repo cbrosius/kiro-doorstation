@@ -18,9 +18,12 @@ static ota_context_t g_ota_ctx = {
     .written_size = 0,
     .progress_percent = 0,
     .error_message = {0},
+    .status_message = {0},
     .update_handle = 0,
     .update_partition = NULL,
-    .start_time = 0
+    .start_time = 0,
+    .last_report_time = 0,
+    .last_report_bytes = 0
 };
 
 void ota_handler_init(void) {
@@ -239,8 +242,11 @@ esp_err_t ota_begin_update(size_t image_size) {
     g_ota_ctx.update_handle = update_handle;
     g_ota_ctx.update_partition = update_partition;
     g_ota_ctx.start_time = (uint32_t)(esp_timer_get_time() / 1000000);
+    g_ota_ctx.last_report_time = g_ota_ctx.start_time;
+    g_ota_ctx.last_report_bytes = 0;
     g_ota_ctx.header_validated = false;
     memset(g_ota_ctx.error_message, 0, sizeof(g_ota_ctx.error_message));
+    strncpy(g_ota_ctx.status_message, "Preparing to write firmware", sizeof(g_ota_ctx.status_message) - 1);
     
     ESP_LOGI(TAG, "OTA update started successfully");
     return ESP_OK;
@@ -328,13 +334,39 @@ esp_err_t ota_write_chunk(const uint8_t* data, size_t length) {
     g_ota_ctx.state = OTA_STATE_WRITING;
     g_ota_ctx.written_size += length;
     
+    // Calculate progress percentage
+    uint8_t new_percent = 0;
     if (g_ota_ctx.total_size > 0) {
-        uint8_t new_percent = (g_ota_ctx.written_size * 100) / g_ota_ctx.total_size;
-        if (new_percent != g_ota_ctx.progress_percent) {
-            g_ota_ctx.progress_percent = new_percent;
-            ESP_LOGI(TAG, "OTA progress: %u%% (%u / %u bytes)", 
-                     g_ota_ctx.progress_percent, g_ota_ctx.written_size, g_ota_ctx.total_size);
-        }
+        new_percent = (g_ota_ctx.written_size * 100) / g_ota_ctx.total_size;
+    }
+    
+    // Report progress every 10% or 50KB (whichever comes first)
+    uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000000);
+    size_t bytes_since_report = g_ota_ctx.written_size - g_ota_ctx.last_report_bytes;
+    bool should_report = false;
+    
+    // Report if 10% progress change
+    if (new_percent != g_ota_ctx.progress_percent && (new_percent % 10 == 0 || new_percent == 100)) {
+        should_report = true;
+    }
+    
+    // Report if 50KB written since last report
+    if (bytes_since_report >= 51200) { // 50KB = 51200 bytes
+        should_report = true;
+    }
+    
+    if (should_report) {
+        g_ota_ctx.progress_percent = new_percent;
+        g_ota_ctx.last_report_time = current_time;
+        g_ota_ctx.last_report_bytes = g_ota_ctx.written_size;
+        
+        // Update status message
+        snprintf(g_ota_ctx.status_message, sizeof(g_ota_ctx.status_message),
+                 "Writing firmware: %u%% (%u / %u bytes)", 
+                 g_ota_ctx.progress_percent, g_ota_ctx.written_size, g_ota_ctx.total_size);
+        
+        ESP_LOGI(TAG, "OTA progress: %u%% (%u / %u bytes)", 
+                 g_ota_ctx.progress_percent, g_ota_ctx.written_size, g_ota_ctx.total_size);
     }
     
     return ESP_OK;
@@ -349,6 +381,7 @@ esp_err_t ota_end_update(void) {
     }
     
     g_ota_ctx.state = OTA_STATE_VALIDATING;
+    strncpy(g_ota_ctx.status_message, "Verifying firmware integrity", sizeof(g_ota_ctx.status_message) - 1);
     
     // Finalize OTA
     esp_err_t err = esp_ota_end(g_ota_ctx.update_handle);
@@ -356,9 +389,13 @@ esp_err_t ota_end_update(void) {
         ESP_LOGE(TAG, "esp_ota_end failed: %s", esp_err_to_name(err));
         snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
                  "Validation failed: %s", esp_err_to_name(err));
+        snprintf(g_ota_ctx.status_message, sizeof(g_ota_ctx.status_message),
+                 "Failed: Validation error");
         g_ota_ctx.state = OTA_STATE_ERROR;
         return err;
     }
+    
+    strncpy(g_ota_ctx.status_message, "Applying firmware update", sizeof(g_ota_ctx.status_message) - 1);
     
     // Set boot partition
     err = esp_ota_set_boot_partition(g_ota_ctx.update_partition);
@@ -366,12 +403,15 @@ esp_err_t ota_end_update(void) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed: %s", esp_err_to_name(err));
         snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
                  "Failed to set boot partition: %s", esp_err_to_name(err));
+        snprintf(g_ota_ctx.status_message, sizeof(g_ota_ctx.status_message),
+                 "Failed: Could not set boot partition");
         g_ota_ctx.state = OTA_STATE_ERROR;
         return err;
     }
     
     g_ota_ctx.state = OTA_STATE_COMPLETE;
     g_ota_ctx.progress_percent = 100;
+    strncpy(g_ota_ctx.status_message, "Complete: Firmware ready to apply", sizeof(g_ota_ctx.status_message) - 1);
     
     uint32_t elapsed = (uint32_t)(esp_timer_get_time() / 1000000) - g_ota_ctx.start_time;
     ESP_LOGI(TAG, "OTA update completed successfully in %lu seconds", elapsed);

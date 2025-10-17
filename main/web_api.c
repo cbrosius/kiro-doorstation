@@ -1325,8 +1325,27 @@ static esp_err_t get_ota_status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "written_size", ctx->written_size);
     cJSON_AddNumberToObject(root, "total_size", ctx->total_size);
     
+    // Add status message
+    if (ctx->status_message[0] != '\0') {
+        cJSON_AddStringToObject(root, "status_message", ctx->status_message);
+    }
+    
+    // Add error message if present
     if (ctx->error_message[0] != '\0') {
         cJSON_AddStringToObject(root, "error_message", ctx->error_message);
+    }
+    
+    // Calculate estimated time remaining if writing
+    if (ctx->state == OTA_STATE_WRITING && ctx->written_size > 0 && ctx->total_size > 0) {
+        uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000000);
+        uint32_t elapsed = current_time - ctx->start_time;
+        if (elapsed > 0) {
+            float speed = (float)ctx->written_size / elapsed; // bytes per second
+            size_t remaining_bytes = ctx->total_size - ctx->written_size;
+            uint32_t time_remaining = (uint32_t)(remaining_bytes / speed); // seconds
+            cJSON_AddNumberToObject(root, "time_remaining_seconds", time_remaining);
+            cJSON_AddNumberToObject(root, "speed_bytes_per_second", (uint32_t)speed);
+        }
     }
     
     char *json_string = cJSON_Print(root);

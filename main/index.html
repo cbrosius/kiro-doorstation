@@ -9450,6 +9450,101 @@
     }
 
     /**
+     * Task 8: Poll OTA status for real-time updates during firmware write
+     * This function polls the /api/ota/status endpoint to get real-time status updates
+     * including progress, status messages, and error details from the backend
+     */
+    let otaStatusPollInterval = null;
+
+    function startOTAStatusPolling() {
+      // Clear any existing polling interval
+      if (otaStatusPollInterval) {
+        clearInterval(otaStatusPollInterval);
+      }
+
+      // Poll every 500ms for real-time updates
+      otaStatusPollInterval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/ota/status');
+          if (!response.ok) {
+            console.error('Failed to fetch OTA status');
+            return;
+          }
+
+          const status = await response.json();
+          
+          // Update progress bar with backend progress
+          if (status.progress_percent !== undefined) {
+            document.getElementById('ota-progress-bar').style.width = status.progress_percent + '%';
+            document.getElementById('ota-progress-percent').textContent = status.progress_percent + '%';
+          }
+
+          // Update status message from backend
+          if (status.status_message) {
+            document.getElementById('ota-upload-status').textContent = status.status_message;
+          }
+
+          // Display detailed status messages based on state
+          if (status.state) {
+            let displayMessage = '';
+            switch (status.state) {
+              case 'begin':
+                displayMessage = 'Preparing to write firmware...';
+                break;
+              case 'writing':
+                displayMessage = status.status_message || 'Writing firmware to flash...';
+                // Show speed and time remaining if available
+                if (status.speed_bytes_per_second && status.speed_bytes_per_second > 0) {
+                  document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
+                }
+                if (status.time_remaining_seconds && status.time_remaining_seconds > 0) {
+                  document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
+                }
+                break;
+              case 'validating':
+                displayMessage = 'Verifying firmware integrity...';
+                break;
+              case 'complete':
+                displayMessage = 'Complete: Firmware ready to apply';
+                stopOTAStatusPolling();
+                break;
+              case 'error':
+                displayMessage = 'Failed: ' + (status.error_message || 'Unknown error');
+                stopOTAStatusPolling();
+                showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
+                break;
+              case 'aborted':
+                displayMessage = 'Update aborted';
+                stopOTAStatusPolling();
+                break;
+            }
+            
+            if (displayMessage && !status.status_message) {
+              document.getElementById('ota-upload-status').textContent = displayMessage;
+            }
+          }
+
+          // Display error messages if present
+          if (status.error_message) {
+            console.error('OTA Error:', status.error_message);
+            // Error will be shown via toast in the error state handler above
+          }
+
+        } catch (error) {
+          console.error('Error polling OTA status:', error);
+          // Don't stop polling on network errors, just log them
+        }
+      }, 500); // Poll every 500ms for responsive updates
+    }
+
+    function stopOTAStatusPolling() {
+      if (otaStatusPollInterval) {
+        clearInterval(otaStatusPollInterval);
+        otaStatusPollInterval = null;
+      }
+    }
+
+    /**
      * Task 14.4 & 14.5: Handle OTA apply with confirmation
      */
     async function handleOTAApply() {
@@ -9649,6 +9744,9 @@
         // Create XMLHttpRequest for upload with progress tracking
         const xhr = new XMLHttpRequest();
 
+        // Start polling OTA status for real-time backend updates (Task 8)
+        startOTAStatusPolling();
+
         // Upload progress event handler (Requirement 3.1.5)
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
@@ -9661,7 +9759,8 @@
             const remainingBytes = e.total - e.loaded;
             const timeRemaining = remainingBytes / speed; // seconds
 
-            // Update progress bar with percentage
+            // Update progress bar with percentage (upload progress)
+            // Note: Backend status polling will update with firmware write progress
             updateOTAProgress(percentComplete, 'Uploading...', speed, timeRemaining);
           }
         });
@@ -9673,6 +9772,12 @@
               const response = JSON.parse(xhr.responseText);
               updateOTAProgress(100, 'Upload complete!');
               showToast('Firmware uploaded successfully! You can now apply the update.', 'success');
+
+              // Stop status polling after successful upload
+              // Note: Polling will continue briefly to show final backend status
+              setTimeout(() => {
+                stopOTAStatusPolling();
+              }, 2000);
 
               // Show apply section
               document.getElementById('ota-apply-section').style.display = 'block';
@@ -9687,11 +9792,13 @@
 
             } catch (error) {
               // Error handler - invalid response
+              stopOTAStatusPolling();
               updateOTAProgress(0, 'Upload failed');
               showToast('Upload failed: Invalid response from server', 'error');
             }
           } else {
             // Error handler - HTTP error status
+            stopOTAStatusPolling();
             let errorMessage = `Upload failed with status ${xhr.status}`;
             try {
               const errorResponse = JSON.parse(xhr.responseText);
@@ -9709,6 +9816,7 @@
 
         // Error handler - network error (Requirement 3.1.8)
         xhr.addEventListener('error', () => {
+          stopOTAStatusPolling();
           updateOTAProgress(0, 'Upload failed');
           showToast('Upload failed: Network error. Please check your connection and try again.', 'error');
           setLoadingState(uploadBtn, false);
@@ -9716,6 +9824,7 @@
 
         // Error handler - upload cancelled
         xhr.addEventListener('abort', () => {
+          stopOTAStatusPolling();
           updateOTAProgress(0, 'Upload cancelled');
           showToast('Upload was cancelled', 'warning');
           setLoadingState(uploadBtn, false);
