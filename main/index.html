@@ -2984,7 +2984,7 @@
       <!-- Documentation content will be loaded here -->
       <div id="documentation-container">
         <p style="text-align: center; padding: var(--spacing-xl); color: var(--color-text-secondary);">
-          Loading documentation...
+          📚 Loading documentation...
         </p>
       </div>
     </section>
@@ -7556,11 +7556,11 @@
     // ===== Task 15: Documentation Section =====
     
     /**
-     * Task 15.1: Load documentation content from external file
+     * Task 15.1: Load documentation content from embedded file
      */
     async function loadDocumentation() {
       try {
-        const response = await fetch('documentation.html');
+        const response = await fetch('/documentation.html');
         if (response.ok) {
           const html = await response.text();
           document.getElementById('documentation-container').innerHTML = html;
@@ -7570,13 +7570,14 @@
           
           console.log('Documentation loaded successfully');
         } else {
+          console.error('Failed to load documentation:', response.status);
           document.getElementById('documentation-container').innerHTML = 
-            '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Failed to load documentation.</p>';
+            '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Failed to load documentation. Please check the firmware build.</p>';
         }
       } catch (error) {
         console.error('Error loading documentation:', error);
         document.getElementById('documentation-container').innerHTML = 
-          '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Error loading documentation.</p>';
+          '<p style="text-align: center; padding: var(--spacing-xl); color: var(--color-danger);">Error loading documentation: ' + error.message + '</p>';
       }
     }
     

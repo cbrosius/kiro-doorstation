@@ -16,6 +16,8 @@ static httpd_handle_t server = NULL;
 
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
+extern const uint8_t documentation_html_start[] asm("_binary_documentation_html_start");
+extern const uint8_t documentation_html_end[] asm("_binary_documentation_html_end");
 
 static esp_err_t get_sip_status_handler(httpd_req_t *req)
 {
@@ -756,6 +758,14 @@ static esp_err_t index_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t documentation_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    const size_t documentation_html_size = (uintptr_t)documentation_html_end - (uintptr_t)documentation_html_start;
+    httpd_resp_send(req, (const char *)documentation_html_start, documentation_html_size);
+    return ESP_OK;
+}
+
 static const httpd_uri_t sip_status_uri = {
     .uri       = "/api/sip/status",
     .method    = HTTP_GET,
@@ -817,6 +827,10 @@ static const httpd_uri_t root_uri = {
     .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t documentation_uri = {
+    .uri = "/documentation.html", .method = HTTP_GET, .handler = documentation_handler, .user_ctx = NULL
+};
+
 static const httpd_uri_t wifi_status_uri = {
     .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
 };
@@ -868,11 +882,12 @@ static const httpd_uri_t dtmf_logs_uri = {
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 24; // Increase handler limit for DTMF endpoints
+    config.max_uri_handlers = 25; // Increase handler limit for DTMF endpoints + documentation
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
+        httpd_register_uri_handler(server, &documentation_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);
