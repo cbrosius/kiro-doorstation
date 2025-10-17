@@ -213,9 +213,10 @@ async function uploadFirmware() {
   if (uploadStatus) uploadStatus.textContent = 'Preparing upload...';
 
   try {
-    // Create FormData
-    const formData = new FormData();
-    formData.append('firmware', file);
+    // Read file as ArrayBuffer for raw binary upload
+    // Note: We send raw binary data, not FormData, because the ESP32
+    // backend expects the raw firmware binary without multipart encoding
+    const fileData = await file.arrayBuffer();
 
     // Track upload progress
     const startTime = Date.now();
@@ -353,9 +354,11 @@ async function uploadFirmware() {
       }
     });
 
-    // Send request
+    // Send request with raw binary data
     xhr.open('POST', '/api/ota/upload');
-    xhr.send(formData);
+    // Set content type to application/octet-stream for binary data
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.send(fileData);
 
   } catch (error) {
     console.error('Error uploading firmware:', error);
