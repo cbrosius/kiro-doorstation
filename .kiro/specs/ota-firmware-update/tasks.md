@@ -142,7 +142,12 @@
   - Display rollback status and restart countdown
   - _Requirements: 3.1.9_
 
-- [ ] 12. Update CMakeLists.txt to include OTA handler
+- [x] 12. Update CMakeLists.txt to include OTA handler
+
+
+
+
+
   - Add `ota_handler.c` to `main/CMakeLists.txt` SRCS list
   - Ensure `esp_ota_ops` component is linked
   - Verify partition table configuration supports dual OTA partitions
