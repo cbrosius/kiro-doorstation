@@ -2249,6 +2249,68 @@
         </div>
       </div>
 
+      <!-- Flash Partition Table -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Flash Partition Table</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Defined flash partitions and their sizes. Total physical flash size is detected automatically.
+        </p>
+
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
+                <th
+                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
+                  Label</th>
+                <th
+                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
+                  Type</th>
+                <th
+                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
+                  Subtype</th>
+                <th
+                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
+                  Address</th>
+                <th
+                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
+                  Size</th>
+              </tr>
+            </thead>
+            <tbody id="partition-table-body">
+              <tr style="border-bottom: 1px solid var(--color-border-light);">
+                <td colspan="5"
+                  style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">
+                  Loading partition information...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-md);">
+          <div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Total Flash</div>
+            <div id="partition-total-flash"
+              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
+            </div>
+          </div>
+          <div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Used by Partitions</div>
+            <div id="partition-used-flash"
+              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
+            </div>
+          </div>
+          <div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Available</div>
+            <div id="partition-available-flash"
+              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-success);">
+              -</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Task 9.2: GPIO Pin Assignments -->
       <div class="config-form">
         <h3 style="margin-bottom: var(--spacing-md);">GPIO Pin Assignments</h3>
@@ -6744,10 +6806,10 @@
           if (response.flash_size_mb) {
             document.getElementById('hw-flash-size').textContent = `${response.flash_size_mb} MB`;
           }
-          // Flash free is not available from API
+          // Flash available
           const flashFreeElement = document.getElementById('hw-flash-free');
-          if (flashFreeElement) {
-            flashFreeElement.textContent = 'N/A';
+          if (flashFreeElement && response.flash_available_bytes !== undefined) {
+            flashFreeElement.textContent = formatBytes(response.flash_available_bytes);
           }
 
           // Update PSRAM information - not available from API
@@ -6763,6 +6825,9 @@
           if (minHeapElement) {
             minHeapElement.textContent = 'N/A';
           }
+
+          // Update partition table
+          updatePartitionTable(response.partitions, response.flash_total_bytes, response.flash_used_bytes, response.flash_available_bytes);
         }
       } catch (error) {
         console.error('Failed to fetch hardware info:', error);
@@ -6774,6 +6839,45 @@
           if (element) element.textContent = 'Error';
         });
       }
+    }
+
+    /**
+     * Update partition table display
+     */
+    function updatePartitionTable(partitions, totalFlash, usedFlash, availableFlash) {
+      const tableBody = document.getElementById('partition-table-body');
+
+      if (!partitions || partitions.length === 0) {
+        tableBody.innerHTML = '<tr style="border-bottom: 1px solid var(--color-border-light);"><td colspan="5" style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">No partition information available</td></tr>';
+        return;
+      }
+
+      // Build table rows
+      let html = '';
+      partitions.forEach(partition => {
+        html += '<tr style="border-bottom: 1px solid var(--color-border-light);">';
+        html += `<td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">${partition.label || 'unnamed'}</td>`;
+        html += `<td style="padding: var(--spacing-md);">${partition.type || '-'}</td>`;
+        html += `<td style="padding: var(--spacing-md);">${partition.subtype || '-'}</td>`;
+        html += `<td style="padding: var(--spacing-md); text-align: right; font-family: monospace;">0x${partition.address.toString(16).toUpperCase().padStart(6, '0')}</td>`;
+
+        // Size column with optional used bytes
+        let sizeText = formatBytes(partition.size);
+        if (partition.used_bytes !== undefined && partition.used_bytes >= 0) {
+          const usedText = formatBytes(partition.used_bytes);
+          const percentage = Math.round((partition.used_bytes / partition.size) * 100);
+          sizeText += ` <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">(${usedText} used, ${percentage}%)</span>`;
+        }
+        html += `<td style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-medium);">${sizeText}</td>`;
+        html += '</tr>';
+      });
+
+      tableBody.innerHTML = html;
+
+      // Update summary
+      document.getElementById('partition-total-flash').textContent = formatBytes(totalFlash);
+      document.getElementById('partition-used-flash').textContent = formatBytes(usedFlash);
+      document.getElementById('partition-available-flash').textContent = formatBytes(availableFlash);
     }
 
     /**
