@@ -2456,3 +2456,245 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 
     return ESP_OK;
 }
+
+
+// ============================================================================
+// URI Handler Structures
+// ============================================================================
+
+// SIP API URI handlers
+static const httpd_uri_t sip_status_uri = {
+    .uri       = "/api/sip/status",
+    .method    = HTTP_GET,
+    .handler   = get_sip_status_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_config_get_uri = {
+    .uri       = "/api/sip/config",
+    .method    = HTTP_GET,
+    .handler   = get_sip_config_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_config_post_uri = {
+    .uri       = "/api/sip/config",
+    .method    = HTTP_POST,
+    .handler   = post_sip_config_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_test_uri = {
+    .uri       = "/api/sip/test",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_test_call_uri = {
+    .uri       = "/api/sip/testcall",
+    .method    = HTTP_POST,
+    .handler   = post_sip_test_call_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_log_uri = {
+    .uri       = "/api/sip/log",
+    .method    = HTTP_GET,
+    .handler   = get_sip_log_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_connect_uri = {
+    .uri       = "/api/sip/connect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_connect_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t sip_disconnect_uri = {
+    .uri       = "/api/sip/disconnect",
+    .method    = HTTP_POST,
+    .handler   = post_sip_disconnect_handler,
+    .user_ctx  = NULL
+};
+
+// WiFi API URI handlers
+static const httpd_uri_t wifi_config_get_uri = {
+    .uri = "/api/wifi/config", .method = HTTP_GET, .handler = get_wifi_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_config_post_uri = {
+    .uri = "/api/wifi/config", .method = HTTP_POST, .handler = post_wifi_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_status_uri = {
+    .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_scan_uri = {
+    .uri = "/api/wifi/scan", .method = HTTP_POST, .handler = post_wifi_scan_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_connect_uri = {
+    .uri = "/api/wifi/connect", .method = HTTP_POST, .handler = post_wifi_connect_handler, .user_ctx = NULL
+};
+
+// Network API URI handlers
+static const httpd_uri_t network_ip_uri = {
+    .uri = "/api/network/ip", .method = HTTP_GET, .handler = get_network_ip_handler, .user_ctx = NULL
+};
+
+// Email API URI handlers
+static const httpd_uri_t email_config_get_uri = {
+    .uri = "/api/email/config", .method = HTTP_GET, .handler = get_email_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t email_config_post_uri = {
+    .uri = "/api/email/config", .method = HTTP_POST, .handler = post_email_config_handler, .user_ctx = NULL
+};
+
+// OTA API URI handlers
+static const httpd_uri_t ota_version_uri = {
+    .uri = "/api/ota/version", .method = HTTP_GET, .handler = get_ota_version_handler, .user_ctx = NULL
+};
+
+// System API URI handlers
+static const httpd_uri_t system_status_uri = {
+    .uri = "/api/system/status", .method = HTTP_GET, .handler = get_system_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_restart_uri = {
+    .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_info_uri = {
+    .uri = "/api/system/info", .method = HTTP_GET, .handler = get_system_info_handler, .user_ctx = NULL
+};
+
+// NTP API URI handlers
+static const httpd_uri_t ntp_status_uri = {
+    .uri = "/api/ntp/status", .method = HTTP_GET, .handler = get_ntp_status_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_get_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_GET, .handler = get_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_config_post_uri = {
+    .uri = "/api/ntp/config", .method = HTTP_POST, .handler = post_ntp_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ntp_sync_uri = {
+    .uri = "/api/ntp/sync", .method = HTTP_POST, .handler = post_ntp_sync_handler, .user_ctx = NULL
+};
+
+// DTMF Security API URI handlers
+static const httpd_uri_t dtmf_security_get_uri = {
+    .uri = "/api/dtmf/security", .method = HTTP_GET, .handler = get_dtmf_security_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t dtmf_security_post_uri = {
+    .uri = "/api/dtmf/security", .method = HTTP_POST, .handler = post_dtmf_security_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t dtmf_logs_uri = {
+    .uri = "/api/dtmf/logs", .method = HTTP_GET, .handler = get_dtmf_logs_handler, .user_ctx = NULL
+};
+
+// Hardware Test API URI handlers
+static const httpd_uri_t hardware_test_doorbell_uri = {
+    .uri = "/api/hardware/test/doorbell", .method = HTTP_POST, .handler = post_hardware_test_doorbell_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_door_uri = {
+    .uri = "/api/hardware/test/door", .method = HTTP_POST, .handler = post_hardware_test_door_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_light_uri = {
+    .uri = "/api/hardware/test/light", .method = HTTP_POST, .handler = post_hardware_test_light_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_state_uri = {
+    .uri = "/api/hardware/state", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_status_uri = {
+    .uri = "/api/hardware/status", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_stop_uri = {
+    .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
+};
+
+// Certificate Management API URI handlers
+static const httpd_uri_t cert_info_uri = {
+    .uri = "/api/cert/info",
+    .method = HTTP_GET,
+    .handler = get_cert_info_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_upload_uri = {
+    .uri = "/api/cert/upload",
+    .method = HTTP_POST,
+    .handler = post_cert_upload_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_generate_uri = {
+    .uri = "/api/cert/generate",
+    .method = HTTP_POST,
+    .handler = post_cert_generate_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_download_uri = {
+    .uri = "/api/cert/download",
+    .method = HTTP_GET,
+    .handler = get_cert_download_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t cert_delete_uri = {
+    .uri = "/api/cert",
+    .method = HTTP_DELETE,
+    .handler = delete_cert_handler,
+    .user_ctx = NULL
+};
+
+// Authentication API URI handlers
+static const httpd_uri_t auth_login_uri = {
+    .uri = "/api/auth/login",
+    .method = HTTP_POST,
+    .handler = post_auth_login_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_logout_uri = {
+    .uri = "/api/auth/logout",
+    .method = HTTP_POST,
+    .handler = post_auth_logout_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_set_password_uri = {
+    .uri = "/api/auth/set-password",
+    .method = HTTP_POST,
+    .handler = post_auth_set_password_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_change_password_uri = {
+    .uri = "/api/auth/change-password",
+    .method = HTTP_POST,
+    .handler = post_auth_change_password_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_logs_uri = {
+    .uri = "/api/auth/logs",
+    .method = HTTP_GET,
+    .handler = get_auth_logs_handler,
+    .user_ctx = NULL
+};

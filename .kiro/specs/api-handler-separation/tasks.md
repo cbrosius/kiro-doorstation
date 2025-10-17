@@ -111,18 +111,28 @@
     - Move get_auth_logs_handler
     - _Requirements: 1.2, 5.1_
 
-- [ ] 4. Move URI handler structures to web_api.c
-  - [ ] 4.1 Copy all SIP URI structures (8 structures)
+- [x] 4. Move URI handler structures to web_api.c
+
+
+
+  - [x] 4.1 Copy all SIP URI structures (8 structures)
+
+
     - Move sip_status_uri, sip_config_get_uri, sip_config_post_uri, sip_test_uri
     - Move sip_test_call_uri, sip_log_uri, sip_connect_uri, sip_disconnect_uri
     - _Requirements: 1.2, 5.2_
   
-  - [ ] 4.2 Copy all WiFi URI structures (5 structures)
+
+  - [x] 4.2 Copy all WiFi URI structures (5 structures)
+
     - Move wifi_config_get_uri, wifi_config_post_uri, wifi_status_uri
     - Move wifi_scan_uri, wifi_connect_uri
     - _Requirements: 1.2, 5.2_
   
-  - [ ] 4.3 Copy all other API URI structures (25 structures)
+
+
+  - [x] 4.3 Copy all other API URI structures (25 structures)
+
     - Move network_ip_uri, email_config_get_uri, email_config_post_uri
     - Move ota_version_uri, system_status_uri, system_restart_uri, system_info_uri
     - Move ntp_status_uri, ntp_config_get_uri, ntp_config_post_uri, ntp_sync_uri
