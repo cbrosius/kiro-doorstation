@@ -470,20 +470,81 @@ cleanup:
     return err;
 }
 
+/**
+ * @brief Validate certificate chain integrity
+ * 
+ * @param cert Certificate to validate
+ * @param chain_pem Certificate chain in PEM format (can be NULL)
+ * @return esp_err_t ESP_OK if chain is valid, error code otherwise
+ */
+static esp_err_t validate_certificate_chain(mbedtls_x509_crt* cert, const char* chain_pem) {
+    if (!cert) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // If no chain provided, certificate must be self-signed or we can't validate
+    if (!chain_pem || strlen(chain_pem) == 0) {
+        ESP_LOGI(TAG, "No certificate chain provided - skipping chain validation");
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Validating certificate chain");
+    
+    // Parse certificate chain
+    mbedtls_x509_crt chain;
+    mbedtls_x509_crt_init(&chain);
+    
+    int ret = mbedtls_x509_crt_parse(&chain, (const unsigned char*)chain_pem, strlen(chain_pem) + 1);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to parse certificate chain: -0x%04x", -ret);
+        mbedtls_x509_crt_free(&chain);
+        return ESP_FAIL;
+    }
+    
+    // Verify that the certificate can be validated against the chain
+    // This checks that the certificate's issuer matches one of the chain certificates
+    uint32_t flags = 0;
+    ret = mbedtls_x509_crt_verify(cert, &chain, NULL, NULL, &flags, NULL, NULL);
+    
+    mbedtls_x509_crt_free(&chain);
+    
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Certificate chain validation failed: -0x%04x, flags: 0x%08x", -ret, flags);
+        
+        // Log specific validation failures
+        if (flags & MBEDTLS_X509_BADCERT_EXPIRED) {
+            ESP_LOGE(TAG, "Certificate has expired");
+        }
+        if (flags & MBEDTLS_X509_BADCERT_REVOKED) {
+            ESP_LOGE(TAG, "Certificate has been revoked");
+        }
+        if (flags & MBEDTLS_X509_BADCERT_CN_MISMATCH) {
+            ESP_LOGE(TAG, "Certificate CN mismatch");
+        }
+        if (flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) {
+            ESP_LOGE(TAG, "Certificate is not trusted");
+        }
+        
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Certificate chain validation passed");
+    return ESP_OK;
+}
+
 esp_err_t cert_validate(const char* cert_pem, const char* key_pem) {
     if (!cert_pem || !key_pem) {
+        ESP_LOGE(TAG, "Certificate or key is NULL");
         return ESP_ERR_INVALID_ARG;
     }
     
     ESP_LOGI(TAG, "Validating certificate and private key");
     
-    // TODO: Implement actual certificate validation using mbedtls
-    // - Verify PEM format
-    // - Verify private key matches certificate public key
-    // - Verify certificate is not expired
+    // Check for empty strings
+    size_t cert_len = strlen(cert_pem);
+    size_t key_len = strlen(key_pem);
     
-    // For now, just do basic checks
-    if (strlen(cert_pem) == 0 || strlen(key_pem) == 0) {
+    if (cert_len == 0 || key_len == 0) {
         ESP_LOGE(TAG, "Certificate or key is empty");
         return ESP_ERR_INVALID_ARG;
     }
@@ -499,13 +560,144 @@ esp_err_t cert_validate(const char* cert_pem, const char* key_pem) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    ESP_LOGI(TAG, "Certificate and key validation passed (basic checks)");
+    // Parse certificate using mbedtls
+    mbedtls_x509_crt crt;
+    mbedtls_x509_crt_init(&crt);
+    
+    int ret = mbedtls_x509_crt_parse(&crt, (const unsigned char*)cert_pem, cert_len + 1);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to parse certificate: -0x%04x", -ret);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Certificate parsed successfully");
+    
+    // Check if certificate is expired
+    time_t now = time(NULL);
+    struct tm expiry_tm = {0};
+    expiry_tm.tm_year = crt.valid_to.year - 1900;
+    expiry_tm.tm_mon = crt.valid_to.mon - 1;
+    expiry_tm.tm_mday = crt.valid_to.day;
+    expiry_tm.tm_hour = crt.valid_to.hour;
+    expiry_tm.tm_min = crt.valid_to.min;
+    expiry_tm.tm_sec = crt.valid_to.sec;
+    
+    time_t expiry_time = mktime(&expiry_tm);
+    
+    if (expiry_time < now) {
+        ESP_LOGE(TAG, "Certificate has expired");
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    // Check if certificate is not yet valid
+    struct tm valid_from_tm = {0};
+    valid_from_tm.tm_year = crt.valid_from.year - 1900;
+    valid_from_tm.tm_mon = crt.valid_from.mon - 1;
+    valid_from_tm.tm_mday = crt.valid_from.day;
+    valid_from_tm.tm_hour = crt.valid_from.hour;
+    valid_from_tm.tm_min = crt.valid_from.min;
+    valid_from_tm.tm_sec = crt.valid_from.sec;
+    
+    time_t valid_from_time = mktime(&valid_from_tm);
+    
+    if (valid_from_time > now) {
+        ESP_LOGE(TAG, "Certificate is not yet valid");
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Certificate validity period is valid");
+    
+    // Parse private key using mbedtls
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+    
+    ret = mbedtls_pk_parse_key(&pk, (const unsigned char*)key_pem, key_len + 1, NULL, 0, NULL, NULL);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to parse private key: -0x%04x", -ret);
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Private key parsed successfully");
+    
+    // Verify that the private key matches the certificate's public key
+    // Compare key types first
+    mbedtls_pk_type_t cert_key_type = mbedtls_pk_get_type(&crt.pk);
+    mbedtls_pk_type_t priv_key_type = mbedtls_pk_get_type(&pk);
+    
+    if (cert_key_type != priv_key_type) {
+        ESP_LOGE(TAG, "Key type mismatch: cert=%d, key=%d", cert_key_type, priv_key_type);
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    // Verify key pair by checking if they can be used together
+    // We'll do this by comparing the public key from the certificate with the public key derived from the private key
+    
+    // Get the size needed for the public key export
+    unsigned char cert_pub_buf[512];
+    unsigned char key_pub_buf[512];
+    size_t cert_pub_len = 0;
+    size_t key_pub_len = 0;
+    
+    // Export public key from certificate
+    ret = mbedtls_pk_write_pubkey_der(&crt.pk, cert_pub_buf, sizeof(cert_pub_buf));
+    if (ret < 0) {
+        ESP_LOGE(TAG, "Failed to export certificate public key: -0x%04x", -ret);
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    cert_pub_len = ret;
+    
+    // Export public key from private key
+    ret = mbedtls_pk_write_pubkey_der(&pk, key_pub_buf, sizeof(key_pub_buf));
+    if (ret < 0) {
+        ESP_LOGE(TAG, "Failed to export private key public component: -0x%04x", -ret);
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    key_pub_len = ret;
+    
+    // Compare the public keys
+    if (cert_pub_len != key_pub_len) {
+        ESP_LOGE(TAG, "Public key size mismatch: cert=%d, key=%d", cert_pub_len, key_pub_len);
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    // mbedtls_pk_write_pubkey_der writes from the end of the buffer backwards
+    // So we need to compare from the end
+    if (memcmp(cert_pub_buf + sizeof(cert_pub_buf) - cert_pub_len,
+               key_pub_buf + sizeof(key_pub_buf) - key_pub_len,
+               cert_pub_len) != 0) {
+        ESP_LOGE(TAG, "Public key mismatch - private key does not match certificate");
+        mbedtls_pk_free(&pk);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Private key matches certificate public key (verified via DER comparison)");
+    
+    // Clean up
+    mbedtls_pk_free(&pk);
+    mbedtls_x509_crt_free(&crt);
+    
+    ESP_LOGI(TAG, "Certificate and key validation passed");
     
     return ESP_OK;
 }
 
 esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const char* chain_pem) {
     if (!cert_pem || !key_pem) {
+        ESP_LOGE(TAG, "Certificate or key is NULL");
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -532,6 +724,49 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
         return ESP_ERR_INVALID_SIZE;
     }
     
+    // Validate certificate chain if provided
+    if (chain_pem && strlen(chain_pem) > 0) {
+        size_t chain_len = strlen(chain_pem);
+        
+        if (chain_len >= CERT_CHAIN_PEM_MAX_SIZE) {
+            ESP_LOGE(TAG, "Certificate chain too large: %d bytes (max %d)", 
+                     chain_len, CERT_CHAIN_PEM_MAX_SIZE);
+            return ESP_ERR_INVALID_SIZE;
+        }
+        
+        // Check for PEM header in chain
+        if (strstr(chain_pem, "-----BEGIN CERTIFICATE-----") == NULL) {
+            ESP_LOGE(TAG, "Invalid certificate chain format - missing PEM header");
+            return ESP_ERR_INVALID_ARG;
+        }
+        
+        // Parse and validate the certificate chain
+        ESP_LOGI(TAG, "Validating certificate chain (%d bytes)", chain_len);
+        
+        mbedtls_x509_crt cert;
+        mbedtls_x509_crt_init(&cert);
+        
+        int ret = mbedtls_x509_crt_parse(&cert, (const unsigned char*)cert_pem, cert_len + 1);
+        if (ret != 0) {
+            ESP_LOGE(TAG, "Failed to parse certificate for chain validation: -0x%04x", -ret);
+            mbedtls_x509_crt_free(&cert);
+            return ESP_FAIL;
+        }
+        
+        // Validate the chain integrity
+        err = validate_certificate_chain(&cert, chain_pem);
+        mbedtls_x509_crt_free(&cert);
+        
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Certificate chain validation failed");
+            return err;
+        }
+        
+        ESP_LOGI(TAG, "Certificate chain validated successfully");
+    } else {
+        ESP_LOGI(TAG, "No certificate chain provided");
+    }
+    
     // Open NVS
     nvs_handle_t nvs_handle;
     err = nvs_open(CERT_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
@@ -548,6 +783,8 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
         return err;
     }
     
+    ESP_LOGI(TAG, "Certificate stored in NVS (%d bytes)", cert_len);
+    
     // Store private key
     err = nvs_set_blob(nvs_handle, CERT_NVS_KEY_KEY, key_pem, key_len + 1);
     if (err != ESP_OK) {
@@ -556,16 +793,22 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
         return err;
     }
     
+    ESP_LOGI(TAG, "Private key stored in NVS (%d bytes)", key_len);
+    
     // Store certificate chain if provided
     if (chain_pem && strlen(chain_pem) > 0) {
         size_t chain_len = strlen(chain_pem);
-        if (chain_len < CERT_CHAIN_PEM_MAX_SIZE) {
-            err = nvs_set_blob(nvs_handle, CERT_NVS_CHAIN_KEY, chain_pem, chain_len + 1);
-            if (err != ESP_OK) {
-                ESP_LOGW(TAG, "Failed to store certificate chain: %s", esp_err_to_name(err));
-                // Continue anyway - chain is optional
-            }
+        err = nvs_set_blob(nvs_handle, CERT_NVS_CHAIN_KEY, chain_pem, chain_len + 1);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to store certificate chain: %s", esp_err_to_name(err));
+            nvs_close(nvs_handle);
+            return err;
         }
+        ESP_LOGI(TAG, "Certificate chain stored in NVS (%d bytes)", chain_len);
+    } else {
+        // Clear any existing chain if none provided
+        nvs_erase_key(nvs_handle, CERT_NVS_CHAIN_KEY);
+        ESP_LOGI(TAG, "No certificate chain to store");
     }
     
     // Store self-signed flag (custom certs are not self-signed)

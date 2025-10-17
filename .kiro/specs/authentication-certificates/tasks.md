@@ -102,7 +102,13 @@
   - Detect if certificate is expiring soon (< 30 days)
   - _Requirements: 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 9. Implement custom certificate upload
+- [x] 9. Implement custom certificate upload
+
+
+
+
+
+
   - Implement `cert_validate()` to verify certificate format (PEM)
   - Verify private key matches certificate public key
   - Implement `cert_upload_custom()` to store certificate and key
