@@ -249,7 +249,12 @@
   - Implement automatic session extension on user activity
   - _Requirements: 2.3, 2.4_
 
-- [ ] 20. Add login audit logging
+- [x] 20. Add login audit logging
+
+
+
+
+
   - Implement login attempt logging with timestamp, username, IP, and result
   - Store last 100 login attempts in circular buffer
   - Add `GET /api/auth/logs` endpoint to retrieve login logs

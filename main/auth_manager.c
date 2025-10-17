@@ -23,6 +23,11 @@ static session_t active_sessions[AUTH_MAX_SESSIONS];
 #define MAX_TRACKED_IPS 10
 static login_attempts_t login_attempts[MAX_TRACKED_IPS];
 
+// Audit log storage (circular buffer)
+static audit_log_entry_t audit_logs[AUTH_MAX_AUDIT_LOGS];
+static int audit_log_head = 0;
+static int audit_log_count = 0;
+
 // Mutex for thread safety (if needed in future)
 static bool auth_initialized = false;
 
@@ -155,6 +160,32 @@ bool auth_verify_password(const char* password, const password_hash_t* stored_ha
     return memcmp(computed_hash, stored_hash->hash, AUTH_HASH_SIZE) == 0;
 }
 
+/**
+ * @brief Add entry to audit log
+ */
+static void add_audit_log(const char* username, const char* ip_address, const char* result, bool success) {
+    audit_log_entry_t* entry = &audit_logs[audit_log_head];
+    
+    entry->timestamp = get_current_time();
+    strncpy(entry->username, username ? username : "unknown", AUTH_AUDIT_USERNAME_MAX_LEN - 1);
+    entry->username[AUTH_AUDIT_USERNAME_MAX_LEN - 1] = '\0';
+    strncpy(entry->ip_address, ip_address ? ip_address : "unknown", AUTH_AUDIT_IP_MAX_LEN - 1);
+    entry->ip_address[AUTH_AUDIT_IP_MAX_LEN - 1] = '\0';
+    strncpy(entry->result, result, AUTH_AUDIT_RESULT_MAX_LEN - 1);
+    entry->result[AUTH_AUDIT_RESULT_MAX_LEN - 1] = '\0';
+    entry->success = success;
+    
+    // Move head forward (circular buffer)
+    audit_log_head = (audit_log_head + 1) % AUTH_MAX_AUDIT_LOGS;
+    
+    // Update count
+    if (audit_log_count < AUTH_MAX_AUDIT_LOGS) {
+        audit_log_count++;
+    }
+    
+    ESP_LOGI(TAG, "Audit log: user=%s ip=%s result=%s", username, ip_address, result);
+}
+
 void auth_manager_init(void) {
     ESP_LOGI(TAG, "Initializing authentication manager");
     
@@ -163,6 +194,11 @@ void auth_manager_init(void) {
     
     // Initialize login attempt tracking
     memset(login_attempts, 0, sizeof(login_attempts));
+    
+    // Initialize audit logs
+    memset(audit_logs, 0, sizeof(audit_logs));
+    audit_log_head = 0;
+    audit_log_count = 0;
     
     // Open NVS
     nvs_handle_t nvs_handle;
@@ -402,6 +438,7 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     
     if (!username || !password) {
         strncpy(result.error_message, "Invalid credentials", AUTH_ERROR_MESSAGE_MAX_LEN - 1);
+        add_audit_log(username, client_ip, "failed - invalid input", false);
         return result;
     }
     
@@ -409,6 +446,7 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     if (client_ip && auth_is_ip_blocked(client_ip)) {
         strncpy(result.error_message, "Account temporarily locked due to failed attempts", 
                 AUTH_ERROR_MESSAGE_MAX_LEN - 1);
+        add_audit_log(username, client_ip, "blocked", false);
         return result;
     }
     
@@ -434,6 +472,7 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     if (strcmp(username, stored_username) != 0) {
         nvs_close(nvs_handle);
         strncpy(result.error_message, "Invalid username or password", AUTH_ERROR_MESSAGE_MAX_LEN - 1);
+        add_audit_log(username, client_ip, "failed - invalid username", false);
         return result;
     }
     
@@ -445,12 +484,14 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     
     if (err != ESP_OK) {
         strncpy(result.error_message, "Invalid username or password", AUTH_ERROR_MESSAGE_MAX_LEN - 1);
+        add_audit_log(username, client_ip, "failed - system error", false);
         return result;
     }
     
     // Verify password
     if (!auth_verify_password(password, &stored_hash)) {
         strncpy(result.error_message, "Invalid username or password", AUTH_ERROR_MESSAGE_MAX_LEN - 1);
+        add_audit_log(username, client_ip, "failed - invalid password", false);
         return result;
     }
     
@@ -503,6 +544,9 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     if (client_ip) {
         auth_clear_failed_attempts(client_ip);
     }
+    
+    // Log successful login
+    add_audit_log(username, client_ip, "success", true);
     
     ESP_LOGI(TAG, "User '%s' logged in successfully from %s", username, client_ip ? client_ip : "unknown");
     
@@ -581,4 +625,20 @@ void auth_cleanup_expired_sessions(void) {
     if (cleaned > 0) {
         ESP_LOGI(TAG, "Cleaned up %d expired sessions", cleaned);
     }
+}
+
+int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs) {
+    if (!logs || max_logs <= 0) {
+        return 0;
+    }
+    
+    int count = (audit_log_count < max_logs) ? audit_log_count : max_logs;
+    
+    // Copy logs in reverse chronological order (newest first)
+    for (int i = 0; i < count; i++) {
+        int index = (audit_log_head - 1 - i + AUTH_MAX_AUDIT_LOGS) % AUTH_MAX_AUDIT_LOGS;
+        memcpy(&logs[i], &audit_logs[index], sizeof(audit_log_entry_t));
+    }
+    
+    return count;
 }

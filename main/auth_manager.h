@@ -27,6 +27,12 @@ extern "C" {
 #define AUTH_FAILED_ATTEMPT_WINDOW_SECONDS 900  // 15 minutes
 #define AUTH_BLOCK_DURATION_SECONDS 300  // 5 minutes
 
+// Audit logging constants
+#define AUTH_MAX_AUDIT_LOGS 100
+#define AUTH_AUDIT_USERNAME_MAX_LEN 32
+#define AUTH_AUDIT_IP_MAX_LEN 16
+#define AUTH_AUDIT_RESULT_MAX_LEN 32
+
 // Password hashing structure
 typedef struct {
     uint8_t salt[AUTH_SALT_SIZE];
@@ -70,6 +76,15 @@ typedef struct {
     uint32_t expires_at;
     char error_message[AUTH_ERROR_MESSAGE_MAX_LEN];
 } auth_result_t;
+
+// Audit log entry structure
+typedef struct {
+    uint32_t timestamp;
+    char username[AUTH_AUDIT_USERNAME_MAX_LEN];
+    char ip_address[AUTH_AUDIT_IP_MAX_LEN];
+    char result[AUTH_AUDIT_RESULT_MAX_LEN];  // "success", "failed", "blocked"
+    bool success;
+} audit_log_entry_t;
 
 /**
  * @brief Initialize authentication manager
@@ -185,6 +200,15 @@ esp_err_t auth_hash_password(const char* password, password_hash_t* output);
  * @return false if password does not match
  */
 bool auth_verify_password(const char* password, const password_hash_t* stored_hash);
+
+/**
+ * @brief Get audit logs
+ * 
+ * @param logs Array to store audit log entries
+ * @param max_logs Maximum number of logs to retrieve
+ * @return int Number of logs retrieved
+ */
+int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs);
 
 #ifdef __cplusplus
 }

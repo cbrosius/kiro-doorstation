@@ -2365,6 +2365,44 @@ static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t get_auth_logs_handler(httpd_req_t *req)
+{
+    // Check authentication - user must be logged in to view logs
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    // Get audit logs
+    audit_log_entry_t logs[AUTH_MAX_AUDIT_LOGS];
+    int log_count = auth_get_audit_logs(logs, AUTH_MAX_AUDIT_LOGS);
+
+    // Create JSON response
+    cJSON *response = cJSON_CreateObject();
+    cJSON *logs_array = cJSON_CreateArray();
+
+    for (int i = 0; i < log_count; i++) {
+        cJSON *log_entry = cJSON_CreateObject();
+        cJSON_AddNumberToObject(log_entry, "timestamp", logs[i].timestamp);
+        cJSON_AddStringToObject(log_entry, "username", logs[i].username);
+        cJSON_AddStringToObject(log_entry, "ip_address", logs[i].ip_address);
+        cJSON_AddStringToObject(log_entry, "result", logs[i].result);
+        cJSON_AddBoolToObject(log_entry, "success", logs[i].success);
+        
+        cJSON_AddItemToArray(logs_array, log_entry);
+    }
+
+    cJSON_AddItemToObject(response, "logs", logs_array);
+    cJSON_AddNumberToObject(response, "count", log_count);
+
+    httpd_resp_set_type(req, "application/json");
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     // Check authentication
@@ -2482,6 +2520,13 @@ static const httpd_uri_t auth_change_password_uri = {
     .uri = "/api/auth/change-password",
     .method = HTTP_POST,
     .handler = post_auth_change_password_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_logs_uri = {
+    .uri = "/api/auth/logs",
+    .method = HTTP_GET,
+    .handler = get_auth_logs_handler,
     .user_ctx = NULL
 };
 
@@ -2794,6 +2839,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &auth_logout_uri);
         httpd_register_uri_handler(server, &auth_set_password_uri);
         httpd_register_uri_handler(server, &auth_change_password_uri);
+        httpd_register_uri_handler(server, &auth_logs_uri);
         
         // Certificate Management API endpoints
         httpd_register_uri_handler(server, &cert_info_uri);
