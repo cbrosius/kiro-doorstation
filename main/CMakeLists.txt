@@ -10,10 +10,13 @@ idf_component_register(
         "ntp_sync.c"
         "rtp_handler.c"
         "hardware_test.c"
+        "auth_manager.c"
+        "cert_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
         esp_http_server
+        esp_https_server
         esp_netif
         nvs_flash
         driver
@@ -25,3 +28,5 @@ idf_component_register(
 
 target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)
 target_add_binary_data(${COMPONENT_TARGET} "documentation.html" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "login.html" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "setup.html" TEXT)

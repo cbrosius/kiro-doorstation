@@ -15,6 +15,7 @@
 #include "hardware_test.h"
 #include "dtmf_decoder.h"
 #include "ntp_sync.h"
+#include "cert_manager.h"
 
 static const char *TAG = "MAIN";
 
@@ -33,6 +34,9 @@ void app_main(void)
     // Initialize GPIO
     gpio_handler_init();
     
+    // Start password reset monitor (BOOT button)
+    gpio_start_reset_monitor();
+    
     // Initialize Hardware Test (after GPIO)
     hardware_test_init();
     
@@ -42,11 +46,18 @@ void app_main(void)
     // Initialize DTMF Decoder
     dtmf_decoder_init();
     
+    // Initialize certificate manager (check only, don't generate yet)
+    cert_manager_init();
+    
     // Start WiFi Manager
     wifi_manager_init();
     
     // NTP time synchronization (after WiFi)
     ntp_sync_init();
+    
+    // Ensure certificate exists (generate if needed, after all system init)
+    // This is done before web server to ensure HTTPS has a certificate
+    cert_ensure_exists();
     
     // Start Web Server
     web_server_start();

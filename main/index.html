@@ -806,6 +806,17 @@
       }
     }
     
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+      }
+    }
+    
     .btn-sm {
       padding: var(--spacing-xs) var(--spacing-md);
       font-size: var(--font-size-sm);
@@ -1436,6 +1447,70 @@
     <!-- Dashboard Section -->
     <section class="content-section active" id="section-dashboard">
       <h2 tabindex="-1">Dashboard</h2>
+      
+      <!-- Certificate Expiration Warnings (Task 22) -->
+      <!-- Warning banner for certificate expiring within 30 days -->
+      <div id="cert-expiry-warning-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(255, 193, 7, 0.1); border: 1px solid var(--color-warning); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">⚠️</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-warning); font-size: var(--font-size-lg);">Certificate Expiring Soon</h3>
+            <p id="cert-expiry-warning-text" style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text);">
+              Your TLS certificate will expire soon. Please renew or generate a new certificate to maintain secure access.
+            </p>
+            <button class="btn btn-sm btn-warning" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+              <span>🔐</span>
+              <span>Manage Certificate</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Critical warning banner for certificate expiring within 7 days -->
+      <div id="cert-expiry-critical-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(220, 53, 69, 0.1); border: 2px solid var(--color-danger); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0; animation: pulse 2s ease-in-out infinite;">🚨</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-danger); font-size: var(--font-size-lg);">Critical: Certificate Expiring Very Soon</h3>
+            <p id="cert-expiry-critical-text" style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text); font-weight: var(--font-weight-medium);">
+              Your TLS certificate will expire in less than 7 days! Immediate action required to prevent loss of secure access.
+            </p>
+            <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+              <button class="btn btn-sm btn-danger" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+                <span>🔐</span>
+                <span>Manage Certificate Now</span>
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="generateSelfSignedCertificateQuick()">
+                <span>⚡</span>
+                <span>Quick Generate New Certificate</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Error banner for expired certificate -->
+      <div id="cert-expired-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(220, 53, 69, 0.15); border: 2px solid var(--color-danger); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0; animation: pulse 2s ease-in-out infinite;">❌</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-danger); font-size: var(--font-size-lg);">Certificate Expired!</h3>
+            <p style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text); font-weight: var(--font-weight-medium);">
+              Your TLS certificate has expired! Browsers will show security warnings. Generate a new certificate immediately.
+            </p>
+            <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+              <button class="btn btn-sm btn-danger" onclick="generateSelfSignedCertificateQuick()">
+                <span>🔐</span>
+                <span>Generate New Certificate</span>
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+                <span>⚙️</span>
+                <span>Certificate Settings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       
       <!-- System Information Display (Task 6.1) -->
       <div class="config-form">
@@ -2349,6 +2424,68 @@
         </div>
       </div>
       
+      <!-- Admin Password Change Form -->
+      <form class="config-form" id="password-change-form" onsubmit="handlePasswordChange(event)">
+        <h3>Admin Password</h3>
+        <p class="form-help">Change the administrator password for web interface access.</p>
+        
+        <div class="form-group">
+          <label for="current-password">
+            Current Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="current-password" 
+                 name="current_password" 
+                 required
+                 autocomplete="current-password"
+                 placeholder="Enter current password"
+                 data-error="Current password is required">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-group">
+          <label for="new-password">
+            New Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="new-password" 
+                 name="new_password" 
+                 required
+                 autocomplete="new-password"
+                 minlength="8"
+                 placeholder="Enter new password"
+                 data-error="Password must be at least 8 characters with uppercase, lowercase, and digit"
+                 aria-describedby="password-requirements">
+          <span class="error-message" hidden></span>
+          <span class="form-help" id="password-requirements">
+            Must be at least 8 characters with uppercase, lowercase, and digit
+          </span>
+        </div>
+        
+        <div class="form-group">
+          <label for="confirm-new-password">
+            Confirm New Password <span class="required">*</span>
+          </label>
+          <input type="password" 
+                 id="confirm-new-password" 
+                 name="confirm_password" 
+                 required
+                 autocomplete="new-password"
+                 minlength="8"
+                 placeholder="Re-enter new password"
+                 data-error="Passwords must match">
+          <span class="error-message" hidden></span>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">
+            <span class="btn-text">Change Password</span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+          <button type="reset" class="btn btn-secondary">Clear</button>
+        </div>
+      </form>
+      
       <!-- DTMF Security Configuration Form (Task 10.1) -->
       <form class="config-form" id="security-form" data-api="/api/dtmf/security" data-on-success="onSecuritySaved">
         <h3>DTMF PIN Protection</h3>
@@ -2434,6 +2571,163 @@
           <li><strong>Max Attempts:</strong> Number of failed PIN attempts before the system temporarily locks out further attempts</li>
           <li><strong>Security Best Practices:</strong> Use a PIN that is not easily guessable and change it regularly</li>
         </ul>
+      </div>
+      
+      <!-- Certificate Management Section (Task 18) -->
+      <div class="config-form">
+        <h3>TLS Certificate Management</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Manage HTTPS certificates for secure web interface access. The device can use self-signed certificates or custom certificates from a trusted Certificate Authority.
+        </p>
+        
+        <!-- Certificate Information Display (Task 18: Display current certificate information) -->
+        <div id="cert-info-panel" style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Current Certificate</h4>
+          
+          <!-- Certificate Expiration Warning (Task 18: Display warning when certificate is expiring soon) -->
+          <div id="cert-expiry-warning" style="display: none; padding: var(--spacing-md); background-color: rgba(255, 193, 7, 0.1); border: 1px solid var(--color-warning); border-radius: var(--border-radius); margin-bottom: var(--spacing-md);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-xl);">⚠️</span>
+              <div>
+                <strong style="color: var(--color-warning);">Certificate Expiring Soon</strong>
+                <p style="margin: var(--spacing-xs) 0 0 0; font-size: var(--font-size-sm); color: var(--color-text-secondary);" id="cert-expiry-warning-text">
+                  Your certificate will expire soon. Please renew or generate a new certificate.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Certificate Type</div>
+              <div id="cert-type" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Common Name (CN)</div>
+              <div id="cert-cn" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Issuer</div>
+              <div id="cert-issuer" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Valid From</div>
+              <div id="cert-valid-from" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Expires</div>
+              <div id="cert-expires" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Days Remaining</div>
+              <div id="cert-days-remaining" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+          </div>
+          
+          <!-- Download Certificate Button (Task 18: Add download button for current certificate) -->
+          <div style="margin-top: var(--spacing-md);">
+            <button class="btn btn-sm btn-secondary" onclick="downloadCertificate()">
+              <span>💾</span>
+              <span>Download Certificate</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Generate Self-Signed Certificate (Task 18: Add button to generate new self-signed certificate) -->
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Generate Self-Signed Certificate</h4>
+          <p style="margin-bottom: var(--spacing-md); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+            Generate a new self-signed certificate for HTTPS. This is suitable for internal use but will show a security warning in browsers.
+          </p>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="cert-common-name">
+              Common Name (CN)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="cert-common-name" 
+              placeholder="doorstation.local"
+              value="doorstation.local"
+              style="width: 100%; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Hostname or domain name for the certificate</span>
+          </div>
+          
+          <button class="btn btn-primary" onclick="generateSelfSignedCertificate()" id="generate-cert-btn">
+            <span class="btn-text">
+              <span>🔐</span>
+              <span>Generate Certificate</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Upload Custom Certificate (Task 18: Add file upload interface for custom certificate and private key) -->
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Upload Custom Certificate</h4>
+          <p style="margin-bottom: var(--spacing-md); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+            Upload a custom certificate and private key from a trusted Certificate Authority. Both files must be in PEM format.
+          </p>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="cert-file-input">
+              Certificate File (PEM)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="file" 
+              id="cert-file-input" 
+              accept=".pem,.crt,.cer"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Select your certificate file (.pem, .crt, or .cer)</span>
+          </div>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="key-file-input">
+              Private Key File (PEM)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="file" 
+              id="key-file-input" 
+              accept=".pem,.key"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Select your private key file (.pem or .key)</span>
+          </div>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="chain-file-input">
+              Certificate Chain (Optional)
+            </label>
+            <input 
+              type="file" 
+              id="chain-file-input" 
+              accept=".pem,.crt,.cer"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Optional: Certificate chain for intermediate CAs</span>
+          </div>
+          
+          <button class="btn btn-primary" onclick="uploadCustomCertificate()" id="upload-cert-btn">
+            <span class="btn-text">
+              <span>📤</span>
+              <span>Upload Certificate</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Certificate Information -->
+        <div style="padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-info);">ℹ️ Certificate Information</h4>
+          <ul style="margin: 0; padding-left: var(--spacing-lg); line-height: 1.8; font-size: var(--font-size-sm);">
+            <li><strong>Self-Signed Certificates:</strong> Generated automatically by the device. Browsers will show a security warning, but the connection is still encrypted.</li>
+            <li><strong>Custom Certificates:</strong> Obtained from a trusted Certificate Authority (CA) like Let's Encrypt. No browser warnings.</li>
+            <li><strong>Certificate Expiration:</strong> Certificates expire after a set period. You'll receive warnings 30 days before expiration.</li>
+            <li><strong>PEM Format:</strong> Certificates and keys must be in PEM format (Base64 encoded text starting with -----BEGIN CERTIFICATE-----).</li>
+            <li><strong>Security:</strong> Always keep your private key secure. Never share it or store it in an insecure location.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -2558,6 +2852,30 @@
             <span>💾</span>
             <span>Export to File</span>
           </button>
+        </div>
+      </div>
+      
+      <!-- Task 20: Login Audit Logs -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+          <h3 style="margin: 0;">Login Audit Logs</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
+              <input type="checkbox" id="login-log-auto-refresh" checked>
+              <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
+            </label>
+            <button class="btn btn-sm btn-info" onclick="refreshLoginLogs()" id="login-log-refresh-btn">
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+        
+        <p class="form-help">View the last 50 login attempts including successful logins, failed attempts, and blocked IPs.</p>
+        
+        <!-- Login Log Container -->
+        <div id="login-log-container" style="max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading login logs...</div>
         </div>
       </div>
     </section>
@@ -3134,6 +3452,11 @@
         stopHardwareStatePolling();
       }
       
+      // Stop login log auto-refresh if leaving logs section
+      if (currentSection === 'logs' && sectionId !== 'logs') {
+        stopLoginLogAutoRefresh();
+      }
+      
       // Hide all sections
       document.querySelectorAll('.content-section').forEach(section => {
         section.hidden = true;
@@ -3187,9 +3510,13 @@
       } else if (sectionId === 'security') {
         // Load Security Settings (Task 10.4)
         loadSecurityConfiguration();
+        // Load Certificate Information (Task 18)
+        loadCertificateInfo();
       } else if (sectionId === 'logs') {
         // Initialize System Logs section (Task 11)
         initLogsSection();
+        // Load Login Audit Logs (Task 20)
+        initLoginLogs();
       } else if (sectionId === 'testing') {
         // Start hardware state polling for testing section
         startHardwareStatePolling();
@@ -5161,6 +5488,99 @@
       initSystemInfo();
       initNTPStatus();
       initRecentActivity();
+      checkCertificateExpiration();
+    }
+    
+    /**
+     * Check certificate expiration and display warnings (Task 22)
+     */
+    async function checkCertificateExpiration() {
+      try {
+        const response = await apiRequest('/api/cert/info', { method: 'GET' });
+        
+        // Hide all warning banners initially
+        document.getElementById('cert-expiry-warning-banner').style.display = 'none';
+        document.getElementById('cert-expiry-critical-banner').style.display = 'none';
+        document.getElementById('cert-expired-banner').style.display = 'none';
+        
+        if (!response || !response.exists) {
+          // No certificate found - this is handled elsewhere
+          return;
+        }
+        
+        const daysUntilExpiry = response.days_until_expiry;
+        const isExpired = response.is_expired;
+        
+        if (isExpired) {
+          // Certificate has expired - show error banner
+          document.getElementById('cert-expired-banner').style.display = 'block';
+        } else if (daysUntilExpiry < 7) {
+          // Certificate expires within 7 days - show critical warning
+          const criticalBanner = document.getElementById('cert-expiry-critical-banner');
+          const criticalText = document.getElementById('cert-expiry-critical-text');
+          criticalBanner.style.display = 'block';
+          criticalText.textContent = `Your TLS certificate will expire in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}! Immediate action required to prevent loss of secure access.`;
+        } else if (daysUntilExpiry < 30) {
+          // Certificate expires within 30 days - show warning
+          const warningBanner = document.getElementById('cert-expiry-warning-banner');
+          const warningText = document.getElementById('cert-expiry-warning-text');
+          warningBanner.style.display = 'block';
+          warningText.textContent = `Your TLS certificate will expire in ${daysUntilExpiry} days. Please renew or generate a new certificate to maintain secure access.`;
+        }
+        
+      } catch (error) {
+        // Silently fail - certificate info might not be available
+        console.warn('Failed to check certificate expiration:', error);
+      }
+    }
+    
+    /**
+     * Quick generate self-signed certificate from dashboard warning (Task 22)
+     */
+    async function generateSelfSignedCertificateQuick() {
+      if (!confirm('Generate a new self-signed certificate? This will replace the current certificate and may require you to accept a new security warning in your browser.')) {
+        return;
+      }
+      
+      try {
+        showToast('Generating new self-signed certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/generate', {
+          method: 'POST',
+          body: JSON.stringify({
+            common_name: 'doorstation.local',
+            validity_days: 3650
+          })
+        });
+        
+        showToast('Certificate generated successfully! The page will reload in 3 seconds...', 'success');
+        
+        // Reload page after 3 seconds to apply new certificate
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+        
+      } catch (error) {
+        showToast(error.message || 'Failed to generate certificate', 'error');
+      }
+    }
+    
+    /**
+     * Scroll to a specific element on the page (Task 22)
+     */
+    function scrollToElement(elementId) {
+      setTimeout(() => {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Add highlight effect
+          element.style.transition = 'box-shadow 0.3s ease';
+          element.style.boxShadow = '0 0 0 4px rgba(76, 175, 80, 0.3)';
+          setTimeout(() => {
+            element.style.boxShadow = '';
+          }, 2000);
+        }
+      }, 300);
     }
     
     // ===== Task 7: SIP Settings Section Functions =====
@@ -6089,11 +6509,528 @@
     }
     
     /**
+     * Handle admin password change
+     * @param {Event} event - Form submit event
+     */
+    async function handlePasswordChange(event) {
+      event.preventDefault();
+      
+      const form = event.target;
+      const submitButton = form.querySelector('button[type="submit"]');
+      const btnText = submitButton.querySelector('.btn-text');
+      const btnSpinner = submitButton.querySelector('.btn-spinner');
+      
+      // Get form values
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-new-password').value;
+      
+      // Clear previous error messages
+      form.querySelectorAll('.error-message').forEach(el => {
+        el.hidden = true;
+        el.textContent = '';
+      });
+      form.querySelectorAll('input').forEach(input => input.classList.remove('invalid'));
+      
+      // Validate passwords match
+      if (newPassword !== confirmPassword) {
+        const confirmInput = document.getElementById('confirm-new-password');
+        const errorMsg = confirmInput.nextElementSibling;
+        if (errorMsg && errorMsg.classList.contains('error-message')) {
+          errorMsg.textContent = 'Passwords do not match';
+          errorMsg.hidden = false;
+        }
+        confirmInput.classList.add('invalid');
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+      
+      // Validate password strength
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        const newPasswordInput = document.getElementById('new-password');
+        const errorMsg = newPasswordInput.nextElementSibling;
+        if (errorMsg && errorMsg.classList.contains('error-message')) {
+          errorMsg.textContent = 'Password must be at least 8 characters with uppercase, lowercase, and digit';
+          errorMsg.hidden = false;
+        }
+        newPasswordInput.classList.add('invalid');
+        showToast('Password does not meet security requirements', 'error');
+        return;
+      }
+      
+      // Set loading state
+      submitButton.disabled = true;
+      btnText.textContent = 'Changing Password...';
+      btnSpinner.hidden = false;
+      
+      try {
+        const response = await apiRequest('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword
+          })
+        });
+        
+        if (response && response.success) {
+          showToast('Password changed successfully. You will be logged out.', 'success');
+          
+          // Clear form
+          form.reset();
+          
+          // Redirect to login page after 2 seconds
+          setTimeout(() => {
+            window.location.href = '/login.html';
+          }, 2000);
+        } else {
+          const errorMessage = response?.error || 'Failed to change password';
+          showToast(errorMessage, 'error');
+          
+          // Highlight current password field if it's wrong
+          if (errorMessage.toLowerCase().includes('current password')) {
+            const currentPasswordInput = document.getElementById('current-password');
+            currentPasswordInput.classList.add('invalid');
+            const errorMsg = currentPasswordInput.nextElementSibling;
+            if (errorMsg && errorMsg.classList.contains('error-message')) {
+              errorMsg.textContent = 'Current password is incorrect';
+              errorMsg.hidden = false;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Password change error:', error);
+        showToast('Failed to change password. Please try again.', 'error');
+      } finally {
+        // Reset button state
+        submitButton.disabled = false;
+        btnText.textContent = 'Change Password';
+        btnSpinner.hidden = true;
+      }
+    }
+    
+    /**
+     * Task 20: Load and display login audit logs
+     */
+    async function refreshLoginLogs() {
+      const container = document.getElementById('login-log-container');
+      
+      try {
+        console.log('Fetching login logs...');
+        const response = await apiRequest('/api/auth/logs', { silentError: true });
+        console.log('Login logs response:', response);
+        
+        if (response) {
+          // Display logs even if empty array
+          displayLoginLogs(response.logs || []);
+        } else {
+          // No response - show error
+          console.error('No response from login logs API');
+          if (container) {
+            container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
+          }
+        }
+      } catch (error) {
+        console.error('Error loading login logs:', error);
+        if (container) {
+          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
+        }
+      }
+    }
+    
+    /**
+     * Task 20: Display login audit logs in the UI
+     */
+    function displayLoginLogs(logs) {
+      const container = document.getElementById('login-log-container');
+      if (!container) return;
+      
+      if (!logs || logs.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No login attempts recorded</div>';
+        return;
+      }
+      
+      let html = '<table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">';
+      html += '<thead><tr style="border-bottom: 2px solid var(--color-border); text-align: left;">';
+      html += '<th style="padding: var(--spacing-sm);">Timestamp</th>';
+      html += '<th style="padding: var(--spacing-sm);">Username</th>';
+      html += '<th style="padding: var(--spacing-sm);">IP Address</th>';
+      html += '<th style="padding: var(--spacing-sm);">Result</th>';
+      html += '<th style="padding: var(--spacing-sm);">Status</th>';
+      html += '</tr></thead><tbody>';
+      
+      logs.forEach(log => {
+        const date = new Date(log.timestamp * 1000);
+        const formattedDate = date.toLocaleString();
+        const statusColor = log.success ? 'var(--color-success)' : 'var(--color-danger)';
+        const statusIcon = log.success ? '✅' : '❌';
+        
+        html += `<tr style="border-bottom: 1px solid var(--color-border);">`;
+        html += `<td style="padding: var(--spacing-sm);">${formattedDate}</td>`;
+        html += `<td style="padding: var(--spacing-sm);">${escapeHtml(log.username)}</td>`;
+        html += `<td style="padding: var(--spacing-sm); font-family: monospace;">${escapeHtml(log.ip_address)}</td>`;
+        html += `<td style="padding: var(--spacing-sm);">${escapeHtml(log.result)}</td>`;
+        html += `<td style="padding: var(--spacing-sm); color: ${statusColor};">${statusIcon} ${log.success ? 'Success' : 'Failed'}</td>`;
+        html += `</tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    /**
+     * Helper function to escape HTML
+     */
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    /**
+     * Task 20: Initialize login logs auto-refresh
+     */
+    function initLoginLogs() {
+      console.log('Initializing login logs...');
+      
+      // Prevent duplicate initialization
+      if (loginLogInitialized) {
+        console.log('Login logs already initialized, refreshing...');
+        refreshLoginLogs();
+        return;
+      }
+      
+      // Load initial logs
+      refreshLoginLogs();
+      
+      // Setup auto-refresh
+      const autoRefreshCheckbox = document.getElementById('login-log-auto-refresh');
+      if (autoRefreshCheckbox) {
+        console.log('Setting up login log auto-refresh, checkbox checked:', autoRefreshCheckbox.checked);
+        autoRefreshCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            startLoginLogAutoRefresh();
+          } else {
+            stopLoginLogAutoRefresh();
+          }
+        });
+        
+        // Start auto-refresh if checked
+        if (autoRefreshCheckbox.checked) {
+          startLoginLogAutoRefresh();
+        }
+        
+        loginLogInitialized = true;
+      } else {
+        console.error('Login log auto-refresh checkbox not found');
+      }
+    }
+    
+    /**
+     * Task 20: Start login log auto-refresh
+     */
+    function startLoginLogAutoRefresh() {
+      console.log('Starting login log auto-refresh');
+      if (loginLogAutoRefreshInterval) {
+        clearInterval(loginLogAutoRefreshInterval);
+      }
+      loginLogAutoRefreshInterval = setInterval(() => {
+        console.log('Auto-refreshing login logs...');
+        refreshLoginLogs();
+      }, 10000); // Refresh every 10 seconds
+    }
+    
+    /**
+     * Task 20: Stop login log auto-refresh
+     */
+    function stopLoginLogAutoRefresh() {
+      console.log('Stopping login log auto-refresh');
+      if (loginLogAutoRefreshInterval) {
+        clearInterval(loginLogAutoRefreshInterval);
+        loginLogAutoRefreshInterval = null;
+      }
+    }
+    
+    /**
+     * Task 18: Load certificate information and display
+     */
+    async function loadCertificateInfo() {
+      try {
+        const response = await apiRequest('/api/cert/info', { silentError: true });
+        
+        if (response) {
+          // Update certificate type
+          const certTypeElement = document.getElementById('cert-type');
+          if (certTypeElement) {
+            certTypeElement.textContent = response.is_self_signed ? 'Self-Signed' : 'CA-Signed';
+          }
+          
+          // Update common name
+          const certCNElement = document.getElementById('cert-cn');
+          if (certCNElement) {
+            certCNElement.textContent = response.common_name || 'N/A';
+          }
+          
+          // Update issuer
+          const certIssuerElement = document.getElementById('cert-issuer');
+          if (certIssuerElement) {
+            certIssuerElement.textContent = response.issuer || 'N/A';
+          }
+          
+          // Update valid from
+          const certValidFromElement = document.getElementById('cert-valid-from');
+          if (certValidFromElement) {
+            certValidFromElement.textContent = response.not_before || 'N/A';
+          }
+          
+          // Update expires
+          const certExpiresElement = document.getElementById('cert-expires');
+          if (certExpiresElement) {
+            certExpiresElement.textContent = response.not_after || 'N/A';
+          }
+          
+          // Update days remaining
+          const certDaysRemainingElement = document.getElementById('cert-days-remaining');
+          if (certDaysRemainingElement) {
+            const daysRemaining = response.days_until_expiry || 0;
+            certDaysRemainingElement.textContent = daysRemaining > 0 ? `${daysRemaining} days` : 'Expired';
+            
+            // Color code based on days remaining
+            if (daysRemaining < 0) {
+              certDaysRemainingElement.style.color = 'var(--color-danger)';
+            } else if (daysRemaining < 30) {
+              certDaysRemainingElement.style.color = 'var(--color-warning)';
+            } else {
+              certDaysRemainingElement.style.color = 'var(--color-success)';
+            }
+          }
+          
+          // Show expiration warning if needed
+          const warningElement = document.getElementById('cert-expiry-warning');
+          const warningTextElement = document.getElementById('cert-expiry-warning-text');
+          if (warningElement && warningTextElement) {
+            const daysRemaining = response.days_until_expiry || 0;
+            if (response.is_expiring_soon || daysRemaining < 30) {
+              warningElement.style.display = 'block';
+              if (daysRemaining < 0) {
+                warningTextElement.textContent = 'Your certificate has expired! Please generate a new certificate or upload a valid one.';
+                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                warningElement.style.borderColor = 'var(--color-danger)';
+              } else if (daysRemaining < 7) {
+                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Please renew it soon.`;
+                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                warningElement.style.borderColor = 'var(--color-danger)';
+              } else {
+                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Consider renewing it.`;
+              }
+            } else {
+              warningElement.style.display = 'none';
+            }
+          }
+          
+          console.log('Certificate information loaded successfully');
+        }
+      } catch (error) {
+        console.error('Error loading certificate information:', error);
+        // Set default values if cert info doesn't exist
+        const certTypeElement = document.getElementById('cert-type');
+        if (certTypeElement) certTypeElement.textContent = 'Not Available';
+      }
+    }
+    
+    /**
+     * Task 18: Generate self-signed certificate
+     */
+    async function generateSelfSignedCertificate() {
+      const button = document.getElementById('generate-cert-btn');
+      const commonNameInput = document.getElementById('cert-common-name');
+      
+      if (!commonNameInput || !commonNameInput.value.trim()) {
+        showToast('Please enter a common name for the certificate', 'error');
+        return;
+      }
+      
+      const commonName = commonNameInput.value.trim();
+      
+      // Confirm action
+      const confirmed = await showConfirmDialog(
+        'Generate Self-Signed Certificate',
+        `This will generate a new self-signed certificate for "${commonName}". The web server will restart and you may need to reconnect. Continue?`,
+        'warning'
+      );
+      
+      if (!confirmed) return;
+      
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Generating self-signed certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ common_name: commonName })
+        });
+        
+        if (response && response.success) {
+          showToast('Certificate generated successfully! Web server will restart...', 'success');
+          
+          // Reload certificate info after a delay
+          setTimeout(() => {
+            loadCertificateInfo();
+          }, 3000);
+        } else {
+          showToast(response?.message || 'Failed to generate certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error generating certificate:', error);
+        showToast('Error generating certificate: ' + error.message, 'error');
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Task 18: Upload custom certificate
+     */
+    async function uploadCustomCertificate() {
+      const button = document.getElementById('upload-cert-btn');
+      const certFileInput = document.getElementById('cert-file-input');
+      const keyFileInput = document.getElementById('key-file-input');
+      const chainFileInput = document.getElementById('chain-file-input');
+      
+      if (!certFileInput || !certFileInput.files || certFileInput.files.length === 0) {
+        showToast('Please select a certificate file', 'error');
+        return;
+      }
+      
+      if (!keyFileInput || !keyFileInput.files || keyFileInput.files.length === 0) {
+        showToast('Please select a private key file', 'error');
+        return;
+      }
+      
+      // Confirm action
+      const confirmed = await showConfirmDialog(
+        'Upload Custom Certificate',
+        'This will replace the current certificate. The web server will restart and you may need to reconnect. Continue?',
+        'warning'
+      );
+      
+      if (!confirmed) return;
+      
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Uploading certificate...', 'info');
+        
+        // Read files as text
+        const certPem = await readFileAsText(certFileInput.files[0]);
+        const keyPem = await readFileAsText(keyFileInput.files[0]);
+        const chainPem = chainFileInput && chainFileInput.files && chainFileInput.files.length > 0 
+          ? await readFileAsText(chainFileInput.files[0]) 
+          : null;
+        
+        // Validate PEM format
+        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) {
+          showToast('Invalid certificate file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
+        
+        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) {
+          showToast('Invalid private key file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
+        
+        // Upload certificate
+        const response = await apiRequest('/api/cert/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cert_pem: certPem,
+            key_pem: keyPem,
+            chain_pem: chainPem
+          })
+        });
+        
+        if (response && response.success) {
+          showToast('Certificate uploaded successfully! Web server will restart...', 'success');
+          
+          // Clear file inputs
+          certFileInput.value = '';
+          keyFileInput.value = '';
+          if (chainFileInput) chainFileInput.value = '';
+          
+          // Reload certificate info after a delay
+          setTimeout(() => {
+            loadCertificateInfo();
+          }, 3000);
+        } else {
+          showToast(response?.message || 'Failed to upload certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error uploading certificate:', error);
+        showToast('Error uploading certificate: ' + error.message, 'error');
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Task 18: Download current certificate
+     */
+    async function downloadCertificate() {
+      try {
+        showToast('Downloading certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/download');
+        
+        if (response && response.cert_pem) {
+          // Create a blob and download
+          const blob = new Blob([response.cert_pem], { type: 'application/x-pem-file' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'certificate.pem';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          
+          showToast('Certificate downloaded successfully', 'success');
+        } else {
+          showToast('Failed to download certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error downloading certificate:', error);
+        showToast('Error downloading certificate: ' + error.message, 'error');
+      }
+    }
+    
+    /**
+     * Helper function to read file as text
+     * @param {File} file - File to read
+     * @returns {Promise<string>} File content as text
+     */
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('Failed to read file'));
+        reader.readAsText(file);
+      });
+    }
+    
+    /**
      * Initialize Security Settings section
      */
     function initSecuritySettings() {
       // Load existing configuration
       loadSecurityConfiguration();
+      // Load certificate information (Task 18)
+      loadCertificateInfo();
+      // Note: initLoginLogs() is called when navigating to security section
     }
     
     // ===== Task 11: System Logs Section Functions =====
@@ -6105,6 +7042,8 @@
     let dtmfLogLastTimestamp = 0;
     let sipLogAutoRefreshInterval = null;
     let dtmfLogAutoRefreshInterval = null;
+    let loginLogAutoRefreshInterval = null;
+    let loginLogInitialized = false;
     let sipLogCurrentFilter = 'all';
     let dtmfLogCurrentFilter = 'all';
     
@@ -8086,10 +9025,201 @@
     
     // ===== Initialization =====
     
+    // ===== Task 19: Session Management =====
+    
+    /**
+     * Session management state
+     */
+    const sessionManager = {
+      checkInterval: null,
+      warningTimeout: null,
+      sessionExpiresAt: null,
+      warningShown: false,
+      activityListeners: []
+    };
+    
+    /**
+     * Check if user has a valid session
+     * @returns {Promise<boolean>} True if session is valid
+     */
+    async function checkSession() {
+      try {
+        // Make a simple API call to check session validity
+        const response = await fetch('/api/system/info', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.status === 401) {
+          // Session invalid or expired - redirect to login
+          console.log('Session expired or invalid, redirecting to login');
+          window.location.href = '/login.html';
+          return false;
+        }
+        
+        if (response.ok) {
+          // Session is valid
+          return true;
+        }
+        
+        // Other error - log but don't redirect
+        console.warn('Session check returned unexpected status:', response.status);
+        return true; // Assume valid to avoid false redirects
+      } catch (error) {
+        console.error('Session check failed:', error);
+        // Network error - don't redirect, might be temporary
+        return true;
+      }
+    }
+    
+    /**
+     * Show session timeout warning
+     * @param {number} minutesRemaining - Minutes until session expires
+     */
+    function showSessionWarning(minutesRemaining) {
+      if (sessionManager.warningShown) {
+        return; // Already showing warning
+      }
+      
+      sessionManager.warningShown = true;
+      
+      const message = `Your session will expire in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}. Please save your work.`;
+      
+      showToast(message, 'warning', 0); // 0 = don't auto-dismiss
+      
+      console.log('Session timeout warning shown:', message);
+    }
+    
+    /**
+     * Extend session by making an API call
+     */
+    async function extendSession() {
+      try {
+        // Make any authenticated API call to extend session
+        const response = await fetch('/api/system/info', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          // Reset warning state
+          sessionManager.warningShown = false;
+          
+          // Update session expiration time (30 minutes from now)
+          sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
+          
+          console.log('Session extended');
+        }
+      } catch (error) {
+        console.error('Failed to extend session:', error);
+      }
+    }
+    
+    /**
+     * Setup automatic session extension on user activity
+     */
+    function setupActivityTracking() {
+      // Throttle activity tracking to avoid excessive API calls
+      let lastActivityTime = 0;
+      const ACTIVITY_THROTTLE = 60000; // 1 minute
+      
+      const handleActivity = () => {
+        const now = Date.now();
+        if (now - lastActivityTime > ACTIVITY_THROTTLE) {
+          lastActivityTime = now;
+          extendSession();
+        }
+      };
+      
+      // Track various user activities
+      const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+      
+      events.forEach(event => {
+        document.addEventListener(event, handleActivity, { passive: true });
+        sessionManager.activityListeners.push({ event, handler: handleActivity });
+      });
+      
+      console.log('Activity tracking initialized');
+    }
+    
+    /**
+     * Start session monitoring
+     */
+    function startSessionMonitoring() {
+      // Check session every 2 minutes
+      sessionManager.checkInterval = setInterval(async () => {
+        const isValid = await checkSession();
+        
+        if (isValid && sessionManager.sessionExpiresAt) {
+          const timeRemaining = sessionManager.sessionExpiresAt - Date.now();
+          const minutesRemaining = Math.floor(timeRemaining / 60000);
+          
+          // Show warning 5 minutes before expiration
+          if (minutesRemaining <= 5 && minutesRemaining > 0 && !sessionManager.warningShown) {
+            showSessionWarning(minutesRemaining);
+          }
+        }
+      }, 120000); // Check every 2 minutes
+      
+      // Set initial session expiration time (30 minutes from now)
+      sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
+      
+      console.log('Session monitoring started');
+    }
+    
+    /**
+     * Stop session monitoring (cleanup)
+     */
+    function stopSessionMonitoring() {
+      if (sessionManager.checkInterval) {
+        clearInterval(sessionManager.checkInterval);
+        sessionManager.checkInterval = null;
+      }
+      
+      if (sessionManager.warningTimeout) {
+        clearTimeout(sessionManager.warningTimeout);
+        sessionManager.warningTimeout = null;
+      }
+      
+      // Remove activity listeners
+      sessionManager.activityListeners.forEach(({ event, handler }) => {
+        document.removeEventListener(event, handler);
+      });
+      sessionManager.activityListeners = [];
+      
+      console.log('Session monitoring stopped');
+    }
+    
+    /**
+     * Initialize session management on page load
+     */
+    async function initSessionManagement() {
+      console.log('Initializing session management');
+      
+      // Check if session is valid on page load
+      const isValid = await checkSession();
+      
+      if (!isValid) {
+        // Will redirect to login, no need to continue
+        return;
+      }
+      
+      // Setup activity tracking for automatic session extension
+      setupActivityTracking();
+      
+      // Start monitoring session expiration
+      startSessionMonitoring();
+      
+      console.log('Session management initialized');
+    }
+    
     /**
      * Initialize the application
      */
     function initApp() {
+      // Initialize session management first
+      initSessionManagement();
+      
       // Initialize theme
       initTheme();
       
@@ -8119,6 +9249,9 @@
       
       // Initialize Hardware Testing section
       initHardwareTesting();
+      
+      // Initialize Security Settings section
+      initSecuritySettings();
       
       // Initialize Email Reports section
       initEmailReports();
