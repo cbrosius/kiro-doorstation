@@ -12,6 +12,7 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/error.h"
 #include "mbedtls/bignum.h"
+#include "mbedtls/oid.h"
 
 static const char *TAG = "CERT_MANAGER";
 
@@ -83,18 +84,17 @@ esp_err_t cert_get_info(cert_info_t* info) {
     // Initialize structure
     memset(info, 0, sizeof(cert_info_t));
     
+    // Check if certificate exists
+    if (!cert_exists()) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    
     // Open NVS
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open(CERT_NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
         return err;
-    }
-    
-    // Check if certificate exists
-    if (!cert_exists()) {
-        nvs_close(nvs_handle);
-        return ESP_ERR_NOT_FOUND;
     }
     
     // Get self-signed flag
@@ -104,24 +104,149 @@ esp_err_t cert_get_info(cert_info_t* info) {
         info->is_self_signed = (is_self_signed != 0);
     }
     
-    // Get generation timestamp
-    uint32_t generated_at = 0;
-    nvs_get_u32(nvs_handle, CERT_NVS_GENERATED_AT_KEY, &generated_at);
+    // Get certificate size
+    size_t cert_size = 0;
+    err = nvs_get_blob(nvs_handle, CERT_NVS_CERT_KEY, NULL, &cert_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get certificate size: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        return err;
+    }
     
+    // Allocate buffer for certificate
+    char* cert_pem = (char*)malloc(cert_size);
+    if (!cert_pem) {
+        ESP_LOGE(TAG, "Failed to allocate memory for certificate");
+        nvs_close(nvs_handle);
+        return ESP_ERR_NO_MEM;
+    }
+    
+    // Read certificate from NVS
+    err = nvs_get_blob(nvs_handle, CERT_NVS_CERT_KEY, cert_pem, &cert_size);
     nvs_close(nvs_handle);
     
-    // TODO: Parse certificate to extract actual information
-    // For now, set placeholder values
-    strncpy(info->common_name, "doorstation.local", CERT_COMMON_NAME_MAX_LEN - 1);
-    strncpy(info->issuer, "Self-Signed", CERT_ISSUER_MAX_LEN - 1);
-    strncpy(info->not_before, "2024-01-01", CERT_DATE_MAX_LEN - 1);
-    strncpy(info->not_after, "2034-01-01", CERT_DATE_MAX_LEN - 1);
-    info->days_until_expiry = 3650;
-    info->is_expired = false;
-    info->is_expiring_soon = false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read certificate: %s", esp_err_to_name(err));
+        free(cert_pem);
+        return err;
+    }
     
-    ESP_LOGI(TAG, "Certificate info retrieved: CN=%s, Self-Signed=%d", 
-             info->common_name, info->is_self_signed);
+    // Parse certificate using mbedtls
+    mbedtls_x509_crt crt;
+    mbedtls_x509_crt_init(&crt);
+    
+    int ret = mbedtls_x509_crt_parse(&crt, (const unsigned char*)cert_pem, cert_size);
+    free(cert_pem);
+    
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to parse certificate: -0x%04x", -ret);
+        mbedtls_x509_crt_free(&crt);
+        return ESP_FAIL;
+    }
+    
+    // Extract Common Name from subject using mbedtls helper
+    ret = mbedtls_x509_dn_gets(info->common_name, CERT_COMMON_NAME_MAX_LEN, &crt.subject);
+    if (ret < 0) {
+        ESP_LOGW(TAG, "Failed to extract subject DN");
+        info->common_name[0] = '\0';
+    } else {
+        // Try to extract just the CN= part if present
+        char *cn_start = strstr(info->common_name, "CN=");
+        if (cn_start) {
+            cn_start += 3; // Skip "CN="
+            char *cn_end = strchr(cn_start, ',');
+            if (cn_end) {
+                size_t cn_len = cn_end - cn_start;
+                if (cn_len < CERT_COMMON_NAME_MAX_LEN) {
+                    memmove(info->common_name, cn_start, cn_len);
+                    info->common_name[cn_len] = '\0';
+                }
+            } else {
+                // CN is the last or only field
+                memmove(info->common_name, cn_start, strlen(cn_start) + 1);
+            }
+        }
+    }
+    
+    // Extract issuer information
+    ret = mbedtls_x509_dn_gets(info->issuer, CERT_ISSUER_MAX_LEN, &crt.issuer);
+    if (ret < 0) {
+        ESP_LOGW(TAG, "Failed to extract issuer DN");
+        info->issuer[0] = '\0';
+    } else {
+        // Try to extract just the CN= part if present
+        char *cn_start = strstr(info->issuer, "CN=");
+        if (cn_start) {
+            cn_start += 3; // Skip "CN="
+            char *cn_end = strchr(cn_start, ',');
+            if (cn_end) {
+                size_t cn_len = cn_end - cn_start;
+                if (cn_len < CERT_ISSUER_MAX_LEN) {
+                    memmove(info->issuer, cn_start, cn_len);
+                    info->issuer[cn_len] = '\0';
+                }
+            } else {
+                // CN is the last or only field
+                memmove(info->issuer, cn_start, strlen(cn_start) + 1);
+            }
+        }
+    }
+    
+    // Format validity dates (not_before)
+    struct tm timeinfo_buf;
+    struct tm *timeinfo = gmtime_r((time_t*)&crt.valid_from.year, &timeinfo_buf);
+    if (timeinfo) {
+        timeinfo->tm_year = crt.valid_from.year - 1900;
+        timeinfo->tm_mon = crt.valid_from.mon - 1;
+        timeinfo->tm_mday = crt.valid_from.day;
+        timeinfo->tm_hour = crt.valid_from.hour;
+        timeinfo->tm_min = crt.valid_from.min;
+        timeinfo->tm_sec = crt.valid_from.sec;
+        strftime(info->not_before, CERT_DATE_MAX_LEN, "%Y-%m-%d %H:%M:%S", timeinfo);
+    }
+    
+    // Format validity dates (not_after)
+    timeinfo = gmtime_r((time_t*)&crt.valid_to.year, &timeinfo_buf);
+    if (timeinfo) {
+        timeinfo->tm_year = crt.valid_to.year - 1900;
+        timeinfo->tm_mon = crt.valid_to.mon - 1;
+        timeinfo->tm_mday = crt.valid_to.day;
+        timeinfo->tm_hour = crt.valid_to.hour;
+        timeinfo->tm_min = crt.valid_to.min;
+        timeinfo->tm_sec = crt.valid_to.sec;
+        strftime(info->not_after, CERT_DATE_MAX_LEN, "%Y-%m-%d %H:%M:%S", timeinfo);
+    }
+    
+    // Calculate days until expiration
+    time_t now = time(NULL);
+    struct tm expiry_tm = {0};
+    expiry_tm.tm_year = crt.valid_to.year - 1900;
+    expiry_tm.tm_mon = crt.valid_to.mon - 1;
+    expiry_tm.tm_mday = crt.valid_to.day;
+    expiry_tm.tm_hour = crt.valid_to.hour;
+    expiry_tm.tm_min = crt.valid_to.min;
+    expiry_tm.tm_sec = crt.valid_to.sec;
+    
+    time_t expiry_time = mktime(&expiry_tm);
+    
+    // Calculate difference in days
+    if (expiry_time > now) {
+        int64_t diff_seconds = (int64_t)expiry_time - (int64_t)now;
+        info->days_until_expiry = (uint32_t)(diff_seconds / (24 * 60 * 60));
+        info->is_expired = false;
+    } else {
+        info->days_until_expiry = 0;
+        info->is_expired = true;
+    }
+    
+    // Check if expiring soon (< 30 days)
+    info->is_expiring_soon = (!info->is_expired && info->days_until_expiry < CERT_EXPIRING_SOON_DAYS);
+    
+    // Clean up
+    mbedtls_x509_crt_free(&crt);
+    
+    ESP_LOGI(TAG, "Certificate info retrieved: CN=%s, Issuer=%s, Days until expiry=%d, Expired=%d, Expiring soon=%d", 
+             info->common_name, info->issuer, info->days_until_expiry, info->is_expired, info->is_expiring_soon);
     
     return ESP_OK;
 }

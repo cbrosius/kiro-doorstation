@@ -89,7 +89,12 @@
   - Store certificate and private key in NVS
   - _Requirements: 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 8. Implement certificate information retrieval
+- [x] 8. Implement certificate information retrieval
+
+
+
+
+
   - Implement `cert_get_info()` to parse certificate details
   - Extract Common Name, issuer, validity dates
   - Calculate days until expiration
