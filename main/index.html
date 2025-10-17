@@ -490,7 +490,8 @@
 
     .status-card[data-status="closed"],
     .status-card[data-status="off"],
-    .status-card[data-status="inactive"] {
+    .status-card[data-status="inactive"],
+    .status-card[data-status="unknown"] {
       border-color: var(--color-status-inactive);
     }
 
@@ -1488,36 +1489,36 @@
       </button>
       <div class="status-content" id="status-content">
         <div class="status-grid">
-          <div class="status-card" id="wifi-status" data-status="disconnected" role="status" aria-live="polite"
+          <div class="status-card" id="wifi-status" data-status="unknown" role="status" aria-live="polite"
             aria-label="WiFi connection status">
             <span class="status-icon">📶</span>
             <div class="status-info">
               <span class="status-label">WiFi</span>
-              <span class="status-value">Disconnected</span>
+              <span class="status-value">Unknown</span>
             </div>
           </div>
-          <div class="status-card" id="sip-status" data-status="disconnected" role="status" aria-live="polite"
+          <div class="status-card" id="sip-status" data-status="unknown" role="status" aria-live="polite"
             aria-label="SIP connection status">
             <span class="status-icon">📞</span>
             <div class="status-info">
               <span class="status-label">SIP</span>
-              <span class="status-value">Disconnected</span>
+              <span class="status-value">Unknown</span>
             </div>
           </div>
-          <div class="status-card" id="door-status" data-status="closed" role="status" aria-live="polite"
+          <div class="status-card" id="door-status" data-status="unknown" role="status" aria-live="polite"
             aria-label="Door status">
             <span class="status-icon">🚪</span>
             <div class="status-info">
               <span class="status-label">Door</span>
-              <span class="status-value">Closed</span>
+              <span class="status-value">Unknown</span>
             </div>
           </div>
-          <div class="status-card" id="light-status" data-status="off" role="status" aria-live="polite"
+          <div class="status-card" id="light-status" data-status="unknown" role="status" aria-live="polite"
             aria-label="Light status">
             <span class="status-icon">💡</span>
             <div class="status-info">
               <span class="status-label">Light</span>
-              <span class="status-value">Off</span>
+              <span class="status-value">Unknown</span>
             </div>
           </div>
         </div>
