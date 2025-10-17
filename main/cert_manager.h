@@ -109,6 +109,16 @@ esp_err_t cert_delete(void);
  */
 bool cert_exists(void);
 
+/**
+ * @brief Ensure certificate exists (generate if needed)
+ * 
+ * Checks if a certificate exists and generates a self-signed certificate if not.
+ * This should be called after system initialization is complete.
+ * 
+ * @return esp_err_t ESP_OK on success, error code otherwise
+ */
+esp_err_t cert_ensure_exists(void);
+
 #ifdef __cplusplus
 }
 #endif

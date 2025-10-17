@@ -116,7 +116,12 @@
   - Validate certificate chain integrity
   - _Requirements: 6.2, 6.3, 6.4, 14.1, 14.2, 14.3_
 
-- [ ] 10. Convert web server to HTTPS
+- [x] 10. Convert web server to HTTPS
+
+
+
+
+
   - Modify `web_server_start()` to use `httpd_ssl_start()`
   - Load certificate and private key from NVS
   - Configure HTTPS server on port 443

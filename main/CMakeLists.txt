@@ -16,6 +16,7 @@ idf_component_register(
     REQUIRES
         esp_wifi
         esp_http_server
+        esp_https_server
         esp_netif
         nvs_flash
         driver

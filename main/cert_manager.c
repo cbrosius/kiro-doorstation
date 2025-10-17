@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/x509_csr.h"
 #include "mbedtls/pk.h"
@@ -48,6 +50,7 @@ void cert_manager_init(void) {
     // Check if certificate exists
     size_t required_size = 0;
     err = nvs_get_blob(nvs_handle, CERT_NVS_CERT_KEY, NULL, &required_size);
+    
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGW(TAG, "No certificate found - will need to generate or upload");
     } else if (err == ESP_OK) {
@@ -60,6 +63,61 @@ void cert_manager_init(void) {
     
     cert_initialized = true;
     ESP_LOGI(TAG, "Certificate manager initialized");
+}
+
+// Task for certificate generation with dedicated stack
+static void cert_generation_task(void* pvParameters) {
+    (void)pvParameters;  // Unused parameter
+    ESP_LOGI(TAG, "Certificate generation task started");
+    
+    esp_err_t err = cert_generate_self_signed("doorstation.local", 3650);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to generate self-signed certificate: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Self-signed certificate generated successfully");
+    }
+    
+    // Task complete, delete itself
+    vTaskDelete(NULL);
+}
+
+esp_err_t cert_ensure_exists(void) {
+    // Check if certificate exists
+    if (cert_exists()) {
+        return ESP_OK;
+    }
+    
+    // Generate self-signed certificate in a separate task with large stack
+    ESP_LOGI(TAG, "No certificate found, generating self-signed certificate (this may take a few seconds)...");
+    
+    TaskHandle_t cert_task_handle = NULL;
+    BaseType_t result = xTaskCreate(
+        cert_generation_task,
+        "cert_gen",
+        16384,  // 16KB stack for certificate generation
+        NULL,
+        5,      // Priority
+        &cert_task_handle
+    );
+    
+    if (result != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create certificate generation task");
+        return ESP_FAIL;
+    }
+    
+    // Wait for the task to complete
+    // Poll until certificate exists or timeout
+    int timeout_seconds = 30;
+    for (int i = 0; i < timeout_seconds * 10; i++) {
+        if (cert_exists()) {
+            ESP_LOGI(TAG, "Certificate generation completed");
+            return ESP_OK;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    
+    ESP_LOGE(TAG, "Certificate generation timed out");
+    return ESP_ERR_TIMEOUT;
 }
 
 bool cert_exists(void) {

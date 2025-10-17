@@ -4,8 +4,10 @@
 #include "ntp_sync.h"
 #include "dtmf_decoder.h"
 #include "hardware_test.h"
+#include "cert_manager.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -1546,12 +1548,127 @@ static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
 };
 
+// Helper function to load certificate and key from NVS
+static esp_err_t load_cert_and_key(char** cert_pem, size_t* cert_size, char** key_pem, size_t* key_size)
+{
+    esp_err_t err;
+    
+    // Open NVS
+    nvs_handle_t nvs_handle;
+    err = nvs_open("cert", NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for certificate: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // Get certificate size
+    size_t cert_required_size = 0;
+    err = nvs_get_blob(nvs_handle, "cert_pem", NULL, &cert_required_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get certificate size: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        return err;
+    }
+    
+    // Get key size
+    size_t key_required_size = 0;
+    err = nvs_get_blob(nvs_handle, "key_pem", NULL, &key_required_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get key size: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        return err;
+    }
+    
+    // Allocate memory for certificate
+    *cert_pem = (char*)malloc(cert_required_size);
+    if (!*cert_pem) {
+        ESP_LOGE(TAG, "Failed to allocate memory for certificate");
+        nvs_close(nvs_handle);
+        return ESP_ERR_NO_MEM;
+    }
+    
+    // Allocate memory for key
+    *key_pem = (char*)malloc(key_required_size);
+    if (!*key_pem) {
+        ESP_LOGE(TAG, "Failed to allocate memory for key");
+        free(*cert_pem);
+        nvs_close(nvs_handle);
+        return ESP_ERR_NO_MEM;
+    }
+    
+    // Read certificate
+    err = nvs_get_blob(nvs_handle, "cert_pem", *cert_pem, &cert_required_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read certificate: %s", esp_err_to_name(err));
+        free(*cert_pem);
+        free(*key_pem);
+        nvs_close(nvs_handle);
+        return err;
+    }
+    
+    // Read key
+    err = nvs_get_blob(nvs_handle, "key_pem", *key_pem, &key_required_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read key: %s", esp_err_to_name(err));
+        free(*cert_pem);
+        free(*key_pem);
+        nvs_close(nvs_handle);
+        return err;
+    }
+    
+    nvs_close(nvs_handle);
+    
+    *cert_size = cert_required_size;
+    *key_size = key_required_size;
+    
+    ESP_LOGI(TAG, "Certificate and key loaded from NVS (cert: %d bytes, key: %d bytes)", 
+             cert_required_size, key_required_size);
+    
+    return ESP_OK;
+}
+
 void web_server_start(void)
 {
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 38; // Increased for all API endpoints including new ones
-
-    if (httpd_start(&server, &config) == ESP_OK) {
+    // Reduce log verbosity for TLS handshake errors (expected with self-signed certs)
+    // Browsers will reject self-signed certificates, causing repeated handshake failures
+    esp_log_level_set("esp-tls-mbedtls", ESP_LOG_NONE);     // Suppress TLS handshake errors
+    esp_log_level_set("esp_https_server", ESP_LOG_NONE);    // Suppress HTTPS server session errors
+    esp_log_level_set("httpd", ESP_LOG_NONE);               // Suppress HTTP daemon connection errors
+    
+    // Log that we've started (since we suppressed the component logs)
+    ESP_LOGI(TAG, "Starting HTTPS server on port 443...");
+    
+    // Load certificate and key from NVS (certificate should already be initialized in main.c)
+    char* cert_pem = NULL;
+    char* key_pem = NULL;
+    size_t cert_size = 0;
+    size_t key_size = 0;
+    
+    esp_err_t err = load_cert_and_key(&cert_pem, &cert_size, &key_pem, &key_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to load certificate and key");
+        return;
+    }
+    
+    // Configure HTTPS server
+    httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
+    config.httpd.max_uri_handlers = 38;
+    config.httpd.server_port = 443;
+    config.httpd.ctrl_port = 32768;
+    
+    // Set certificate and key
+    config.servercert = (const uint8_t*)cert_pem;
+    config.servercert_len = cert_size;
+    config.prvtkey_pem = (const uint8_t*)key_pem;
+    config.prvtkey_len = key_size;
+    
+    // Configure TLS 1.2 as minimum (this is typically the default)
+    // The mbedtls configuration handles the TLS version and cipher suites
+    
+    if (httpd_ssl_start(&server, &config) == ESP_OK) {
+        // Free the allocated memory after server starts (it makes internal copies)
+        free(cert_pem);
+        free(key_pem);
         // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &documentation_uri);
@@ -1607,9 +1724,11 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &hardware_status_uri);
         httpd_register_uri_handler(server, &hardware_test_stop_uri);
         
-        ESP_LOGI(TAG, "Web server started with all API endpoints");
+        ESP_LOGI(TAG, "HTTPS server started on port 443 with all API endpoints");
     } else {
-        ESP_LOGE(TAG, "Error starting web server!");
+        ESP_LOGE(TAG, "Error starting HTTPS server!");
+        free(cert_pem);
+        free(key_pem);
     }
 }
 
