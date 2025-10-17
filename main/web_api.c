@@ -6,6 +6,7 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_partition.h"
+#include "esp_timer.h"
 #include "cJSON.h"
 #include "nvs_flash.h"
 #include "nvs.h"

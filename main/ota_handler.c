@@ -143,15 +143,13 @@ esp_err_t ota_validate_image(const uint8_t* data, size_t length, const esp_parti
     ESP_LOGI(TAG, "✓ Segment count valid (%d segments)", header->segment_count);
     
     // 6. Validate image header fields
-    if (header->spi_mode >= ESP_IMAGE_SPI_MODE_MAX) {
+    // SPI mode: 0=QIO, 1=QOUT, 2=DIO, 3=DOUT, 4=FAST_READ, 5=SLOW_READ
+    if (header->spi_mode > 5) {
         ESP_LOGE(TAG, "Invalid SPI mode: %d", header->spi_mode);
         return ESP_ERR_IMAGE_INVALID;
     }
     
-    if (header->spi_speed >= ESP_IMAGE_SPI_SPEED_MAX) {
-        ESP_LOGE(TAG, "Invalid SPI speed: %d", header->spi_speed);
-        return ESP_ERR_IMAGE_INVALID;
-    }
+    // SPI speed is a 4-bit field (0-15), always valid
     
     if (header->spi_size >= ESP_IMAGE_FLASH_SIZE_MAX) {
         ESP_LOGE(TAG, "Invalid flash size: %d", header->spi_size);
@@ -275,9 +273,13 @@ esp_err_t ota_write_chunk(const uint8_t* data, size_t length) {
             if (header->magic != ESP_IMAGE_HEADER_MAGIC) {
                 ESP_LOGE(TAG, "Invalid firmware image format: magic number 0x%02X (expected 0xE9)", 
                          header->magic);
+                ESP_LOGE(TAG, "This is not a valid ESP32 firmware binary file!");
+                ESP_LOGE(TAG, "Please upload a .bin file compiled for ESP32-S3");
                 snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
-                         "Invalid firmware image format");
+                         "Invalid firmware file - not an ESP32 binary (magic: 0x%02X)", header->magic);
                 g_ota_ctx.state = OTA_STATE_ERROR;
+                // Abort to reset state for retry
+                ota_abort_update();
                 return ESP_ERR_IMAGE_INVALID;
             }
             
@@ -285,8 +287,9 @@ esp_err_t ota_write_chunk(const uint8_t* data, size_t length) {
             if (header->chip_id != ESP_CHIP_ID_ESP32S3) {
                 ESP_LOGE(TAG, "Incompatible chip type: %d (expected ESP32-S3)", header->chip_id);
                 snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
-                         "Firmware not compatible with ESP32-S3");
+                         "Firmware not compatible with ESP32-S3 (chip_id: %d)", header->chip_id);
                 g_ota_ctx.state = OTA_STATE_ERROR;
+                ota_abort_update();
                 return ESP_ERR_NOT_SUPPORTED;
             }
             
@@ -295,19 +298,21 @@ esp_err_t ota_write_chunk(const uint8_t* data, size_t length) {
                 ESP_LOGE(TAG, "Invalid segment count: %d (max: %d)", 
                          header->segment_count, ESP_IMAGE_MAX_SEGMENTS);
                 snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
-                         "Invalid firmware image structure");
+                         "Invalid firmware image structure (segments: %d)", header->segment_count);
                 g_ota_ctx.state = OTA_STATE_ERROR;
+                ota_abort_update();
                 return ESP_ERR_IMAGE_INVALID;
             }
             
-            // Validate SPI mode, speed, and size
-            if (header->spi_mode >= ESP_IMAGE_SPI_MODE_MAX ||
-                header->spi_speed >= ESP_IMAGE_SPI_SPEED_MAX ||
+            // Validate SPI mode and flash size
+            // SPI mode: 0-5, SPI speed is 4-bit (always valid), Flash size: check against max
+            if (header->spi_mode > 5 ||
                 header->spi_size >= ESP_IMAGE_FLASH_SIZE_MAX) {
                 ESP_LOGE(TAG, "Invalid SPI configuration in image header");
                 snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
-                         "Invalid firmware image configuration");
+                         "Invalid firmware image configuration (SPI mode: %d)", header->spi_mode);
                 g_ota_ctx.state = OTA_STATE_ERROR;
+                ota_abort_update();
                 return ESP_ERR_IMAGE_INVALID;
             }
             
@@ -431,12 +436,16 @@ void ota_abort_update(void) {
         esp_ota_abort(g_ota_ctx.update_handle);
     }
     
-    // Reset context
-    g_ota_ctx.state = OTA_STATE_ABORT;
+    // Reset context to IDLE state (not ABORT) to allow retry
+    g_ota_ctx.state = OTA_STATE_IDLE;
     g_ota_ctx.update_handle = 0;
     g_ota_ctx.update_partition = NULL;
+    g_ota_ctx.total_size = 0;
+    g_ota_ctx.written_size = 0;
+    g_ota_ctx.progress_percent = 0;
+    g_ota_ctx.header_validated = false;
     
-    ESP_LOGI(TAG, "OTA update aborted");
+    ESP_LOGI(TAG, "OTA update aborted, state reset to IDLE");
 }
 
 esp_err_t ota_rollback(void) {
