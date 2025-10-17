@@ -165,34 +165,50 @@
     - Add include guard and necessary includes
     - _Requirements: 1.4, 6.1_
 
-- [ ] 6. Update web_server.c to use new API module
-  - [ ] 6.1 Remove all API handler functions from web_server.c
+- [x] 6. Update web_server.c to use new API module
+
+
+
+
+  - [x] 6.1 Remove all API handler functions from web_server.c
+
     - Delete all 43 API handler function implementations
     - Keep only HTML page handlers (index, documentation, login, setup)
     - _Requirements: 1.1, 1.3, 4.1_
   
-  - [ ] 6.2 Remove all API URI structures from web_server.c
+
+  - [x] 6.2 Remove all API URI structures from web_server.c
+
     - Delete all 43 API URI handler structures
     - Keep only HTML page URI structures (root_uri, documentation_uri, login_uri, setup_uri)
     - _Requirements: 1.1, 1.3, 4.1_
+
   
-  - [ ] 6.3 Remove email configuration code from web_server.c
+
+  - [x] 6.3 Remove email configuration code from web_server.c
     - Delete email_config_t structure definition
     - Delete email_save_config and email_load_config functions
+
     - _Requirements: 3.1, 4.1_
+
   
-  - [ ] 6.4 Make auth_filter function non-static and add to header
+  - [x] 6.4 Make auth_filter function non-static and add to header
     - Change auth_filter from static to non-static in web_server.c
     - Add esp_err_t auth_filter(httpd_req_t *req) declaration to web_server.h
+
+
     - _Requirements: 2.1, 2.2, 6.3_
   
-  - [ ] 6.5 Update web_server_start to call API registration
+  - [x] 6.5 Update web_server_start to call API registration
     - Add #include "web_api.h" to web_server.c
     - Call web_api_register_handlers(server) after HTML handler registration
+
+
     - Verify registration happens before server is fully started
     - _Requirements: 1.5, 6.4_
   
-  - [ ] 6.6 Remove API handler registrations from web_server_start
+  - [x] 6.6 Remove API handler registrations from web_server_start
+
     - Delete all httpd_register_uri_handler calls for API endpoints
     - Keep only HTML page handler registrations
     - _Requirements: 1.1, 1.3_
