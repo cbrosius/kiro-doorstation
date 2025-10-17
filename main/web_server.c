@@ -3,6 +3,7 @@
 #include "wifi_manager.h"
 #include "ntp_sync.h"
 #include "dtmf_decoder.h"
+#include "hardware_test.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
@@ -750,6 +751,201 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// Hardware Test API Handlers
+static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *bell = cJSON_GetObjectItem(root, "bell");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsNumber(bell)) {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Invalid or missing bell number");
+    } else {
+        int bell_num = bell->valueint;
+        doorbell_t doorbell = (bell_num == 1) ? DOORBELL_1 : DOORBELL_2;
+        
+        esp_err_t result = hardware_test_doorbell(doorbell);
+        
+        if (result == ESP_OK) {
+            cJSON_AddBoolToObject(response, "success", true);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Doorbell %d test triggered", bell_num);
+            cJSON_AddStringToObject(response, "message", msg);
+            ESP_LOGI(TAG, "Doorbell %d test executed", bell_num);
+        } else {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Invalid bell number (must be 1 or 2)");
+        }
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *duration = cJSON_GetObjectItem(root, "duration");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsNumber(duration)) {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Invalid or missing duration");
+    } else {
+        uint32_t duration_ms = (uint32_t)duration->valueint;
+        
+        esp_err_t result = hardware_test_door_opener(duration_ms);
+        
+        if (result == ESP_OK) {
+            cJSON_AddBoolToObject(response, "success", true);
+            cJSON_AddNumberToObject(response, "duration", duration_ms);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Door opener activated for %lu ms", duration_ms);
+            cJSON_AddStringToObject(response, "message", msg);
+            ESP_LOGI(TAG, "Door opener test: %lu ms", duration_ms);
+        } else if (result == ESP_ERR_INVALID_ARG) {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Duration must be between 1000 and 10000 ms");
+        } else if (result == ESP_ERR_INVALID_STATE) {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Door opener test already in progress");
+        } else {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Door opener test failed");
+        }
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    bool new_state = false;
+    esp_err_t result = hardware_test_light_toggle(&new_state);
+    
+    if (result == ESP_OK) {
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "state", new_state ? "on" : "off");
+        ESP_LOGI(TAG, "Light relay toggled: %s", new_state ? "on" : "off");
+    } else {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Light toggle failed");
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+static esp_err_t get_hardware_state_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    hardware_state_t state;
+    hardware_test_get_state(&state);
+    
+    cJSON_AddBoolToObject(response, "door_relay_active", state.door_relay_active);
+    cJSON_AddBoolToObject(response, "light_relay_active", state.light_relay_active);
+    cJSON_AddBoolToObject(response, "bell1_pressed", state.bell1_pressed);
+    cJSON_AddBoolToObject(response, "bell2_pressed", state.bell2_pressed);
+    cJSON_AddNumberToObject(response, "door_relay_remaining_ms", state.door_relay_remaining_ms);
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    esp_err_t result = hardware_test_stop_all();
+    
+    if (result == ESP_OK) {
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "All tests stopped");
+        ESP_LOGI(TAG, "Emergency stop executed");
+    } else {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Emergency stop failed");
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -879,10 +1075,30 @@ static const httpd_uri_t dtmf_logs_uri = {
     .uri = "/api/dtmf/logs", .method = HTTP_GET, .handler = get_dtmf_logs_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t hardware_test_doorbell_uri = {
+    .uri = "/api/hardware/test/doorbell", .method = HTTP_POST, .handler = post_hardware_test_doorbell_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_door_uri = {
+    .uri = "/api/hardware/test/door", .method = HTTP_POST, .handler = post_hardware_test_door_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_light_uri = {
+    .uri = "/api/hardware/test/light", .method = HTTP_POST, .handler = post_hardware_test_light_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_state_uri = {
+    .uri = "/api/hardware/state", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_stop_uri = {
+    .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
+};
+
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 25; // Increase handler limit for DTMF endpoints + documentation
+    config.max_uri_handlers = 30; // Increase handler limit for DTMF + hardware test endpoints
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Register all URI handlers
@@ -918,6 +1134,13 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &dtmf_security_get_uri);
         httpd_register_uri_handler(server, &dtmf_security_post_uri);
         httpd_register_uri_handler(server, &dtmf_logs_uri);
+        
+        // Hardware Test API endpoints
+        httpd_register_uri_handler(server, &hardware_test_doorbell_uri);
+        httpd_register_uri_handler(server, &hardware_test_door_uri);
+        httpd_register_uri_handler(server, &hardware_test_light_uri);
+        httpd_register_uri_handler(server, &hardware_state_uri);
+        httpd_register_uri_handler(server, &hardware_test_stop_uri);
         
         ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {
