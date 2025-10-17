@@ -7,6 +7,7 @@ idf_component_register(
         "gpio_handler.c"
         "wifi_manager.c"
         "web_server.c"
+        "web_api.c"
         "ntp_sync.c"
         "rtp_handler.c"
         "hardware_test.c"
