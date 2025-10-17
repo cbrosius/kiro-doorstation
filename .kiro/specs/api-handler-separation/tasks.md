@@ -30,55 +30,82 @@
     - Move email_load_config() function to web_api.c
     - _Requirements: 3.1_
 
-- [ ] 3. Move all API handler functions to web_api.c
-  - [ ] 3.1 Copy SIP API handlers (8 handlers)
+- [x] 3. Move all API handler functions to web_api.c
+
+
+
+
+
+
+  - [x] 3.1 Copy SIP API handlers (8 handlers)
+
     - Move get_sip_status_handler, get_sip_config_handler, post_sip_config_handler
     - Move post_sip_test_handler, post_sip_test_call_handler, get_sip_log_handler
     - Move post_sip_connect_handler, post_sip_disconnect_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.2 Copy WiFi API handlers (5 handlers)
+
+  - [x] 3.2 Copy WiFi API handlers (5 handlers)
+
     - Move get_wifi_config_handler, post_wifi_config_handler, get_wifi_status_handler
     - Move post_wifi_scan_handler, post_wifi_connect_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.3 Copy Network API handlers (1 handler)
+
+  - [x] 3.3 Copy Network API handlers (1 handler)
+
     - Move get_network_ip_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.4 Copy Email API handlers (2 handlers)
+
+  - [x] 3.4 Copy Email API handlers (2 handlers)
+
     - Move get_email_config_handler, post_email_config_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.5 Copy OTA API handlers (1 handler)
+
+  - [x] 3.5 Copy OTA API handlers (1 handler)
+
     - Move get_ota_version_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.6 Copy System API handlers (3 handlers)
+  - [x] 3.6 Copy System API handlers (3 handlers)
+
+
     - Move get_system_status_handler, post_system_restart_handler, get_system_info_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.7 Copy NTP API handlers (4 handlers)
+
+  - [x] 3.7 Copy NTP API handlers (4 handlers)
+
     - Move get_ntp_status_handler, get_ntp_config_handler
     - Move post_ntp_config_handler, post_ntp_sync_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.8 Copy DTMF Security API handlers (3 handlers)
+
+  - [x] 3.8 Copy DTMF Security API handlers (3 handlers)
+
     - Move get_dtmf_security_handler, post_dtmf_security_handler, get_dtmf_logs_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.9 Copy Hardware Test API handlers (6 handlers)
+
+  - [x] 3.9 Copy Hardware Test API handlers (6 handlers)
+
     - Move post_hardware_test_doorbell_handler, post_hardware_test_door_handler
     - Move post_hardware_test_light_handler, get_hardware_state_handler
     - Move post_hardware_test_stop_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.10 Copy Certificate Management API handlers (5 handlers)
+
+  - [x] 3.10 Copy Certificate Management API handlers (5 handlers)
+
     - Move get_cert_info_handler, post_cert_upload_handler, post_cert_generate_handler
     - Move get_cert_download_handler, delete_cert_handler
     - _Requirements: 1.2, 5.1_
   
-  - [ ] 3.11 Copy Authentication API handlers (5 handlers)
+  - [x] 3.11 Copy Authentication API handlers (5 handlers)
+
+
     - Move post_auth_login_handler, post_auth_logout_handler
     - Move post_auth_set_password_handler, post_auth_change_password_handler
     - Move get_auth_logs_handler
