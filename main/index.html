@@ -9,7 +9,7 @@
     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔔</text></svg>">
   <script>
     // Apply theme immediately to prevent flash
-    (function() {
+    (function () {
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme) {
         // User has explicitly chosen a theme
@@ -1772,7 +1772,7 @@
             Username
             <span class="required">*</span>
           </label>
-          <input type="text" id="sip-username" name="username" required minlength="3"
+          <input type="text" id="sip-username" name="username" required minlength="3" autocomplete="username"
             data-error="Username must be at least 3 characters" placeholder="doorstation">
           <span class="error-message" hidden></span>
           <span class="form-help">SIP account username for authentication</span>
@@ -1784,7 +1784,7 @@
             <span class="required">*</span>
           </label>
           <input type="password" id="sip-password" name="password" required minlength="6"
-            data-error="Password must be at least 6 characters" placeholder="••••••••">
+            autocomplete="current-password" data-error="Password must be at least 6 characters" placeholder="••••••••">
           <span class="error-message" hidden></span>
           <span class="form-help">SIP account password for authentication</span>
         </div>
@@ -1950,7 +1950,7 @@
               Password
             </label>
             <input type="password" id="wifi-password" name="password" minlength="8" maxlength="63"
-              data-error="Password must be 8-63 characters" placeholder="••••••••">
+              autocomplete="current-password" data-error="Password must be 8-63 characters" placeholder="••••••••">
             <span class="error-message" hidden></span>
             <span class="form-help">Leave empty for open networks</span>
           </div>
@@ -2596,6 +2596,10 @@
       <form class="config-form" id="password-change-form" onsubmit="handlePasswordChange(event)">
         <h3>Admin Password</h3>
         <p class="form-help">Change the administrator password for web interface access.</p>
+
+        <!-- Hidden username field for accessibility -->
+        <input type="text" name="username" value="admin" autocomplete="username" style="display: none;"
+          aria-hidden="true">
 
         <div class="form-group">
           <label for="current-password">
@@ -3291,7 +3295,7 @@
         <div class="form-group">
           <label for="smtp-username">SMTP Username <span class="required">*</span></label>
           <input type="email" id="smtp-username" name="smtp_username" required placeholder="user@example.com"
-            data-error="Please enter your SMTP username">
+            autocomplete="username" data-error="Please enter your SMTP username">
           <span class="error-message" hidden></span>
           <span class="form-help">Usually your email address</span>
         </div>
@@ -3299,7 +3303,7 @@
         <div class="form-group">
           <label for="smtp-password">SMTP Password <span class="required">*</span></label>
           <input type="password" id="smtp-password" name="smtp_password" required placeholder="••••••••"
-            data-error="Please enter your SMTP password">
+            autocomplete="current-password" data-error="Please enter your SMTP password">
           <span class="error-message" hidden></span>
           <span class="form-help">Your SMTP password or app-specific password</span>
         </div>
@@ -3668,26 +3672,26 @@
         ttl: 1000, // Cache for 1 second
         pendingRequest: null
       },
-      
+
       async get(key) {
         const cache = this[key];
         if (!cache) return null;
-        
+
         const now = Date.now();
-        
+
         // Return cached data if still valid
         if (cache.data && (now - cache.timestamp) < cache.ttl) {
           return cache.data;
         }
-        
+
         // If there's already a pending request, wait for it
         if (cache.pendingRequest) {
           return cache.pendingRequest;
         }
-        
+
         // Make a new request
         cache.pendingRequest = this.fetch(key);
-        
+
         try {
           const data = await cache.pendingRequest;
           cache.data = data;
@@ -3697,14 +3701,14 @@
           cache.pendingRequest = null;
         }
       },
-      
+
       async fetch(key) {
         if (key === 'hardwareState') {
           return await apiRequest('/api/hardware/state', { silentError: true }, 10000);
         }
         return null;
       },
-      
+
       invalidate(key) {
         if (this[key]) {
           this[key].data = null;
@@ -3719,35 +3723,35 @@
       queue: [],
       processing: false,
       delayBetweenRequests: 100, // 100ms delay between requests
-      
+
       async add(fn) {
         return new Promise((resolve, reject) => {
           this.queue.push({ fn, resolve, reject });
           this.process();
         });
       },
-      
+
       async process() {
         if (this.processing || this.queue.length === 0) return;
-        
+
         this.processing = true;
-        
+
         while (this.queue.length > 0) {
           const { fn, resolve, reject } = this.queue.shift();
-          
+
           try {
             const result = await fn();
             resolve(result);
           } catch (error) {
             reject(error);
           }
-          
+
           // Small delay between requests to prevent overwhelming the server
           if (this.queue.length > 0) {
             await new Promise(r => setTimeout(r, this.delayBetweenRequests));
           }
         }
-        
+
         this.processing = false;
       }
     };
@@ -8207,7 +8211,7 @@
 
         // Show success feedback
         showFeedback('success', `Doorbell ${bell} test successful! ${response.message || 'Button press simulated.'}`);
-        
+
         // Invalidate cache to force immediate refresh
         apiCache.invalidate('hardwareState');
 
@@ -8270,7 +8274,7 @@
 
         // Show success feedback
         showFeedback('success', `Door opener activated for ${durationSeconds} seconds. ${response.message || ''}`);
-        
+
         // Invalidate cache to force immediate refresh
         apiCache.invalidate('hardwareState');
 
@@ -8305,7 +8309,7 @@
         // Show success feedback with new state
         const newState = response.state || 'unknown';
         showFeedback('success', `Light toggled ${newState.toUpperCase()}. ${response.message || ''}`);
-        
+
         // Invalidate cache to force immediate refresh
         apiCache.invalidate('hardwareState');
 
