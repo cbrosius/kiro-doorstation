@@ -17,6 +17,7 @@
 #include "hardware_test.h"
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
+#include "ota_handler.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -130,7 +131,10 @@ static const httpd_uri_t network_ip_get_uri;
 static const httpd_uri_t network_ip_post_uri;
 static const httpd_uri_t email_config_get_uri;
 static const httpd_uri_t email_config_post_uri;
-static const httpd_uri_t ota_version_uri;
+static const httpd_uri_t ota_info_uri;
+static const httpd_uri_t ota_upload_uri;
+static const httpd_uri_t ota_rollback_uri;
+static const httpd_uri_t ota_status_uri;
 static const httpd_uri_t system_state_uri;
 static const httpd_uri_t system_restart_uri;
 static const httpd_uri_t system_info_uri;
@@ -194,8 +198,11 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &email_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &email_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register OTA API handlers (1 endpoint)
-    if (httpd_register_uri_handler(server, &ota_version_uri) == ESP_OK) registered_count++; else failed_count++;
+    // Register OTA API handlers (4 endpoints)
+    if (httpd_register_uri_handler(server, &ota_info_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_upload_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_rollback_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_status_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register System API handlers (3 endpoints)
     if (httpd_register_uri_handler(server, &system_state_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -241,7 +248,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 42 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 45 API handlers registered successfully");
     }
 }
 
@@ -1054,7 +1061,7 @@ static esp_err_t post_email_config_handler(httpd_req_t *req)
 // OTA API Handlers
 // ============================================================================
 
-static esp_err_t get_ota_version_handler(httpd_req_t *req)
+static esp_err_t get_ota_info_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
@@ -1064,17 +1071,264 @@ static esp_err_t get_ota_version_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
-    // Firmware version (hardcoded for now)
-    cJSON_AddStringToObject(root, "version", "v1.0.0");
-    cJSON_AddStringToObject(root, "project_name", "sip_doorbell");
-    cJSON_AddStringToObject(root, "build_date", __DATE__);
-    cJSON_AddStringToObject(root, "build_time", __TIME__);
-    cJSON_AddStringToObject(root, "idf_version", IDF_VER);
+    // Get firmware information from OTA handler
+    ota_info_t info;
+    ota_get_info(&info);
 
-    // OTA partition info (placeholder values)
-    cJSON_AddNumberToObject(root, "ota_partition_size", 1572864);
-    cJSON_AddNumberToObject(root, "ota_available_space", 1048576);
+    cJSON_AddStringToObject(root, "version", info.version);
+    cJSON_AddStringToObject(root, "build_date", info.build_date);
+    cJSON_AddStringToObject(root, "idf_version", info.idf_version);
+    cJSON_AddStringToObject(root, "partition_label", info.partition_label);
+    cJSON_AddNumberToObject(root, "app_size", info.app_size);
+    cJSON_AddBoolToObject(root, "can_rollback", info.can_rollback);
 
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_ota_upload_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "OTA upload started, content length: %d", req->content_len);
+    
+    // Validate content length
+    if (req->content_len <= 0) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Empty firmware file\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Check maximum size (2MB)
+    if (req->content_len > 2 * 1024 * 1024) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Firmware file too large (max 2MB)\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Begin OTA update
+    esp_err_t err = ota_begin_update(req->content_len);
+    if (err != ESP_OK) {
+        const ota_context_t* ctx = ota_get_context();
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Failed to begin OTA update");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Receive and write firmware data in chunks
+    char *buffer = malloc(4096);
+    if (!buffer) {
+        ota_abort_update();
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Out of memory\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    int remaining = req->content_len;
+    bool upload_success = true;
+    
+    while (remaining > 0) {
+        int recv_len = httpd_req_recv(req, buffer, remaining < 4096 ? remaining : 4096);
+        
+        if (recv_len <= 0) {
+            if (recv_len == HTTPD_SOCK_ERR_TIMEOUT) {
+                ESP_LOGW(TAG, "Socket timeout during OTA upload");
+            } else {
+                ESP_LOGE(TAG, "Socket error during OTA upload: %d", recv_len);
+            }
+            upload_success = false;
+            break;
+        }
+        
+        // Write chunk to flash
+        err = ota_write_chunk((const uint8_t*)buffer, recv_len);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write OTA chunk: %s", esp_err_to_name(err));
+            upload_success = false;
+            break;
+        }
+        
+        remaining -= recv_len;
+    }
+    
+    free(buffer);
+    
+    // Check if upload was successful
+    if (!upload_success) {
+        ota_abort_update();
+        const ota_context_t* ctx = ota_get_context();
+        
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Upload failed");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Finalize OTA update
+    err = ota_end_update();
+    if (err != ESP_OK) {
+        ota_abort_update();
+        const ota_context_t* ctx = ota_get_context();
+        
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Validation failed");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Success - send response
+    ESP_LOGI(TAG, "OTA update completed successfully");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Firmware update successful. Device will restart in 5 seconds.");
+    
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    
+    // Schedule restart after 5 seconds to allow response to be sent
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    esp_restart();
+    
+    return ESP_OK;
+}
+
+static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "OTA rollback requested");
+    
+    // Attempt rollback
+    esp_err_t err = ota_rollback();
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    if (err == ESP_OK) {
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Rollback prepared. Device will restart in 5 seconds.");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        // Schedule restart after 5 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+    } else {
+        httpd_resp_set_status(req, "400 Bad Request");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        
+        if (err == ESP_ERR_NOT_FOUND) {
+            cJSON_AddStringToObject(response, "error", "No previous firmware available for rollback");
+        } else {
+            cJSON_AddStringToObject(response, "error", "Rollback failed");
+        }
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+    }
+    
+    return ESP_OK;
+}
+
+static esp_err_t get_ota_status_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+    
+    // Get current OTA context
+    const ota_context_t* ctx = ota_get_context();
+    
+    // Map state to string
+    const char* state_str = "idle";
+    switch (ctx->state) {
+        case OTA_STATE_IDLE:
+            state_str = "idle";
+            break;
+        case OTA_STATE_BEGIN:
+            state_str = "begin";
+            break;
+        case OTA_STATE_WRITING:
+            state_str = "writing";
+            break;
+        case OTA_STATE_VALIDATING:
+            state_str = "validating";
+            break;
+        case OTA_STATE_COMPLETE:
+            state_str = "complete";
+            break;
+        case OTA_STATE_ABORT:
+            state_str = "aborted";
+            break;
+        case OTA_STATE_ERROR:
+            state_str = "error";
+            break;
+    }
+    
+    cJSON_AddStringToObject(root, "state", state_str);
+    cJSON_AddNumberToObject(root, "progress_percent", ctx->progress_percent);
+    cJSON_AddNumberToObject(root, "written_size", ctx->written_size);
+    cJSON_AddNumberToObject(root, "total_size", ctx->total_size);
+    
+    if (ctx->error_message[0] != '\0') {
+        cJSON_AddStringToObject(root, "error_message", ctx->error_message);
+    }
+    
     char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
@@ -2864,8 +3118,20 @@ static const httpd_uri_t email_config_post_uri = {
 };
 
 // OTA API URI handlers
-static const httpd_uri_t ota_version_uri = {
-    .uri = "/api/ota/version", .method = HTTP_GET, .handler = get_ota_version_handler, .user_ctx = NULL
+static const httpd_uri_t ota_info_uri = {
+    .uri = "/api/ota/info", .method = HTTP_GET, .handler = get_ota_info_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_upload_uri = {
+    .uri = "/api/ota/upload", .method = HTTP_POST, .handler = post_ota_upload_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_rollback_uri = {
+    .uri = "/api/ota/rollback", .method = HTTP_POST, .handler = post_ota_rollback_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_status_uri = {
+    .uri = "/api/ota/status", .method = HTTP_GET, .handler = get_ota_status_handler, .user_ctx = NULL
 };
 
 // System API URI handlers

@@ -50,7 +50,12 @@
   - Test rollback mechanism with valid previous partition
   - _Requirements: 3.1.9_
 
-- [ ] 5. Create web server OTA endpoints
+- [x] 5. Create web server OTA endpoints
+
+
+
+
+
   - Add `POST /api/ota/upload` endpoint with multipart/form-data handling
   - Add `GET /api/ota/info` endpoint to return current firmware information
   - Add `POST /api/ota/rollback` endpoint to trigger rollback
