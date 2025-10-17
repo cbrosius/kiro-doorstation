@@ -4046,7 +4046,7 @@
      */
     async function updateWiFiStatus() {
       try {
-        const response = await apiRequest('/api/wifi/status');
+        const response = await apiRequest('/api/wifi/state');
         console.log('WiFi status response:', response);
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
@@ -4077,7 +4077,7 @@
      */
     async function updateSIPStatus() {
       try {
-        const response = await apiRequest('/api/sip/status');
+        const response = await apiRequest('/api/sip/state');
         const card = document.getElementById('sip-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4106,7 +4106,7 @@
      */
     async function updateDoorStatus() {
       try {
-        const response = await apiRequest('/api/hardware/status');
+        const response = await apiRequest('/api/hardware/state');
         const card = document.getElementById('door-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4129,7 +4129,7 @@
      */
     async function updateLightStatus() {
       try {
-        const response = await apiRequest('/api/hardware/status');
+        const response = await apiRequest('/api/hardware/state');
         const card = document.getElementById('light-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -5242,7 +5242,7 @@
      */
     async function updateSystemInfo() {
       try {
-        const response = await apiRequest('/api/system/status');
+        const response = await apiRequest('/api/system/state');
 
         // Update uptime
         const uptimeElement = document.getElementById('system-uptime');
@@ -5336,7 +5336,7 @@
      */
     async function updateNTPStatus() {
       try {
-        const response = await apiRequest('/api/ntp/status');
+        const response = await apiRequest('/api/ntp/state');
 
         const indicatorElement = document.getElementById('ntp-sync-indicator');
         const textElement = document.getElementById('ntp-sync-text');
@@ -5910,7 +5910,7 @@
      */
     async function updateSIPConnectionStatus() {
       try {
-        const response = await apiRequest('/api/sip/status');
+        const response = await apiRequest('/api/sip/state');
 
         const iconElement = document.getElementById('sip-connection-icon');
         const statusElement = document.getElementById('sip-connection-status');
@@ -6379,7 +6379,7 @@
      */
     async function updateNTPStatusInNetworkSection() {
       try {
-        const response = await apiRequest('/api/ntp/status');
+        const response = await apiRequest('/api/ntp/state');
 
         const iconElement = document.getElementById('ntp-status-icon');
         const textElement = document.getElementById('ntp-status-text');
@@ -6467,7 +6467,7 @@
      */
     async function updateHardwareInfo() {
       try {
-        const response = await apiRequest('/api/system/status');
+        const response = await apiRequest('/api/system/state');
 
         if (response) {
           // Update chip information
@@ -6518,7 +6518,7 @@
     async function updateHardwareStatus() {
       try {
         // Try to get hardware status, but don't show errors if endpoint doesn't exist
-        const response = await apiRequest('/api/hardware/status', { silentError: true }, 5000);
+        const response = await apiRequest('/api/hardware/state', { silentError: true }, 5000);
 
         if (response) {
           // Update GPIO states (Task 9.2)
@@ -8982,7 +8982,7 @@
 
       try {
         // Try to fetch system status
-        const response = await fetch('/api/system/status', {
+        const response = await fetch('/api/system/state', {
           method: 'GET',
           cache: 'no-cache'
         });

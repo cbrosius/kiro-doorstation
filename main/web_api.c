@@ -112,7 +112,7 @@ static email_config_t email_load_config(void)
 }
 
 // Forward declarations for URI structures (defined at end of file)
-static const httpd_uri_t sip_status_uri;
+static const httpd_uri_t sip_state_uri;
 static const httpd_uri_t sip_config_get_uri;
 static const httpd_uri_t sip_config_post_uri;
 static const httpd_uri_t sip_test_uri;
@@ -122,17 +122,17 @@ static const httpd_uri_t sip_connect_uri;
 static const httpd_uri_t sip_disconnect_uri;
 static const httpd_uri_t wifi_config_get_uri;
 static const httpd_uri_t wifi_config_post_uri;
-static const httpd_uri_t wifi_status_uri;
+static const httpd_uri_t wifi_state_uri;
 static const httpd_uri_t wifi_scan_uri;
 static const httpd_uri_t wifi_connect_uri;
 static const httpd_uri_t network_ip_uri;
 static const httpd_uri_t email_config_get_uri;
 static const httpd_uri_t email_config_post_uri;
 static const httpd_uri_t ota_version_uri;
-static const httpd_uri_t system_status_uri;
+static const httpd_uri_t system_state_uri;
 static const httpd_uri_t system_restart_uri;
 static const httpd_uri_t system_info_uri;
-static const httpd_uri_t ntp_status_uri;
+static const httpd_uri_t ntp_state_uri;
 static const httpd_uri_t ntp_config_get_uri;
 static const httpd_uri_t ntp_config_post_uri;
 static const httpd_uri_t ntp_sync_uri;
@@ -143,7 +143,6 @@ static const httpd_uri_t hardware_test_doorbell_uri;
 static const httpd_uri_t hardware_test_door_uri;
 static const httpd_uri_t hardware_test_light_uri;
 static const httpd_uri_t hardware_state_uri;
-static const httpd_uri_t hardware_status_uri;
 static const httpd_uri_t hardware_test_stop_uri;
 static const httpd_uri_t cert_info_uri;
 static const httpd_uri_t cert_upload_uri;
@@ -169,7 +168,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     int failed_count = 0;
     
     // Register SIP API handlers (8 endpoints)
-    if (httpd_register_uri_handler(server, &sip_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &sip_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &sip_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &sip_test_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -181,7 +180,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     // Register WiFi API handlers (5 endpoints)
     if (httpd_register_uri_handler(server, &wifi_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &wifi_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
-    if (httpd_register_uri_handler(server, &wifi_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &wifi_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &wifi_scan_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &wifi_connect_uri) == ESP_OK) registered_count++; else failed_count++;
     
@@ -196,12 +195,12 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &ota_version_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register System API handlers (3 endpoints)
-    if (httpd_register_uri_handler(server, &system_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &system_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &system_restart_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &system_info_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register NTP API handlers (4 endpoints)
-    if (httpd_register_uri_handler(server, &ntp_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ntp_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ntp_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ntp_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ntp_sync_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -211,12 +210,11 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &dtmf_security_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &dtmf_logs_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register Hardware Test API handlers (6 endpoints)
+    // Register Hardware Test API handlers (5 endpoints)
     if (httpd_register_uri_handler(server, &hardware_test_doorbell_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_door_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_light_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_state_uri) == ESP_OK) registered_count++; else failed_count++;
-    if (httpd_register_uri_handler(server, &hardware_status_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_stop_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register Certificate Management API handlers (5 endpoints)
@@ -240,7 +238,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 43 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 42 API handlers registered successfully");
     }
 }
 
@@ -248,7 +246,7 @@ void web_api_register_handlers(httpd_handle_t server) {
 // SIP API Handlers
 // ============================================================================
 
-static esp_err_t get_sip_status_handler(httpd_req_t *req)
+static esp_err_t get_sip_state_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
@@ -651,7 +649,7 @@ static esp_err_t post_wifi_config_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-static esp_err_t get_wifi_status_handler(httpd_req_t *req)
+static esp_err_t get_wifi_state_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
@@ -1054,7 +1052,7 @@ static esp_err_t get_ota_version_handler(httpd_req_t *req)
 // System API Handlers
 // ============================================================================
 
-static esp_err_t get_system_status_handler(httpd_req_t *req)
+static esp_err_t get_system_state_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
@@ -1169,7 +1167,7 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
 // NTP API Handlers
 // ============================================================================
 
-static esp_err_t get_ntp_status_handler(httpd_req_t *req)
+static esp_err_t get_ntp_state_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
@@ -2586,10 +2584,10 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 // ============================================================================
 
 // SIP API URI handlers
-static const httpd_uri_t sip_status_uri = {
-    .uri       = "/api/sip/status",
+static const httpd_uri_t sip_state_uri = {
+    .uri       = "/api/sip/state",
     .method    = HTTP_GET,
-    .handler   = get_sip_status_handler,
+    .handler   = get_sip_state_handler,
     .user_ctx  = NULL
 };
 
@@ -2651,8 +2649,8 @@ static const httpd_uri_t wifi_config_post_uri = {
     .uri = "/api/wifi/config", .method = HTTP_POST, .handler = post_wifi_config_handler, .user_ctx = NULL
 };
 
-static const httpd_uri_t wifi_status_uri = {
-    .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
+static const httpd_uri_t wifi_state_uri = {
+    .uri = "/api/wifi/state", .method = HTTP_GET, .handler = get_wifi_state_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t wifi_scan_uri = {
@@ -2683,8 +2681,8 @@ static const httpd_uri_t ota_version_uri = {
 };
 
 // System API URI handlers
-static const httpd_uri_t system_status_uri = {
-    .uri = "/api/system/status", .method = HTTP_GET, .handler = get_system_status_handler, .user_ctx = NULL
+static const httpd_uri_t system_state_uri = {
+    .uri = "/api/system/state", .method = HTTP_GET, .handler = get_system_state_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t system_restart_uri = {
@@ -2696,8 +2694,8 @@ static const httpd_uri_t system_info_uri = {
 };
 
 // NTP API URI handlers
-static const httpd_uri_t ntp_status_uri = {
-    .uri = "/api/ntp/status", .method = HTTP_GET, .handler = get_ntp_status_handler, .user_ctx = NULL
+static const httpd_uri_t ntp_state_uri = {
+    .uri = "/api/ntp/state", .method = HTTP_GET, .handler = get_ntp_state_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t ntp_config_get_uri = {
@@ -2740,10 +2738,6 @@ static const httpd_uri_t hardware_test_light_uri = {
 
 static const httpd_uri_t hardware_state_uri = {
     .uri = "/api/hardware/state", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
-};
-
-static const httpd_uri_t hardware_status_uri = {
-    .uri = "/api/hardware/status", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t hardware_test_stop_uri = {
