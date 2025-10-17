@@ -1,3 +1,4 @@
+#pragma GCC diagnostic ignored "-Waddress"
 #include "web_server.h"
 #include "web_api.h"
 #include "cert_manager.h"
@@ -73,7 +74,7 @@ esp_err_t auth_filter(httpd_req_t *req) {
         ESP_LOGW(TAG, "No password set - redirecting to setup page");
 
         // Check if this is an API request or HTML page request
-        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
+        if (strncmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "403 Forbidden");
             httpd_resp_set_type(req, "application/json");
@@ -118,7 +119,7 @@ esp_err_t auth_filter(httpd_req_t *req) {
         ESP_LOGW(TAG, "No session cookie found for %s", req->uri);
 
         // Check if this is an API request or HTML page request
-        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri[0] != '\0' && memcmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -137,7 +138,7 @@ esp_err_t auth_filter(httpd_req_t *req) {
         ESP_LOGW(TAG, "Invalid or expired session for %s", req->uri);
 
         // Check if this is an API request or HTML page request
-        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri[0] != '\0' && memcmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -261,14 +262,14 @@ static esp_err_t http_redirect_handler(httpd_req_t *req, httpd_err_code_t err __
     // Construct HTTPS URL with sufficient buffer size
     // Max: "https://" (8) + host (127) + uri (512) + null (1) = 648 bytes
     char https_url[700];
-    snprintf(https_url, sizeof(https_url), "https://%s%s", host, req->uri ? req->uri : "/");
+    snprintf(https_url, sizeof(https_url), "https://%s%s", host, req->uri);
     
     // Send 301 Moved Permanently redirect
     httpd_resp_set_status(req, "301 Moved Permanently");
     httpd_resp_set_hdr(req, "Location", https_url);
     httpd_resp_send(req, NULL, 0);
     
-    ESP_LOGI(TAG, "HTTP redirect: %s -> %s", req->uri ? req->uri : "/", https_url);
+    ESP_LOGI(TAG, "HTTP redirect: %s -> %s", req->uri, https_url);
     
     return ESP_OK;
 }

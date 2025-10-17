@@ -133,6 +133,7 @@ static const httpd_uri_t network_ip_post_uri;
 static const httpd_uri_t email_config_get_uri;
 static const httpd_uri_t email_config_post_uri;
 static const httpd_uri_t ota_info_uri;
+static const httpd_uri_t ota_version_uri;
 static const httpd_uri_t ota_upload_uri;
 static const httpd_uri_t ota_rollback_uri;
 static const httpd_uri_t ota_status_uri;
@@ -199,11 +200,15 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &email_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &email_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register OTA API handlers (4 endpoints)
+    // Register OTA API handlers (5 endpoints)
     if (httpd_register_uri_handler(server, &ota_info_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_version_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ota_upload_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ota_rollback_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ota_status_uri) == ESP_OK) registered_count++; else failed_count++;
+
+    // Log OTA endpoints for debugging
+    ESP_LOGI(TAG, "Registered OTA endpoints: info, version, upload, rollback, status");
     
     // Register System API handlers (3 endpoints)
     if (httpd_register_uri_handler(server, &system_state_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -249,7 +254,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 45 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 46 API handlers registered successfully");
     }
 }
 
@@ -1282,13 +1287,39 @@ static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// New OTA version handler
+static esp_err_t get_ota_version_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Get firmware information from OTA handler
+    ota_info_t info;
+    ota_get_info(&info);
+
+    // Return just the version information
+    cJSON_AddStringToObject(root, "version", info.version);
+    cJSON_AddStringToObject(root, "build_date", info.build_date);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 static esp_err_t get_ota_status_handler(httpd_req_t *req)
 {
     // Check authentication
     if (auth_filter(req) != ESP_OK) {
         return ESP_FAIL;
     }
-    
+
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
     
@@ -3140,6 +3171,10 @@ static const httpd_uri_t email_config_post_uri = {
 // OTA API URI handlers
 static const httpd_uri_t ota_info_uri = {
     .uri = "/api/ota/info", .method = HTTP_GET, .handler = get_ota_info_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_version_uri = {
+    .uri = "/api/ota/version", .method = HTTP_GET, .handler = get_ota_version_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t ota_upload_uri = {
