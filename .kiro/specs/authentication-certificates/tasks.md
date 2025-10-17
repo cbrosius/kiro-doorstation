@@ -275,7 +275,12 @@
   - Save configuration and redirect to login page
   - _Requirements: 3.1, 5.1_
 
-- [ ] 22. Add certificate expiration warnings
+- [x] 22. Add certificate expiration warnings
+
+
+
+
+
   - Check certificate expiration on dashboard load
   - Display warning banner if certificate expires within 30 days
   - Display critical warning if certificate expires within 7 days

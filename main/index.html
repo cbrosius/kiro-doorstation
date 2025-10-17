@@ -806,6 +806,17 @@
       }
     }
     
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+      }
+    }
+    
     .btn-sm {
       padding: var(--spacing-xs) var(--spacing-md);
       font-size: var(--font-size-sm);
@@ -1436,6 +1447,70 @@
     <!-- Dashboard Section -->
     <section class="content-section active" id="section-dashboard">
       <h2 tabindex="-1">Dashboard</h2>
+      
+      <!-- Certificate Expiration Warnings (Task 22) -->
+      <!-- Warning banner for certificate expiring within 30 days -->
+      <div id="cert-expiry-warning-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(255, 193, 7, 0.1); border: 1px solid var(--color-warning); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">⚠️</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-warning); font-size: var(--font-size-lg);">Certificate Expiring Soon</h3>
+            <p id="cert-expiry-warning-text" style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text);">
+              Your TLS certificate will expire soon. Please renew or generate a new certificate to maintain secure access.
+            </p>
+            <button class="btn btn-sm btn-warning" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+              <span>🔐</span>
+              <span>Manage Certificate</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Critical warning banner for certificate expiring within 7 days -->
+      <div id="cert-expiry-critical-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(220, 53, 69, 0.1); border: 2px solid var(--color-danger); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0; animation: pulse 2s ease-in-out infinite;">🚨</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-danger); font-size: var(--font-size-lg);">Critical: Certificate Expiring Very Soon</h3>
+            <p id="cert-expiry-critical-text" style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text); font-weight: var(--font-weight-medium);">
+              Your TLS certificate will expire in less than 7 days! Immediate action required to prevent loss of secure access.
+            </p>
+            <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+              <button class="btn btn-sm btn-danger" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+                <span>🔐</span>
+                <span>Manage Certificate Now</span>
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="generateSelfSignedCertificateQuick()">
+                <span>⚡</span>
+                <span>Quick Generate New Certificate</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Error banner for expired certificate -->
+      <div id="cert-expired-banner" style="display: none; padding: var(--spacing-md); background-color: rgba(220, 53, 69, 0.15); border: 2px solid var(--color-danger); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+        <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0; animation: pulse 2s ease-in-out infinite;">❌</span>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-danger); font-size: var(--font-size-lg);">Certificate Expired!</h3>
+            <p style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text); font-weight: var(--font-weight-medium);">
+              Your TLS certificate has expired! Browsers will show security warnings. Generate a new certificate immediately.
+            </p>
+            <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+              <button class="btn btn-sm btn-danger" onclick="generateSelfSignedCertificateQuick()">
+                <span>🔐</span>
+                <span>Generate New Certificate</span>
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+                <span>⚙️</span>
+                <span>Certificate Settings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       
       <!-- System Information Display (Task 6.1) -->
       <div class="config-form">
@@ -5413,6 +5488,99 @@
       initSystemInfo();
       initNTPStatus();
       initRecentActivity();
+      checkCertificateExpiration();
+    }
+    
+    /**
+     * Check certificate expiration and display warnings (Task 22)
+     */
+    async function checkCertificateExpiration() {
+      try {
+        const response = await apiRequest('/api/cert/info', { method: 'GET' });
+        
+        // Hide all warning banners initially
+        document.getElementById('cert-expiry-warning-banner').style.display = 'none';
+        document.getElementById('cert-expiry-critical-banner').style.display = 'none';
+        document.getElementById('cert-expired-banner').style.display = 'none';
+        
+        if (!response || !response.exists) {
+          // No certificate found - this is handled elsewhere
+          return;
+        }
+        
+        const daysUntilExpiry = response.days_until_expiry;
+        const isExpired = response.is_expired;
+        
+        if (isExpired) {
+          // Certificate has expired - show error banner
+          document.getElementById('cert-expired-banner').style.display = 'block';
+        } else if (daysUntilExpiry < 7) {
+          // Certificate expires within 7 days - show critical warning
+          const criticalBanner = document.getElementById('cert-expiry-critical-banner');
+          const criticalText = document.getElementById('cert-expiry-critical-text');
+          criticalBanner.style.display = 'block';
+          criticalText.textContent = `Your TLS certificate will expire in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}! Immediate action required to prevent loss of secure access.`;
+        } else if (daysUntilExpiry < 30) {
+          // Certificate expires within 30 days - show warning
+          const warningBanner = document.getElementById('cert-expiry-warning-banner');
+          const warningText = document.getElementById('cert-expiry-warning-text');
+          warningBanner.style.display = 'block';
+          warningText.textContent = `Your TLS certificate will expire in ${daysUntilExpiry} days. Please renew or generate a new certificate to maintain secure access.`;
+        }
+        
+      } catch (error) {
+        // Silently fail - certificate info might not be available
+        console.warn('Failed to check certificate expiration:', error);
+      }
+    }
+    
+    /**
+     * Quick generate self-signed certificate from dashboard warning (Task 22)
+     */
+    async function generateSelfSignedCertificateQuick() {
+      if (!confirm('Generate a new self-signed certificate? This will replace the current certificate and may require you to accept a new security warning in your browser.')) {
+        return;
+      }
+      
+      try {
+        showToast('Generating new self-signed certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/generate', {
+          method: 'POST',
+          body: JSON.stringify({
+            common_name: 'doorstation.local',
+            validity_days: 3650
+          })
+        });
+        
+        showToast('Certificate generated successfully! The page will reload in 3 seconds...', 'success');
+        
+        // Reload page after 3 seconds to apply new certificate
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+        
+      } catch (error) {
+        showToast(error.message || 'Failed to generate certificate', 'error');
+      }
+    }
+    
+    /**
+     * Scroll to a specific element on the page (Task 22)
+     */
+    function scrollToElement(elementId) {
+      setTimeout(() => {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Add highlight effect
+          element.style.transition = 'box-shadow 0.3s ease';
+          element.style.boxShadow = '0 0 0 4px rgba(76, 175, 80, 0.3)';
+          setTimeout(() => {
+            element.style.boxShadow = '';
+          }, 2000);
+        }
+      }, 300);
     }
     
     // ===== Task 7: SIP Settings Section Functions =====
