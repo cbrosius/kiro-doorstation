@@ -17,6 +17,9 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
@@ -1633,6 +1636,136 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// Authentication API Handlers
+static esp_err_t post_auth_login_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *username = cJSON_GetObjectItem(root, "username");
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(username) || (username->valuestring == NULL) ||
+        !cJSON_IsString(password) || (password->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing username or password\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Get client IP address
+    char client_ip[AUTH_IP_ADDRESS_MAX_LEN] = {0};
+    
+    // Try to get X-Forwarded-For header first (if behind proxy)
+    size_t xff_len = httpd_req_get_hdr_value_len(req, "X-Forwarded-For");
+    if (xff_len > 0 && xff_len < sizeof(client_ip)) {
+        httpd_req_get_hdr_value_str(req, "X-Forwarded-For", client_ip, sizeof(client_ip));
+    } else {
+        // Fallback to direct connection IP
+        // Get socket descriptor and peer address
+        int sockfd = httpd_req_to_sockfd(req);
+        struct sockaddr_in6 addr;
+        socklen_t addr_len = sizeof(addr);
+        
+        if (getpeername(sockfd, (struct sockaddr*)&addr, &addr_len) == 0) {
+            if (addr.sin6_family == AF_INET) {
+                // IPv4
+                struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
+                inet_ntop(AF_INET, &addr_in->sin_addr, client_ip, sizeof(client_ip));
+            } else if (addr.sin6_family == AF_INET6) {
+                // IPv6
+                inet_ntop(AF_INET6, &addr.sin6_addr, client_ip, sizeof(client_ip));
+            }
+        }
+        
+        // If we still don't have an IP, use a placeholder
+        if (client_ip[0] == '\0') {
+            strncpy(client_ip, "unknown", sizeof(client_ip) - 1);
+        }
+    }
+
+    // Check if IP is blocked due to rate limiting
+    if (auth_is_ip_blocked(client_ip)) {
+        cJSON_Delete(root);
+        ESP_LOGW(TAG, "Login attempt from blocked IP: %s", client_ip);
+        httpd_resp_set_status(req, "429 Too Many Requests");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Too many failed attempts. Please try again later.\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Authenticate user
+    auth_result_t result = auth_login(username->valuestring, password->valuestring, client_ip);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+
+    if (result.authenticated) {
+        // Set session cookie with security flags
+        char cookie[256];
+        snprintf(cookie, sizeof(cookie),
+                 "session_id=%s; HttpOnly; Secure; SameSite=Strict; Max-Age=%d; Path=/",
+                 result.session_id,
+                 AUTH_SESSION_TIMEOUT_SECONDS);
+        httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+
+        // Send success response
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Login successful");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGI(TAG, "User '%s' logged in successfully from %s", username->valuestring, client_ip);
+    } else {
+        // Record failed attempt
+        auth_record_failed_attempt(client_ip);
+
+        // Send error response
+        httpd_resp_set_status(req, "401 Unauthorized");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", result.error_message);
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGW(TAG, "Failed login attempt for user '%s' from %s: %s", 
+                 username->valuestring, client_ip, result.error_message);
+    }
+
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     // Check authentication
@@ -1713,6 +1846,14 @@ static const httpd_uri_t sip_disconnect_uri = {
     .method    = HTTP_POST,
     .handler   = post_sip_disconnect_handler,
     .user_ctx  = NULL
+};
+
+// Authentication API URI handlers
+static const httpd_uri_t auth_login_uri = {
+    .uri = "/api/auth/login",
+    .method = HTTP_POST,
+    .handler = post_auth_login_handler,
+    .user_ctx = NULL
 };
 
 // URI handlers
@@ -1957,7 +2098,7 @@ void web_server_start(void)
     
     // Configure HTTPS server
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-    config.httpd.max_uri_handlers = 38;
+    config.httpd.max_uri_handlers = 39;  // Increased for auth_login_uri
     config.httpd.server_port = 443;
     config.httpd.ctrl_port = 32768;
     
@@ -1977,6 +2118,9 @@ void web_server_start(void)
         // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &documentation_uri);
+        
+        // Authentication API endpoints
+        httpd_register_uri_handler(server, &auth_login_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);

@@ -154,7 +154,12 @@
   - Extend session timeout on each authenticated request
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 13. Create login API endpoint
+- [x] 13. Create login API endpoint
+
+
+
+
+
   - Add `POST /api/auth/login` endpoint
   - Parse username and password from JSON body
   - Check if client IP is blocked due to rate limiting
