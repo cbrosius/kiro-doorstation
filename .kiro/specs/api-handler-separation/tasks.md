@@ -1,6 +1,11 @@
 # Implementation Plan
 
-- [ ] 1. Create new API module files and update headers
+- [x] 1. Create new API module files and update headers
+
+
+
+
+
   - Create main/web_api.h with registration function declaration
   - Create main/web_api.c with initial structure and includes
   - Update main/web_server.h to expose auth_filter function
