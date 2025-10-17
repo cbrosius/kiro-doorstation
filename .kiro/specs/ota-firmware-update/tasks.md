@@ -104,7 +104,12 @@
   - Display detailed error messages on failure
   - _Requirements: 3.1.5, 3.1.8_
 
-- [ ] 9. Add safety warnings and user guidance
+- [x] 9. Add safety warnings and user guidance
+
+
+
+
+
   - Display warning about device restart during update process
   - Add warning about not powering off device during update
   - Show estimated update duration based on file size
