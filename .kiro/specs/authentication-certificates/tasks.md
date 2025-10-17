@@ -129,7 +129,12 @@
   - Configure strong cipher suites only
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 11. Implement HTTP to HTTPS redirect
+- [x] 11. Implement HTTP to HTTPS redirect
+
+
+
+
+
   - Start HTTP server on port 80
   - Add redirect handler for all HTTP requests
   - Send 301 Moved Permanently to HTTPS URL

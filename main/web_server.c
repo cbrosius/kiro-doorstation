@@ -19,6 +19,7 @@
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
+static httpd_handle_t redirect_server = NULL;
 
 // Email configuration structure
 typedef struct {
@@ -567,7 +568,9 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
             // Get IP information
             esp_netif_ip_info_t ip_info;
             if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-                char ip_str[16], netmask_str[16], gateway_str[16];
+                char ip_str[16];
+                char netmask_str[16];
+                char gateway_str[16];
                 
                 snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
                 snprintf(netmask_str, sizeof(netmask_str), IPSTR, IP2STR(&ip_info.netmask));
@@ -1548,6 +1551,35 @@ static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
 };
 
+// HTTP to HTTPS redirect handler (used as error handler for 404)
+static esp_err_t http_redirect_handler(httpd_req_t *req, httpd_err_code_t err __attribute__((unused)))
+{
+    // Get the Host header to construct the HTTPS URL
+    char host[128] = {0};
+    size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
+    
+    if (host_len > 0 && host_len < sizeof(host)) {
+        httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
+    } else {
+        // Fallback to IP address if Host header is missing
+        strcpy(host, "192.168.4.1");  // Default AP IP
+    }
+    
+    // Construct HTTPS URL with sufficient buffer size
+    // Max: "https://" (8) + host (127) + uri (512) + null (1) = 648 bytes
+    char https_url[700];
+    snprintf(https_url, sizeof(https_url), "https://%s%s", host, req->uri);
+    
+    // Send 301 Moved Permanently redirect
+    httpd_resp_set_status(req, "301 Moved Permanently");
+    httpd_resp_set_hdr(req, "Location", https_url);
+    httpd_resp_send(req, NULL, 0);
+    
+    ESP_LOGI(TAG, "HTTP redirect: %s -> %s", req->uri, https_url);
+    
+    return ESP_OK;
+}
+
 // Helper function to load certificate and key from NVS
 static esp_err_t load_cert_and_key(char** cert_pem, size_t* cert_size, char** key_pem, size_t* key_size)
 {
@@ -1725,6 +1757,22 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &hardware_test_stop_uri);
         
         ESP_LOGI(TAG, "HTTPS server started on port 443 with all API endpoints");
+        
+        // Start HTTP redirect server on port 80
+        httpd_config_t redirect_config = HTTPD_DEFAULT_CONFIG();
+        redirect_config.server_port = 80;
+        redirect_config.ctrl_port = 32769;  // Different control port
+        redirect_config.max_uri_handlers = 1;  // Need at least 1 for error handler
+        
+        esp_err_t redirect_err = httpd_start(&redirect_server, &redirect_config);
+        if (redirect_err == ESP_OK) {
+            // Register error handler for 404 to redirect all requests to HTTPS
+            httpd_register_err_handler(redirect_server, HTTPD_404_NOT_FOUND, http_redirect_handler);
+            ESP_LOGI(TAG, "HTTP redirect server started on port 80");
+        } else {
+            ESP_LOGW(TAG, "Failed to start HTTP redirect server on port 80: %s", esp_err_to_name(redirect_err));
+            ESP_LOGW(TAG, "HTTP to HTTPS redirect will not be available");
+        }
     } else {
         ESP_LOGE(TAG, "Error starting HTTPS server!");
         free(cert_pem);
@@ -1737,6 +1785,12 @@ void web_server_stop(void)
     if (server) {
         httpd_stop(server);
         server = NULL;
-        ESP_LOGI(TAG, "Web server stopped");
+        ESP_LOGI(TAG, "HTTPS server stopped");
+    }
+    
+    if (redirect_server) {
+        httpd_stop(redirect_server);
+        redirect_server = NULL;
+        ESP_LOGI(TAG, "HTTP redirect server stopped");
     }
 }
