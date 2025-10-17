@@ -46,9 +46,10 @@ esp_err_t hardware_test_door_opener(uint32_t duration_ms);
  * Test light relay toggle
  * Toggles the light relay state (on/off)
  * 
+ * @param new_state Pointer to bool to store the new state (true=on, false=off)
  * @return ESP_OK on success
  */
-esp_err_t hardware_test_light_toggle(void);
+esp_err_t hardware_test_light_toggle(bool* new_state);
 
 /**
  * Get current hardware state

@@ -143,12 +143,23 @@ esp_err_t hardware_test_door_opener(uint32_t duration_ms)
     return ESP_OK;
 }
 
-esp_err_t hardware_test_light_toggle(void)
+esp_err_t hardware_test_light_toggle(bool* new_state)
 {
     ESP_LOGI(TAG, "Testing light relay toggle");
     
-    // Use existing light_relay_toggle function
-    light_relay_toggle();
+    // Read current light relay state
+    int current_state = gpio_get_level(LIGHT_RELAY_PIN);
+    
+    // Toggle light relay GPIO pin
+    int new_level = (current_state == 0) ? 1 : 0;
+    gpio_set_level(LIGHT_RELAY_PIN, new_level);
+    
+    // Return new state to caller
+    if (new_state != NULL) {
+        *new_state = (new_level == 1);
+    }
+    
+    ESP_LOGI(TAG, "Light relay toggled: %s", (new_level == 1) ? "ON" : "OFF");
     
     return ESP_OK;
 }

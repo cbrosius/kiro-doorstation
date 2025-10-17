@@ -12,14 +12,23 @@
   - Define `hardware_state_t` structure for state reporting
   - _Requirements: 8.1.1_
 
-- [ ] 2. Implement doorbell test functionality
+- [x] 2. Implement doorbell test functionality
+
+
+
+
   - Implement `hardware_test_doorbell()` function with bell number validation
   - Add logic to simulate doorbell button press by calling existing GPIO handler
   - Verify doorbell test triggers SIP call when configured
   - Add error handling for invalid bell numbers
   - _Requirements: 8.1.2_
 
-- [ ] 3. Implement door opener relay test with duration control
+- [x] 3. Implement door opener relay test with duration control
+
+
+
+
+
   - Implement `hardware_test_door_opener()` function with duration parameter
   - Add duration validation (1000ms to 10000ms range)
   - Implement GPIO relay activation logic
@@ -27,7 +36,12 @@
   - Add mutex protection to prevent concurrent door opener tests
   - _Requirements: 8.1.3, 8.1.6_
 
-- [ ] 4. Implement light relay toggle test
+- [x] 4. Implement light relay toggle test
+
+
+
+
+
   - Implement `hardware_test_light_toggle()` function
   - Add logic to read current light relay state
   - Toggle light relay GPIO pin
