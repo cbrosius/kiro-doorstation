@@ -2522,97 +2522,145 @@
     <section class="content-section" id="section-testing" hidden>
       <h2 tabindex="-1">Hardware Testing</h2>
       
-      <div class="status-panel">
-        <div class="status-content">
-          <p style="padding: var(--spacing-md) var(--spacing-lg); margin: 0; color: var(--color-text-secondary);">
-            Test hardware components before mounting the device. Use these controls to verify functionality during installation and setup.
-          </p>
+      <!-- Warning Box -->
+      <div class="config-form" style="background-color: rgba(255, 193, 7, 0.1); border-left: 4px solid var(--color-warning);">
+        <div style="display: flex; align-items: start; gap: var(--spacing-md);">
+          <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">⚠️</span>
+          <div>
+            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-warning); font-size: var(--font-size-lg);">Safety Warning</h3>
+            <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm); line-height: 1.6;">
+              <strong>Testing will physically activate relays and may trigger SIP calls.</strong><br>
+              Ensure proper wiring and verify that door mechanisms are safe to operate before testing. 
+              Disconnect any sensitive equipment if necessary. Use the Emergency Stop button to immediately halt all tests.
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Current Hardware State Display -->
+      <div class="config-form">
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md);">Current Hardware State</h3>
+        <div class="state-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+          <div class="state-item" style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 2px solid var(--color-border);" id="hw-door-relay-card">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-xs);">
+              <span style="font-size: var(--font-size-xl);">🚪</span>
+              <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text-secondary);">Door Relay</span>
+            </div>
+            <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);" id="hw-door-relay-state">Inactive</div>
+            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);" id="hw-door-countdown" hidden>
+              Remaining: <span id="hw-door-remaining">0</span>s
+            </div>
+          </div>
+          
+          <div class="state-item" style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 2px solid var(--color-border);" id="hw-light-relay-card">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-xs);">
+              <span style="font-size: var(--font-size-xl);">💡</span>
+              <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text-secondary);">Light Relay</span>
+            </div>
+            <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);" id="hw-light-relay-state">Off</div>
+          </div>
+          
+          <div class="state-item" style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 2px solid var(--color-border);" id="hw-bell1-card">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-xs);">
+              <span style="font-size: var(--font-size-xl);">🔔</span>
+              <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text-secondary);">Bell 1</span>
+            </div>
+            <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);" id="hw-bell1-state">Not Pressed</div>
+          </div>
+          
+          <div class="state-item" style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 2px solid var(--color-border);" id="hw-bell2-card">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-xs);">
+              <span style="font-size: var(--font-size-xl);">🔔</span>
+              <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text-secondary);">Bell 2</span>
+            </div>
+            <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);" id="hw-bell2-state">Not Pressed</div>
+          </div>
         </div>
       </div>
       
       <!-- Doorbell Button Testing -->
       <div class="config-form">
-        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Doorbell Button Simulation</h3>
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md);">Doorbell Tests</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
-          Simulate doorbell button presses to test SIP call functionality without physical button presses.
+          Simulate doorbell button presses to test SIP call functionality. This will trigger a SIP call if the system is configured and connected.
         </p>
         
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary" id="test-bell1-btn">
-            <span class="btn-text">🔔 Test Bell 1</span>
+          <button type="button" class="btn btn-primary test-btn" id="test-bell1-btn" onclick="testDoorbell(1)">
+            <span class="btn-text">🔔 Test Doorbell 1</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
           
-          <button type="button" class="btn btn-primary" id="test-bell2-btn">
-            <span class="btn-text">🔔 Test Bell 2</span>
+          <button type="button" class="btn btn-primary test-btn" id="test-bell2-btn" onclick="testDoorbell(2)">
+            <span class="btn-text">🔔 Test Doorbell 2</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-        </div>
-        
-        <div id="bell-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
-          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
         </div>
       </div>
       
       <!-- Door Opener Relay Testing -->
       <div class="config-form">
-        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Door Opener Relay</h3>
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md);">Door Opener Test</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
-          ⚠️ <strong>Warning:</strong> This will physically activate the door opener relay. Ensure the door mechanism is safe to operate.
+          Activate the door opener relay for a specified duration to test door mechanism functionality.
         </p>
         
         <div class="form-group">
-          <label for="door-duration">Activation Duration (seconds) <span class="required">*</span></label>
-          <input type="number" 
+          <label for="door-duration">
+            Duration: <span id="door-duration-value">5</span> seconds
+          </label>
+          <input type="range" 
                  id="door-duration" 
                  name="duration" 
                  min="1" 
                  max="10" 
-                 value="3" 
-                 required
-                 data-error="Duration must be between 1 and 10 seconds">
-          <span class="error-message" hidden></span>
-          <span class="form-help">Duration the relay will remain active (1-10 seconds)</span>
+                 value="5"
+                 oninput="updateDurationDisplay(this.value)"
+                 style="width: 100%; max-width: 400px;">
+          <span class="form-help">Adjust the duration the relay will remain active (1-10 seconds)</span>
         </div>
         
-        <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-warning" id="test-door-btn">
-            <span class="btn-text">🚪 Trigger Door Opener</span>
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button type="button" class="btn btn-warning test-btn" id="test-door-btn" onclick="testDoorOpener()">
+            <span class="btn-text">🚪 Activate Door Opener</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          
-          <div id="door-relay-state" style="display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border: 2px solid var(--color-status-inactive);">
-            <span style="font-size: var(--font-size-lg);">🚪</span>
-            <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Relay: <span id="door-relay-status">Inactive</span></span>
-          </div>
-        </div>
-        
-        <div id="door-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
-          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
         </div>
       </div>
       
       <!-- Light Relay Testing -->
       <div class="config-form">
-        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-text);">Light Relay</h3>
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md);">Light Relay Test</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
           Toggle the light relay on and off to test light control functionality.
         </p>
         
-        <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-info" id="test-light-btn">
+        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+          <button type="button" class="btn btn-info test-btn" id="test-light-btn" onclick="testLightToggle()">
             <span class="btn-text">💡 Toggle Light</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          
-          <div id="light-relay-state" style="display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border: 2px solid var(--color-status-inactive);">
-            <span style="font-size: var(--font-size-lg);">💡</span>
-            <span style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Relay: <span id="light-relay-status">Off</span></span>
-          </div>
         </div>
+      </div>
+      
+      <!-- Emergency Stop -->
+      <div class="config-form" style="background-color: rgba(220, 53, 69, 0.1); border-left: 4px solid var(--color-danger);">
+        <h3 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-danger);">Emergency Stop</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text); font-size: var(--font-size-sm);">
+          Immediately deactivate all active hardware tests and relays. Use this if something goes wrong during testing.
+        </p>
         
-        <div id="light-test-feedback" style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-info); display: none;">
-          <p style="margin: 0; color: var(--color-text); font-size: var(--font-size-sm);"></p>
+        <button type="button" class="btn btn-danger emergency-btn" id="emergency-stop-btn" onclick="emergencyStop()">
+          <span class="btn-text">🛑 Emergency Stop All Tests</span>
+          <span class="btn-spinner" hidden>⏳</span>
+        </button>
+      </div>
+      
+      <!-- Test Feedback Area -->
+      <div id="test-feedback" class="feedback-area" style="display: none; padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border-left: 4px solid var(--color-info); margin-top: var(--spacing-lg);">
+        <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+          <span id="test-feedback-icon" style="font-size: var(--font-size-xl);"></span>
+          <span id="test-feedback-message" style="font-size: var(--font-size-base); color: var(--color-text);"></span>
         </div>
       </div>
       
