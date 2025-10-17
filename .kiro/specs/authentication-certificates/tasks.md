@@ -141,7 +141,12 @@
   - Close HTTP connection after redirect
   - _Requirements: 4.5_
 
-- [ ] 12. Implement authentication filter for web endpoints
+- [x] 12. Implement authentication filter for web endpoints
+
+
+
+
+
   - Create `auth_filter()` function to check session cookie
   - Register filter for all protected endpoints
   - Skip authentication for login page and public assets

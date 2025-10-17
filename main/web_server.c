@@ -5,6 +5,7 @@
 #include "dtmf_decoder.h"
 #include "hardware_test.h"
 #include "cert_manager.h"
+#include "auth_manager.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_https_server.h"
@@ -112,8 +113,115 @@ extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 extern const uint8_t documentation_html_start[] asm("_binary_documentation_html_start");
 extern const uint8_t documentation_html_end[] asm("_binary_documentation_html_end");
 
+/**
+ * @brief Check if a URI is a public endpoint that doesn't require authentication
+ * 
+ * @param uri The URI to check
+ * @return true if the endpoint is public
+ * @return false if the endpoint requires authentication
+ */
+static bool is_public_endpoint(const char* uri) {
+    if (!uri) {
+        return false;
+    }
+    
+    // Public endpoints that don't require authentication
+    const char* public_endpoints[] = {
+        "/api/auth/login",           // Login endpoint
+        "/api/auth/set-password",    // Initial password setup
+        "/login.html",               // Login page
+        "/favicon.ico",              // Browser favicon requests
+        NULL
+    };
+    
+    for (int i = 0; public_endpoints[i] != NULL; i++) {
+        if (strcmp(uri, public_endpoints[i]) == 0) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * @brief Authentication filter for HTTP requests
+ * 
+ * This filter checks for a valid session cookie on all protected endpoints.
+ * If the session is missing or invalid, it returns 401 Unauthorized.
+ * If the session is valid, it extends the session timeout.
+ * 
+ * @param req HTTP request
+ * @return ESP_OK if authentication passed, ESP_FAIL if authentication failed
+ */
+static esp_err_t auth_filter(httpd_req_t *req) {
+    // Skip authentication for public endpoints
+    if (is_public_endpoint(req->uri)) {
+        return ESP_OK;
+    }
+    
+    // Check if password is set - if not, allow access for initial setup
+    if (!auth_is_password_set()) {
+        ESP_LOGW(TAG, "No password set - allowing access for initial setup");
+        return ESP_OK;
+    }
+    
+    // Extract session cookie
+    char session_id[AUTH_SESSION_ID_SIZE] = {0};
+    size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
+    
+    if (cookie_len > 0) {
+        char* cookie_str = malloc(cookie_len + 1);
+        if (cookie_str) {
+            if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
+                // Parse session_id from cookie string
+                // Cookie format: "session_id=<value>; other=value"
+                char* session_start = strstr(cookie_str, "session_id=");
+                if (session_start) {
+                    session_start += strlen("session_id=");
+                    char* session_end = strchr(session_start, ';');
+                    size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
+                    
+                    if (session_len < AUTH_SESSION_ID_SIZE) {
+                        strncpy(session_id, session_start, session_len);
+                        session_id[session_len] = '\0';
+                    }
+                }
+            }
+            free(cookie_str);
+        }
+    }
+    
+    // Check if session ID was found
+    if (session_id[0] == '\0') {
+        ESP_LOGW(TAG, "No session cookie found for %s", req->uri);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Authentication required\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Validate session
+    if (!auth_validate_session(session_id)) {
+        ESP_LOGW(TAG, "Invalid or expired session for %s", req->uri);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Session expired\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Session is valid - extend timeout on activity
+    auth_extend_session(session_id);
+    
+    return ESP_OK;
+}
+
 static esp_err_t get_sip_status_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     
     // Use sip_get_status which returns complete status including state name
@@ -126,6 +234,11 @@ static esp_err_t get_sip_status_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -151,6 +264,11 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -171,6 +289,11 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[256];
     int ret;
     int remaining = req->content_len;
@@ -228,6 +351,11 @@ static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_log_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     
     // Parse query parameter "since"
@@ -276,6 +404,11 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -295,6 +428,11 @@ static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     
     sip_disconnect();
@@ -312,6 +450,11 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[1024];
     int ret;
     int remaining = req->content_len;
@@ -373,6 +516,11 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 // WiFi API Handlers
 static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -391,6 +539,11 @@ static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[512];
     int ret;
     int remaining = req->content_len;
@@ -441,6 +594,11 @@ static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t get_wifi_status_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -467,6 +625,11 @@ static esp_err_t get_wifi_status_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
     cJSON *networks_array = cJSON_CreateArray();
@@ -500,6 +663,11 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[512];
     int ret;
     int remaining = req->content_len;
@@ -554,6 +722,11 @@ static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 // Network API Handlers
 static esp_err_t get_network_ip_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -613,6 +786,11 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
 // Email API Handlers
 static esp_err_t get_email_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -635,6 +813,11 @@ static esp_err_t get_email_config_handler(httpd_req_t *req)
 
 static esp_err_t post_email_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[1024];
     int ret;
     int remaining = req->content_len;
@@ -753,6 +936,11 @@ static esp_err_t post_email_config_handler(httpd_req_t *req)
 // OTA API Handlers
 static esp_err_t get_ota_version_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -777,6 +965,11 @@ static esp_err_t get_ota_version_handler(httpd_req_t *req)
 // System API Handlers
 static esp_err_t get_system_status_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -817,6 +1010,11 @@ static esp_err_t get_system_status_handler(httpd_req_t *req)
 
 static esp_err_t post_system_restart_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     ESP_LOGI(TAG, "System restart requested");
     
     httpd_resp_set_type(req, "application/json");
@@ -832,6 +1030,11 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
 
 static esp_err_t get_system_info_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -874,6 +1077,11 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
 // NTP API Handlers
 static esp_err_t get_ntp_status_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -899,6 +1107,11 @@ static esp_err_t get_ntp_status_handler(httpd_req_t *req)
 
 static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -914,6 +1127,11 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[512];
     int ret;
     int remaining = req->content_len;
@@ -965,6 +1183,11 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     ESP_LOGI(TAG, "Manual NTP sync requested");
     
     ntp_force_sync();
@@ -978,6 +1201,11 @@ static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 // DTMF Security API Handlers
 static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
@@ -999,6 +1227,11 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[512];
     int ret;
     int remaining = req->content_len;
@@ -1089,6 +1322,11 @@ static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     
     // Parse query parameter "since"
@@ -1178,6 +1416,11 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 // Hardware Test API Handlers
 static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[256];
     int ret;
     int remaining = req->content_len;
@@ -1238,6 +1481,11 @@ static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     char buf[256];
     int ret;
     int remaining = req->content_len;
@@ -1304,6 +1552,11 @@ static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *response = cJSON_CreateObject();
 
@@ -1328,6 +1581,11 @@ static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 
 static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *response = cJSON_CreateObject();
 
@@ -1349,6 +1607,11 @@ static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     cJSON *response = cJSON_CreateObject();
 
@@ -1372,6 +1635,11 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 
 static esp_err_t index_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "text/html");
     const size_t index_html_size = (uintptr_t)index_html_end - (uintptr_t)index_html_start;
     httpd_resp_send(req, (const char *)index_html_start, index_html_size);
@@ -1380,6 +1648,11 @@ static esp_err_t index_handler(httpd_req_t *req)
 
 static esp_err_t documentation_handler(httpd_req_t *req)
 {
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "text/html");
     const size_t documentation_html_size = (uintptr_t)documentation_html_end - (uintptr_t)documentation_html_start;
     httpd_resp_send(req, (const char *)documentation_html_start, documentation_html_size);
