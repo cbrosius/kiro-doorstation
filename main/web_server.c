@@ -421,10 +421,26 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     int count = sip_get_log_entries(entries, max_entries, since_timestamp);
     
     cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     cJSON *entries_array = cJSON_CreateArray();
+    if (!entries_array) {
+        cJSON_Delete(root);
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
     
     for (int i = 0; i < count; i++) {
         cJSON *entry = cJSON_CreateObject();
+        if (!entry) {
+            // Out of memory - return what we have so far
+            break;
+        }
         // Use double for timestamp to preserve precision in JSON
         cJSON_AddNumberToObject(entry, "timestamp", (double)entries[i].timestamp);
         cJSON_AddStringToObject(entry, "type", entries[i].type);
@@ -436,6 +452,13 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "count", count);
     
     char *json_string = cJSON_Print(root);
+    if (!json_string) {
+        cJSON_Delete(root);
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
     cJSON_Delete(root);
@@ -673,7 +696,17 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
     
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     cJSON *networks_array = cJSON_CreateArray();
+    if (!networks_array) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
 
     ESP_LOGI(TAG, "Starting WiFi scan");
     
@@ -684,6 +717,10 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
     if (network_count > 0 && scan_results != NULL) {
         for (int i = 0; i < network_count; i++) {
             cJSON *network = cJSON_CreateObject();
+            if (!network) {
+                // Out of memory - return what we have so far
+                break;
+            }
             cJSON_AddStringToObject(network, "ssid", scan_results[i].ssid);
             cJSON_AddNumberToObject(network, "rssi", scan_results[i].rssi);
             cJSON_AddBoolToObject(network, "secure", scan_results[i].secure);
@@ -696,6 +733,12 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "count", network_count);
 
     char *json_string = cJSON_Print(root);
+    if (!json_string) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
     cJSON_Delete(root);
@@ -1392,10 +1435,26 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     int count = dtmf_get_security_logs(entries, max_entries, since_timestamp);
     
     cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     cJSON *logs_array = cJSON_CreateArray();
+    if (!logs_array) {
+        cJSON_Delete(root);
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
     
     for (int i = 0; i < count; i++) {
         cJSON *entry = cJSON_CreateObject();
+        if (!entry) {
+            // Out of memory - return what we have so far
+            break;
+        }
         
         // Use double for timestamp to preserve precision in JSON
         cJSON_AddNumberToObject(entry, "timestamp", (double)entries[i].timestamp);
@@ -1447,6 +1506,13 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "count", count);
     
     char *json_string = cJSON_Print(root);
+    if (!json_string) {
+        cJSON_Delete(root);
+        free(entries);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
     cJSON_Delete(root);
