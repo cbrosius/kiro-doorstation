@@ -3769,7 +3769,49 @@
       hardwareState: {
         data: null,
         timestamp: 0,
-        ttl: 1000, // Cache for 1 second
+        ttl: 1000, // Cache for 1 second - fast polling for hardware testing
+        pendingRequest: null
+      },
+      wifiState: {
+        data: null,
+        timestamp: 0,
+        ttl: 5000, // Cache for 5 seconds - WiFi state changes less frequently
+        pendingRequest: null
+      },
+      sipState: {
+        data: null,
+        timestamp: 0,
+        ttl: 3000, // Cache for 3 seconds - SIP state needs moderate refresh
+        pendingRequest: null
+      },
+      systemState: {
+        data: null,
+        timestamp: 0,
+        ttl: 10000, // Cache for 10 seconds - system info changes slowly
+        pendingRequest: null
+      },
+      ntpState: {
+        data: null,
+        timestamp: 0,
+        ttl: 10000, // Cache for 10 seconds - NTP sync status changes slowly
+        pendingRequest: null
+      },
+      sipLogs: {
+        data: null,
+        timestamp: 0,
+        ttl: 10000, // Cache for 10 seconds - logs refresh every 10s
+        pendingRequest: null
+      },
+      dtmfLogs: {
+        data: null,
+        timestamp: 0,
+        ttl: 10000, // Cache for 10 seconds - logs refresh every 10s
+        pendingRequest: null
+      },
+      authLogs: {
+        data: null,
+        timestamp: 0,
+        ttl: 10000, // Cache for 10 seconds - logs refresh every 10s
         pendingRequest: null
       },
 
@@ -3805,6 +3847,27 @@
       async fetch(key) {
         if (key === 'hardwareState') {
           return await apiRequest('/api/hardware/state', { silentError: true }, 10000);
+        }
+        if (key === 'wifiState') {
+          return await apiRequest('/api/wifi/state', { silentError: true }, 10000);
+        }
+        if (key === 'sipState') {
+          return await apiRequest('/api/sip/state', { silentError: true }, 10000);
+        }
+        if (key === 'systemState') {
+          return await apiRequest('/api/system/state', { silentError: true }, 10000);
+        }
+        if (key === 'ntpState') {
+          return await apiRequest('/api/ntp/state', { silentError: true }, 10000);
+        }
+        if (key === 'sipLogs') {
+          return await apiRequest('/api/sip/log?limit=10', { silentError: true }, 10000);
+        }
+        if (key === 'dtmfLogs') {
+          return await apiRequest('/api/dtmf/logs', { silentError: true }, 10000);
+        }
+        if (key === 'authLogs') {
+          return await apiRequest('/api/auth/logs', { silentError: true }, 10000);
         }
         return null;
       },
@@ -4242,7 +4305,7 @@
      */
     async function updateWiFiStatus() {
       try {
-        const response = await apiRequest('/api/wifi/state');
+        const response = await apiCache.get('wifiState');
         console.log('WiFi status response:', response);
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
@@ -4273,7 +4336,7 @@
      */
     async function updateSIPStatus() {
       try {
-        const response = await apiRequest('/api/sip/state');
+        const response = await apiCache.get('sipState');
         const card = document.getElementById('sip-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4302,7 +4365,7 @@
      */
     async function updateDoorStatus() {
       try {
-        const response = await apiRequest('/api/hardware/state');
+        const response = await apiCache.get('hardwareState');
         const card = document.getElementById('door-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4325,7 +4388,7 @@
      */
     async function updateLightStatus() {
       try {
-        const response = await apiRequest('/api/hardware/state');
+        const response = await apiCache.get('hardwareState');
         const card = document.getElementById('light-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4807,6 +4870,17 @@
 
         // Show success message
         showToast(response.message || 'Configuration saved successfully!', 'success');
+
+        // Invalidate relevant caches based on endpoint
+        if (endpoint.includes('/api/wifi/')) {
+          apiCache.invalidate('wifiState');
+        } else if (endpoint.includes('/api/sip/')) {
+          apiCache.invalidate('sipState');
+        } else if (endpoint.includes('/api/ntp/')) {
+          apiCache.invalidate('ntpState');
+        } else if (endpoint.includes('/api/system/')) {
+          apiCache.invalidate('systemState');
+        }
 
         // Update initial state to current state
         saveFormInitialState(form);
@@ -5402,6 +5476,9 @@
         showToast('Connecting to SIP server...', 'info');
         const response = await apiRequest('/api/sip/connect', { method: 'POST' });
         showToast(response.message || 'Connected to SIP server successfully!', 'success');
+        
+        // Invalidate SIP state cache to force immediate refresh
+        apiCache.invalidate('sipState');
       } catch (error) {
         // Error already shown by apiRequest
       }
@@ -5418,6 +5495,9 @@
         showToast('Disconnecting from SIP server...', 'info');
         const response = await apiRequest('/api/sip/disconnect', { method: 'POST' });
         showToast(response.message || 'Disconnected from SIP server', 'success');
+        
+        // Invalidate SIP state cache to force immediate refresh
+        apiCache.invalidate('sipState');
       } catch (error) {
         // Error already shown by apiRequest
       }
@@ -5487,7 +5567,7 @@
      */
     async function updateSystemInfo() {
       try {
-        const response = await apiRequest('/api/system/state');
+        const response = await apiCache.get('systemState');
 
         // Update uptime
         const uptimeElement = document.getElementById('system-uptime');
@@ -5581,7 +5661,7 @@
      */
     async function updateNTPStatus() {
       try {
-        const response = await apiRequest('/api/ntp/state');
+        const response = await apiCache.get('ntpState');
 
         const indicatorElement = document.getElementById('ntp-sync-indicator');
         const textElement = document.getElementById('ntp-sync-text');
@@ -5656,6 +5736,9 @@
 
         if (response && response.success) {
           showToast('NTP sync initiated successfully', 'success');
+
+          // Invalidate NTP state cache to force immediate refresh
+          apiCache.invalidate('ntpState');
 
           // Wait a moment then refresh status
           setTimeout(() => {
@@ -6196,7 +6279,7 @@
      */
     async function updateSIPConnectionStatus() {
       try {
-        const response = await apiRequest('/api/sip/state');
+        const response = await apiCache.get('sipState');
 
         const iconElement = document.getElementById('sip-connection-icon');
         const statusElement = document.getElementById('sip-connection-status');
@@ -6267,6 +6350,9 @@
         const response = await apiRequest('/api/sip/connect', { method: 'POST' });
         showToast(response.message || 'Connected to SIP server successfully!', 'success');
 
+        // Invalidate SIP state cache to force immediate refresh
+        apiCache.invalidate('sipState');
+
         // Update connection status
         await updateSIPConnectionStatus();
 
@@ -6291,6 +6377,9 @@
         showToast('Disconnecting from SIP server...', 'info');
         const response = await apiRequest('/api/sip/disconnect', { method: 'POST' });
         showToast(response.message || 'Disconnected from SIP server', 'success');
+
+        // Invalidate SIP state cache to force immediate refresh
+        apiCache.invalidate('sipState');
 
         // Update connection status
         await updateSIPConnectionStatus();
@@ -6752,7 +6841,7 @@
      */
     async function updateNTPStatusInNetworkSection() {
       try {
-        const response = await apiRequest('/api/ntp/state');
+        const response = await apiCache.get('ntpState');
 
         const iconElement = document.getElementById('ntp-status-icon');
         const textElement = document.getElementById('ntp-status-text');
@@ -6802,6 +6891,9 @@
         showToast('Forcing NTP synchronization...', 'info');
         const response = await apiRequest('/api/ntp/sync', { method: 'POST' });
         showToast(response.message || 'NTP sync initiated successfully!', 'success');
+
+        // Invalidate NTP state cache to force immediate refresh
+        apiCache.invalidate('ntpState');
 
         // Update status after a short delay
         setTimeout(() => {
@@ -7249,6 +7341,9 @@
         if (response && response.success) {
           showToast('Password changed successfully. You will be logged out.', 'success');
 
+          // Invalidate auth logs cache
+          apiCache.invalidate('authLogs');
+
           // Clear form
           form.reset();
 
@@ -7290,7 +7385,7 @@
 
       try {
         console.log('Fetching login logs...');
-        const response = await apiRequest('/api/auth/logs', { silentError: true });
+        const response = await apiCache.get('authLogs');
         console.log('Login logs response:', response);
 
         if (response) {
