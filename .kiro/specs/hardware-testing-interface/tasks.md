@@ -136,13 +136,19 @@
 
 
 
+
   - Display warning box about physical relay activation
   - Add confirmation dialog before door opener activation
   - Display safety warning about proper wiring
   - Show duration in confirmation dialog
   - _Requirements: 8.1.5_
 
-- [ ] 12. Update CMakeLists.txt to include hardware test module
+- [x] 12. Update CMakeLists.txt to include hardware test module
+
+
+
+
+
   - Add `hardware_test.c` to `main/CMakeLists.txt` SRCS list
   - Verify GPIO driver component is linked
   - Ensure FreeRTOS components are available
