@@ -812,6 +812,9 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
 
     bool is_connected = wifi_is_connected();
     cJSON_AddBoolToObject(root, "connected", is_connected);
+    
+    // For now, always report DHCP mode (static IP configuration not yet implemented)
+    cJSON_AddStringToObject(root, "mode", "dhcp");
 
     if (is_connected) {
         // Get network interface
@@ -829,8 +832,8 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
                 snprintf(netmask_str, sizeof(netmask_str), IPSTR, IP2STR(&ip_info.netmask));
                 snprintf(gateway_str, sizeof(gateway_str), IPSTR, IP2STR(&ip_info.gw));
                 
-                cJSON_AddStringToObject(root, "ip_address", ip_str);
-                cJSON_AddStringToObject(root, "netmask", netmask_str);
+                cJSON_AddStringToObject(root, "ip", ip_str);
+                cJSON_AddStringToObject(root, "subnet", netmask_str);
                 cJSON_AddStringToObject(root, "gateway", gateway_str);
             }
             
@@ -839,21 +842,32 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
             if (esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
                 char dns_str[16];
                 snprintf(dns_str, sizeof(dns_str), IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
-                cJSON_AddStringToObject(root, "dns", dns_str);
+                cJSON_AddStringToObject(root, "dns1", dns_str);
             } else {
-                cJSON_AddStringToObject(root, "dns", "");
+                cJSON_AddStringToObject(root, "dns1", "");
+            }
+            
+            // Get secondary DNS
+            if (esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_info) == ESP_OK) {
+                char dns_str[16];
+                snprintf(dns_str, sizeof(dns_str), IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+                cJSON_AddStringToObject(root, "dns2", dns_str);
+            } else {
+                cJSON_AddStringToObject(root, "dns2", "");
             }
         } else {
-            cJSON_AddStringToObject(root, "ip_address", "");
-            cJSON_AddStringToObject(root, "netmask", "");
+            cJSON_AddStringToObject(root, "ip", "");
+            cJSON_AddStringToObject(root, "subnet", "");
             cJSON_AddStringToObject(root, "gateway", "");
-            cJSON_AddStringToObject(root, "dns", "");
+            cJSON_AddStringToObject(root, "dns1", "");
+            cJSON_AddStringToObject(root, "dns2", "");
         }
     } else {
-        cJSON_AddStringToObject(root, "ip_address", "");
-        cJSON_AddStringToObject(root, "netmask", "");
+        cJSON_AddStringToObject(root, "ip", "");
+        cJSON_AddStringToObject(root, "subnet", "");
         cJSON_AddStringToObject(root, "gateway", "");
-        cJSON_AddStringToObject(root, "dns", "");
+        cJSON_AddStringToObject(root, "dns1", "");
+        cJSON_AddStringToObject(root, "dns2", "");
     }
 
     char *json_string = cJSON_Print(root);
