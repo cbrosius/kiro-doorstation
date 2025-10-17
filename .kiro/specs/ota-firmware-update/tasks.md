@@ -129,7 +129,12 @@
   - Implement automatic page reload attempt after restart
   - _Requirements: 3.1.7_
 
-- [ ] 11. Add rollback UI and functionality
+- [x] 11. Add rollback UI and functionality
+
+
+
+
+
   - Enable rollback button when previous firmware partition exists
   - Implement `rollbackFirmware()` JavaScript function
   - Add confirmation dialog for rollback action

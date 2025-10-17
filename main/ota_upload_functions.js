@@ -530,12 +530,18 @@ function startDeviceReconnectPolling() {
 }
 
 /**
- * Handle OTA rollback
+ * Rollback to previous firmware version
  */
-async function handleOTARollback() {
+async function rollbackFirmware() {
+  // Confirm rollback action
   const confirmed = await showConfirmDialog(
     'Rollback Firmware',
-    'This will rollback to the previous firmware version and restart the device. You will lose connection temporarily. Continue?',
+    `<strong>⚠️ Important Warnings:</strong><br><br>` +
+    `• This will rollback to the previous firmware version<br>` +
+    `• The device will restart automatically<br>` +
+    `• You will lose connection temporarily<br>` +
+    `• The rollback process may take 1-2 minutes<br><br>` +
+    `Do you want to proceed with the firmware rollback?`,
     'Rollback and Restart',
     'Cancel',
     'warning'
@@ -554,12 +560,13 @@ async function handleOTARollback() {
     });
 
     if (response && response.success) {
-      showToast('Rollback initiated. Device will restart...', 'success');
+      showToast('Rollback initiated. Device will restart in 5 seconds...', 'success');
 
       // Show restart countdown
       showRestartCountdown();
     } else {
-      showToast(response?.message || 'Rollback failed', 'error');
+      const errorMsg = response?.error || response?.message || 'Rollback failed';
+      showToast('Rollback failed: ' + errorMsg, 'error');
       if (button) setLoadingState(button, false);
     }
   } catch (error) {
@@ -567,6 +574,13 @@ async function handleOTARollback() {
     showToast('Error during rollback: ' + error.message, 'error');
     if (button) setLoadingState(button, false);
   }
+}
+
+/**
+ * Handle OTA rollback (alias for rollbackFirmware for HTML onclick compatibility)
+ */
+async function handleOTARollback() {
+  return rollbackFirmware();
 }
 
 /**
@@ -597,6 +611,13 @@ function formatTime(seconds) {
     const secs = Math.round(seconds % 60);
     return `${minutes}m ${secs}s`;
   }
+}
+
+/**
+ * Load OTA firmware information (alias for compatibility)
+ */
+async function loadOTAFirmwareInfo() {
+  return loadOTAInfo();
 }
 
 /**
