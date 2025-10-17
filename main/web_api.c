@@ -115,10 +115,88 @@ static email_config_t email_load_config(void)
 void web_api_register_handlers(httpd_handle_t server) {
     ESP_LOGI(TAG, "Registering API handlers");
     
-    // API handler registration will be implemented in subsequent tasks
-    (void)server; // Suppress unused parameter warning
+    if (server == NULL) {
+        ESP_LOGE(TAG, "Cannot register handlers: server handle is NULL");
+        return;
+    }
     
-    ESP_LOGI(TAG, "API handlers registered successfully");
+    int registered_count = 0;
+    int failed_count = 0;
+    
+    // Register SIP API handlers (8 endpoints)
+    if (httpd_register_uri_handler(server, &sip_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_test_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_test_call_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_log_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_connect_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &sip_disconnect_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register WiFi API handlers (5 endpoints)
+    if (httpd_register_uri_handler(server, &wifi_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &wifi_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &wifi_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &wifi_scan_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &wifi_connect_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register Network API handlers (1 endpoint)
+    if (httpd_register_uri_handler(server, &network_ip_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register Email API handlers (2 endpoints)
+    if (httpd_register_uri_handler(server, &email_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &email_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register OTA API handlers (1 endpoint)
+    if (httpd_register_uri_handler(server, &ota_version_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register System API handlers (3 endpoints)
+    if (httpd_register_uri_handler(server, &system_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &system_restart_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &system_info_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register NTP API handlers (4 endpoints)
+    if (httpd_register_uri_handler(server, &ntp_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ntp_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ntp_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ntp_sync_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register DTMF Security API handlers (3 endpoints)
+    if (httpd_register_uri_handler(server, &dtmf_security_get_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &dtmf_security_post_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &dtmf_logs_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register Hardware Test API handlers (6 endpoints)
+    if (httpd_register_uri_handler(server, &hardware_test_doorbell_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_test_door_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_test_light_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_state_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_status_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_test_stop_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register Certificate Management API handlers (5 endpoints)
+    if (httpd_register_uri_handler(server, &cert_info_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &cert_upload_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &cert_generate_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &cert_download_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &cert_delete_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register Authentication API handlers (5 endpoints)
+    if (httpd_register_uri_handler(server, &auth_login_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &auth_logout_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &auth_set_password_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &auth_change_password_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &auth_logs_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Log registration summary
+    ESP_LOGI(TAG, "API handler registration complete: %d registered, %d failed", 
+             registered_count, failed_count);
+    
+    if (failed_count > 0) {
+        ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
+    } else {
+        ESP_LOGI(TAG, "All 43 API handlers registered successfully");
+    }
 }
 
 // ============================================================================

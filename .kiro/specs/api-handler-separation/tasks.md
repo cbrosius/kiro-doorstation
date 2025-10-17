@@ -144,14 +144,23 @@
     - Move auth_change_password_uri, auth_logs_uri
     - _Requirements: 1.2, 5.2_
 
-- [ ] 5. Implement API handler registration function
-  - [ ] 5.1 Create web_api_register_handlers function in web_api.c
+- [x] 5. Implement API handler registration function
+
+
+
+
+
+
+  - [x] 5.1 Create web_api_register_handlers function in web_api.c
+
     - Accept httpd_handle_t server parameter
     - Call httpd_register_uri_handler for all 43 API endpoints
     - Add logging for registration status
     - _Requirements: 1.4, 1.5_
   
-  - [ ] 5.2 Add function declaration to web_api.h
+
+  - [x] 5.2 Add function declaration to web_api.h
+
     - Declare void web_api_register_handlers(httpd_handle_t server)
     - Add include guard and necessary includes
     - _Requirements: 1.4, 6.1_
