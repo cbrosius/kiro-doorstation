@@ -2367,28 +2367,68 @@ static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
 
 static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "GET /api/auth/logs - Handler called");
+    
     // Check authentication - user must be logged in to view logs
     if (auth_filter(req) != ESP_OK) {
+        ESP_LOGW(TAG, "Authentication failed for /api/auth/logs");
         return ESP_FAIL;
     }
+    
+    ESP_LOGI(TAG, "Authentication passed for /api/auth/logs");
 
-    // Get audit logs
-    audit_log_entry_t logs[AUTH_MAX_AUDIT_LOGS];
-    int log_count = auth_get_audit_logs(logs, AUTH_MAX_AUDIT_LOGS);
+    // Allocate memory for logs dynamically - limit to 50 logs to reduce memory usage
+    // 50 logs * ~85 bytes = ~4.25KB which is more manageable
+    #define MAX_LOGS_TO_RETRIEVE 50
+    audit_log_entry_t *logs = (audit_log_entry_t *)malloc(MAX_LOGS_TO_RETRIEVE * sizeof(audit_log_entry_t));
+    if (!logs) {
+        ESP_LOGE(TAG, "Failed to allocate memory for audit logs (%d bytes)", 
+                 MAX_LOGS_TO_RETRIEVE * sizeof(audit_log_entry_t));
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Memory allocation failed\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Allocated %d bytes for audit logs", MAX_LOGS_TO_RETRIEVE * sizeof(audit_log_entry_t));
+
+    // Get audit logs (limited to MAX_LOGS_TO_RETRIEVE)
+    int log_count = auth_get_audit_logs(logs, MAX_LOGS_TO_RETRIEVE);
+    ESP_LOGI(TAG, "Retrieved %d audit log entries", log_count);
 
     // Create JSON response
     cJSON *response = cJSON_CreateObject();
+    if (!response) {
+        ESP_LOGE(TAG, "Failed to create JSON response object");
+        free(logs);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"JSON creation failed\"}", -1);
+        return ESP_FAIL;
+    }
+    
     cJSON *logs_array = cJSON_CreateArray();
+    if (!logs_array) {
+        ESP_LOGE(TAG, "Failed to create JSON array");
+        cJSON_Delete(response);
+        free(logs);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"JSON creation failed\"}", -1);
+        return ESP_FAIL;
+    }
 
     for (int i = 0; i < log_count; i++) {
         cJSON *log_entry = cJSON_CreateObject();
-        cJSON_AddNumberToObject(log_entry, "timestamp", logs[i].timestamp);
-        cJSON_AddStringToObject(log_entry, "username", logs[i].username);
-        cJSON_AddStringToObject(log_entry, "ip_address", logs[i].ip_address);
-        cJSON_AddStringToObject(log_entry, "result", logs[i].result);
-        cJSON_AddBoolToObject(log_entry, "success", logs[i].success);
-        
-        cJSON_AddItemToArray(logs_array, log_entry);
+        if (log_entry) {
+            cJSON_AddNumberToObject(log_entry, "timestamp", logs[i].timestamp);
+            cJSON_AddStringToObject(log_entry, "username", logs[i].username);
+            cJSON_AddStringToObject(log_entry, "ip_address", logs[i].ip_address);
+            cJSON_AddStringToObject(log_entry, "result", logs[i].result);
+            cJSON_AddBoolToObject(log_entry, "success", logs[i].success);
+            
+            cJSON_AddItemToArray(logs_array, log_entry);
+        }
     }
 
     cJSON_AddItemToObject(response, "logs", logs_array);
@@ -2396,9 +2436,24 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 
     httpd_resp_set_type(req, "application/json");
     char *json_string = cJSON_Print(response);
+    
+    if (!json_string) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        cJSON_Delete(response);
+        free(logs);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"JSON serialization failed\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Sending audit logs response: %d bytes", strlen(json_string));
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
     cJSON_Delete(response);
+    
+    // Free allocated memory
+    free(logs);
 
     return ESP_OK;
 }
@@ -2839,7 +2894,8 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &auth_logout_uri);
         httpd_register_uri_handler(server, &auth_set_password_uri);
         httpd_register_uri_handler(server, &auth_change_password_uri);
-        httpd_register_uri_handler(server, &auth_logs_uri);
+        esp_err_t logs_reg = httpd_register_uri_handler(server, &auth_logs_uri);
+        ESP_LOGI(TAG, "Registered /api/auth/logs endpoint: %s", esp_err_to_name(logs_reg));
         
         // Certificate Management API endpoints
         httpd_register_uri_handler(server, &cert_info_uri);

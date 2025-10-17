@@ -629,16 +629,42 @@ void auth_cleanup_expired_sessions(void) {
 
 int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs) {
     if (!logs || max_logs <= 0) {
+        ESP_LOGW(TAG, "Invalid parameters for audit logs: logs=%p, max_logs=%d", logs, max_logs);
+        return 0;
+    }
+    
+    if (audit_log_count == 0) {
+        ESP_LOGI(TAG, "No audit logs available");
         return 0;
     }
     
     int count = (audit_log_count < max_logs) ? audit_log_count : max_logs;
+    ESP_LOGI(TAG, "Retrieving %d audit logs (head=%d, count=%d)", count, audit_log_head, audit_log_count);
     
     // Copy logs in reverse chronological order (newest first)
     for (int i = 0; i < count; i++) {
-        int index = (audit_log_head - 1 - i + AUTH_MAX_AUDIT_LOGS) % AUTH_MAX_AUDIT_LOGS;
+        // Calculate index: go backwards from the most recent entry
+        int index;
+        if (audit_log_head == 0) {
+            // Head is at position 0, so most recent is at the end
+            index = (AUTH_MAX_AUDIT_LOGS - 1 - i);
+        } else {
+            // Most recent is at head - 1
+            index = (audit_log_head - 1 - i);
+            if (index < 0) {
+                index += AUTH_MAX_AUDIT_LOGS;
+            }
+        }
+        
+        // Bounds check
+        if (index < 0 || index >= AUTH_MAX_AUDIT_LOGS) {
+            ESP_LOGE(TAG, "Invalid audit log index: %d", index);
+            continue;
+        }
+        
         memcpy(&logs[i], &audit_logs[index], sizeof(audit_log_entry_t));
     }
     
+    ESP_LOGI(TAG, "Successfully retrieved %d audit logs", count);
     return count;
 }

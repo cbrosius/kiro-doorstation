@@ -2659,24 +2659,6 @@
         </div>
       </div>
       
-      <!-- Task 20: Login Audit Logs -->
-      <div class="config-form" style="margin-top: var(--spacing-lg);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
-          <h3 style="margin: 0;">Login Audit Logs</h3>
-          <button class="btn btn-sm btn-info" onclick="refreshLoginLogs()">
-            <span>🔄</span>
-            <span>Refresh</span>
-          </button>
-        </div>
-        
-        <p class="form-help">View the last 100 login attempts including successful logins, failed attempts, and blocked IPs.</p>
-        
-        <!-- Login Log Container -->
-        <div id="login-log-container" style="max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md);">
-          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading login logs...</div>
-        </div>
-      </div>
-      
       <!-- Task 11.2: DTMF Security Log Display -->
       <div class="config-form" style="margin-top: var(--spacing-lg);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
@@ -2733,6 +2715,30 @@
             <span>💾</span>
             <span>Export to File</span>
           </button>
+        </div>
+      </div>
+      
+      <!-- Task 20: Login Audit Logs -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+          <h3 style="margin: 0;">Login Audit Logs</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
+              <input type="checkbox" id="login-log-auto-refresh" checked>
+              <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
+            </label>
+            <button class="btn btn-sm btn-info" onclick="refreshLoginLogs()" id="login-log-refresh-btn">
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+        
+        <p class="form-help">View the last 50 login attempts including successful logins, failed attempts, and blocked IPs.</p>
+        
+        <!-- Login Log Container -->
+        <div id="login-log-container" style="max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading login logs...</div>
         </div>
       </div>
     </section>
@@ -3309,6 +3315,11 @@
         stopHardwareStatePolling();
       }
       
+      // Stop login log auto-refresh if leaving logs section
+      if (currentSection === 'logs' && sectionId !== 'logs') {
+        stopLoginLogAutoRefresh();
+      }
+      
       // Hide all sections
       document.querySelectorAll('.content-section').forEach(section => {
         section.hidden = true;
@@ -3364,11 +3375,11 @@
         loadSecurityConfiguration();
         // Load Certificate Information (Task 18)
         loadCertificateInfo();
-        // Load Login Audit Logs (Task 20)
-        refreshLoginLogs();
       } else if (sectionId === 'logs') {
         // Initialize System Logs section (Task 11)
         initLogsSection();
+        // Load Login Audit Logs (Task 20)
+        initLoginLogs();
       } else if (sectionId === 'testing') {
         // Start hardware state polling for testing section
         startHardwareStatePolling();
@@ -6271,15 +6282,25 @@
      * Task 20: Load and display login audit logs
      */
     async function refreshLoginLogs() {
+      const container = document.getElementById('login-log-container');
+      
       try {
+        console.log('Fetching login logs...');
         const response = await apiRequest('/api/auth/logs', { silentError: true });
+        console.log('Login logs response:', response);
         
-        if (response && response.logs) {
-          displayLoginLogs(response.logs);
+        if (response) {
+          // Display logs even if empty array
+          displayLoginLogs(response.logs || []);
+        } else {
+          // No response - show error
+          console.error('No response from login logs API');
+          if (container) {
+            container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
+          }
         }
       } catch (error) {
         console.error('Error loading login logs:', error);
-        const container = document.getElementById('login-log-container');
         if (container) {
           container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
         }
@@ -6333,6 +6354,70 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+    
+    /**
+     * Task 20: Initialize login logs auto-refresh
+     */
+    function initLoginLogs() {
+      console.log('Initializing login logs...');
+      
+      // Prevent duplicate initialization
+      if (loginLogInitialized) {
+        console.log('Login logs already initialized, refreshing...');
+        refreshLoginLogs();
+        return;
+      }
+      
+      // Load initial logs
+      refreshLoginLogs();
+      
+      // Setup auto-refresh
+      const autoRefreshCheckbox = document.getElementById('login-log-auto-refresh');
+      if (autoRefreshCheckbox) {
+        console.log('Setting up login log auto-refresh, checkbox checked:', autoRefreshCheckbox.checked);
+        autoRefreshCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            startLoginLogAutoRefresh();
+          } else {
+            stopLoginLogAutoRefresh();
+          }
+        });
+        
+        // Start auto-refresh if checked
+        if (autoRefreshCheckbox.checked) {
+          startLoginLogAutoRefresh();
+        }
+        
+        loginLogInitialized = true;
+      } else {
+        console.error('Login log auto-refresh checkbox not found');
+      }
+    }
+    
+    /**
+     * Task 20: Start login log auto-refresh
+     */
+    function startLoginLogAutoRefresh() {
+      console.log('Starting login log auto-refresh');
+      if (loginLogAutoRefreshInterval) {
+        clearInterval(loginLogAutoRefreshInterval);
+      }
+      loginLogAutoRefreshInterval = setInterval(() => {
+        console.log('Auto-refreshing login logs...');
+        refreshLoginLogs();
+      }, 10000); // Refresh every 10 seconds
+    }
+    
+    /**
+     * Task 20: Stop login log auto-refresh
+     */
+    function stopLoginLogAutoRefresh() {
+      console.log('Stopping login log auto-refresh');
+      if (loginLogAutoRefreshInterval) {
+        clearInterval(loginLogAutoRefreshInterval);
+        loginLogAutoRefreshInterval = null;
+      }
     }
     
     /**
@@ -6614,6 +6699,7 @@
       loadSecurityConfiguration();
       // Load certificate information (Task 18)
       loadCertificateInfo();
+      // Note: initLoginLogs() is called when navigating to security section
     }
     
     // ===== Task 11: System Logs Section Functions =====
@@ -6625,6 +6711,8 @@
     let dtmfLogLastTimestamp = 0;
     let sipLogAutoRefreshInterval = null;
     let dtmfLogAutoRefreshInterval = null;
+    let loginLogAutoRefreshInterval = null;
+    let loginLogInitialized = false;
     let sipLogCurrentFilter = 'all';
     let dtmfLogCurrentFilter = 'all';
     
@@ -8830,6 +8918,9 @@
       
       // Initialize Hardware Testing section
       initHardwareTesting();
+      
+      // Initialize Security Settings section
+      initSecuritySettings();
       
       // Initialize Email Reports section
       initEmailReports();
