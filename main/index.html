@@ -10757,9 +10757,9 @@
               }
             }
 
-            // Reload page after brief delay
+            // Redirect to login page after OTA update
             setTimeout(() => {
-              window.location.reload();
+              window.location.href = '/login.html';
             }, 1000);
           }
         } catch (error) {
@@ -10783,7 +10783,7 @@
                 <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
                   Device is taking longer than expected to restart.
                 </p>
-                <button class="btn btn-primary" onclick="window.location.reload()">
+                <button class="btn btn-primary" onclick="window.location.href='/login.html'">
                   <span>🔄</span>
                   <span>Reload Page Now</span>
                 </button>
