@@ -1820,6 +1820,199 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t post_auth_set_password_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(password) || (password->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing password\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Check if password is already set
+    if (auth_is_password_set()) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Password already set. Use change-password endpoint.\"}", -1);
+        ESP_LOGW(TAG, "Attempt to set password when already configured");
+        return ESP_FAIL;
+    }
+
+    // Set initial password
+    esp_err_t err = auth_set_initial_password(password->valuestring);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+
+    if (err == ESP_OK) {
+        // Send success response
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Password set successfully");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGI(TAG, "Initial admin password set successfully");
+    } else if (err == ESP_ERR_INVALID_ARG) {
+        // Password doesn't meet strength requirements
+        httpd_resp_set_status(req, "400 Bad Request");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Password does not meet security requirements (min 8 chars, uppercase, lowercase, digit)");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGW(TAG, "Password set failed: does not meet strength requirements");
+    } else {
+        // Other error
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Failed to set password");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGE(TAG, "Password set failed: %s", esp_err_to_name(err));
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
+{
+    // Check authentication - user must be logged in to change password
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *current_password = cJSON_GetObjectItem(root, "current_password");
+    const cJSON *new_password = cJSON_GetObjectItem(root, "new_password");
+
+    if (!cJSON_IsString(current_password) || (current_password->valuestring == NULL) ||
+        !cJSON_IsString(new_password) || (new_password->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing current_password or new_password\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Change password
+    esp_err_t err = auth_change_password(current_password->valuestring, new_password->valuestring);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+
+    if (err == ESP_OK) {
+        // Send success response
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Password changed successfully. All sessions have been invalidated.");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGI(TAG, "Admin password changed successfully, all sessions invalidated");
+    } else if (err == ESP_ERR_INVALID_ARG) {
+        // Either current password is wrong or new password doesn't meet requirements
+        httpd_resp_set_status(req, "400 Bad Request");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Current password is incorrect or new password does not meet security requirements (min 8 chars, uppercase, lowercase, digit)");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGW(TAG, "Password change failed: invalid current password or weak new password");
+    } else {
+        // Other error
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", "Failed to change password");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+
+        ESP_LOGE(TAG, "Password change failed: %s", esp_err_to_name(err));
+    }
+
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     // Check authentication
@@ -1914,6 +2107,20 @@ static const httpd_uri_t auth_logout_uri = {
     .uri = "/api/auth/logout",
     .method = HTTP_POST,
     .handler = post_auth_logout_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_set_password_uri = {
+    .uri = "/api/auth/set-password",
+    .method = HTTP_POST,
+    .handler = post_auth_set_password_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t auth_change_password_uri = {
+    .uri = "/api/auth/change-password",
+    .method = HTTP_POST,
+    .handler = post_auth_change_password_handler,
     .user_ctx = NULL
 };
 
@@ -2183,6 +2390,8 @@ void web_server_start(void)
         // Authentication API endpoints
         httpd_register_uri_handler(server, &auth_login_uri);
         httpd_register_uri_handler(server, &auth_logout_uri);
+        httpd_register_uri_handler(server, &auth_set_password_uri);
+        httpd_register_uri_handler(server, &auth_change_password_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);

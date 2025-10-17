@@ -181,7 +181,12 @@
   - Return success response
   - _Requirements: 2.5_
 
-- [ ] 15. Create password management API endpoints
+- [x] 15. Create password management API endpoints
+
+
+
+
+
   - Add `POST /api/auth/set-password` endpoint for initial setup
   - Add `POST /api/auth/change-password` endpoint
   - Validate current password before allowing change
