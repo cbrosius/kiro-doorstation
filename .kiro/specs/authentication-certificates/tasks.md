@@ -210,7 +210,12 @@
   - Add `DELETE /api/cert` endpoint to delete certificate
   - _Requirements: 6.1, 6.2, 6.5, 7.1_
 
-- [ ] 17. Create login web page
+- [x] 17. Create login web page
+
+
+
+
+
   - Create `login.html` with username and password fields
   - Add form submission handler to call `/api/auth/login`
   - Display error messages for failed login attempts

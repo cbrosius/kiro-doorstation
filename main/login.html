@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Login - ESP32 SIP Door Station</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔔</text></svg>">
+  <style>
+    /* ===== CSS Custom Properties ===== */
+    
+    /* Light Theme (Default) */
+    :root {
+      /* Primary Colors */
+      --color-primary: #4CAF50;
+      --color-primary-dark: #45a049;
+      --color-primary-light: #81C784;
+      --color-danger: #dc3545;
+      --color-warning: #ffc107;
+      --color-info: #17a2b8;
+      --color-success: #28a745;
+      
+      /* Background Colors */
+      --color-bg: #f4f4f4;
+      --color-surface: #ffffff;
+      --color-hover: #f8f9fa;
+      --color-active: #e9ecef;
+      
+      /* Text Colors */
+      --color-text: #333333;
+      --color-text-secondary: #666666;
+      --color-text-muted: #999999;
+      --color-text-inverse: #ffffff;
+      
+      /* Border Colors */
+      --color-border: #dddddd;
+      --color-border-light: #eeeeee;
+      --color-border-dark: #cccccc;
+      
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+      --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.15);
+      --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.2);
+      
+      /* Spacing */
+      --spacing-xs: 4px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+      --spacing-xl: 32px;
+      
+      /* Typography */
+      --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --font-size-xs: 12px;
+      --font-size-sm: 14px;
+      --font-size-base: 16px;
+      --font-size-lg: 18px;
+      --font-size-xl: 20px;
+      --font-size-2xl: 24px;
+      --font-weight-normal: 400;
+      --font-weight-medium: 500;
+      --font-weight-bold: 600;
+      
+      /* Border Radius */
+      --border-radius: 8px;
+      --border-radius-sm: 4px;
+      --border-radius-lg: 12px;
+      
+      /* Transitions */
+      --transition-fast: 150ms ease;
+      --transition-base: 200ms ease;
+      --transition-slow: 300ms ease;
+    }
+    
+    /* Dark Theme */
+    [data-theme="dark"] {
+      /* Primary Colors */
+      --color-primary: #66bb6a;
+      --color-primary-dark: #4caf50;
+      --color-primary-light: #81c784;
+      --color-danger: #ef5350;
+      --color-warning: #ffca28;
+      --color-info: #29b6f6;
+      --color-success: #66bb6a;
+      
+      /* Background Colors */
+      --color-bg: #1e1e1e;
+      --color-surface: #2d2d2d;
+      --color-hover: #3a3a3a;
+      --color-active: #404040;
+      
+      /* Text Colors */
+      --color-text: #e0e0e0;
+      --color-text-secondary: #b0b0b0;
+      --color-text-muted: #808080;
+      --color-text-inverse: #1e1e1e;
+      
+      /* Border Colors */
+      --color-border: #404040;
+      --color-border-light: #353535;
+      --color-border-dark: #4a4a4a;
+      
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.4);
+      --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* ===== Base Styles ===== */
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html {
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    body {
+      font-family: var(--font-family);
+      font-size: var(--font-size-base);
+      line-height: 1.5;
+      color: var(--color-text);
+      background-color: var(--color-bg);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-md);
+    }
+    
+    /* ===== Login Container ===== */
+    
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+      background-color: var(--color-surface);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+    }
+    
+    .login-header {
+      padding: var(--spacing-xl);
+      text-align: center;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+      color: var(--color-text-inverse);
+    }
+    
+    .login-icon {
+      font-size: 48px;
+      margin-bottom: var(--spacing-md);
+    }
+    
+    .login-title {
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: var(--spacing-xs);
+    }
+    
+    .login-subtitle {
+      font-size: var(--font-size-sm);
+      opacity: 0.9;
+    }
+    
+    .login-body {
+      padding: var(--spacing-xl);
+    }
+    
+    /* ===== Form Styles ===== */
+    
+    .form-group {
+      margin-bottom: var(--spacing-lg);
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      color: var(--color-text);
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: var(--spacing-md);
+      font-size: var(--font-size-base);
+      font-family: var(--font-family);
+      color: var(--color-text);
+      background-color: var(--color-bg);
+      border: 2px solid var(--color-border);
+      border-radius: var(--border-radius-sm);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+    }
+    
+    .form-group input.invalid {
+      border-color: var(--color-danger);
+    }
+    
+    .form-group input.invalid:focus {
+      box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+    }
+    
+    /* ===== Error Message ===== */
+    
+    .error-message {
+      display: none;
+      padding: var(--spacing-md);
+      margin-bottom: var(--spacing-lg);
+      background-color: rgba(220, 53, 69, 0.1);
+      border: 1px solid var(--color-danger);
+      border-radius: var(--border-radius-sm);
+      color: var(--color-danger);
+      font-size: var(--font-size-sm);
+      animation: shake 0.3s ease-in-out;
+    }
+    
+    .error-message.show {
+      display: block;
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+    
+    /* ===== Button Styles ===== */
+    
+    .btn {
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-md) var(--spacing-lg);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      font-family: var(--font-family);
+      color: var(--color-text-inverse);
+      background-color: var(--color-primary);
+      border: none;
+      border-radius: var(--border-radius-sm);
+      cursor: pointer;
+      transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+      user-select: none;
+      min-height: 48px;
+    }
+    
+    .btn:hover:not(:disabled) {
+      background-color: var(--color-primary-dark);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+    
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .btn:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
+    }
+    
+    .btn-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--color-text-inverse);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    /* ===== Footer ===== */
+    
+    .login-footer {
+      padding: var(--spacing-lg) var(--spacing-xl);
+      background-color: var(--color-bg);
+      text-align: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      border-top: 1px solid var(--color-border);
+    }
+    
+    /* ===== Theme Toggle ===== */
+    
+    .theme-toggle {
+      position: absolute;
+      top: var(--spacing-md);
+      right: var(--spacing-md);
+      width: 44px;
+      height: 44px;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      font-size: var(--font-size-xl);
+      cursor: pointer;
+      transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
+      box-shadow: var(--shadow-md);
+    }
+    
+    .theme-toggle:hover {
+      background-color: var(--color-hover);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .theme-toggle:active {
+      background-color: var(--color-active);
+    }
+    
+    /* ===== Responsive Design ===== */
+    
+    @media (max-width: 480px) {
+      .login-container {
+        max-width: 100%;
+      }
+      
+      .login-header {
+        padding: var(--spacing-lg);
+      }
+      
+      .login-icon {
+        font-size: 40px;
+      }
+      
+      .login-title {
+        font-size: var(--font-size-xl);
+      }
+      
+      .login-body {
+        padding: var(--spacing-lg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Theme Toggle Button -->
+  <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+    <span id="theme-icon">🌙</span>
+  </button>
+
+  <!-- Login Container -->
+  <div class="login-container">
+    <!-- Header -->
+    <div class="login-header">
+      <div class="login-icon">🔔</div>
+      <h1 class="login-title">ESP32 Door Station</h1>
+      <p class="login-subtitle">Please sign in to continue</p>
+    </div>
+
+    <!-- Body -->
+    <div class="login-body">
+      <!-- Error Message -->
+      <div id="error-message" class="error-message" role="alert"></div>
+
+      <!-- Login Form -->
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input 
+            type="text" 
+            id="username" 
+            name="username" 
+            autocomplete="username"
+            required 
+            autofocus
+            placeholder="Enter your username"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            autocomplete="current-password"
+            required
+            placeholder="Enter your password"
+          >
+        </div>
+
+        <button type="submit" class="btn" id="login-btn">
+          <span id="btn-text">Sign In</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Footer -->
+    <div class="login-footer">
+      <p>ESP32 SIP Door Station v1.0.0</p>
+    </div>
+  </div>
+
+  <script>
+    // Theme management
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('theme-icon');
+      icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    // Initialize theme on page load
+    initTheme();
+
+    // Form elements
+    const loginForm = document.getElementById('login-form');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const loginBtn = document.getElementById('login-btn');
+    const btnText = document.getElementById('btn-text');
+    const errorMessage = document.getElementById('error-message');
+
+    // Show error message
+    function showError(message) {
+      errorMessage.textContent = message;
+      errorMessage.classList.add('show');
+      usernameInput.classList.add('invalid');
+      passwordInput.classList.add('invalid');
+      
+      // Remove invalid class when user starts typing
+      usernameInput.addEventListener('input', clearError, { once: true });
+      passwordInput.addEventListener('input', clearError, { once: true });
+    }
+
+    // Clear error message
+    function clearError() {
+      errorMessage.classList.remove('show');
+      usernameInput.classList.remove('invalid');
+      passwordInput.classList.remove('invalid');
+    }
+
+    // Set loading state
+    function setLoading(loading) {
+      loginBtn.disabled = loading;
+      if (loading) {
+        btnText.innerHTML = '<span class="btn-spinner"></span> Signing in...';
+      } else {
+        btnText.textContent = 'Sign In';
+      }
+    }
+
+    // Handle login form submission
+    async function handleLogin(event) {
+      event.preventDefault();
+      
+      // Clear any previous errors
+      clearError();
+      
+      // Get form values
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      
+      // Basic validation
+      if (!username || !password) {
+        showError('Please enter both username and password');
+        return;
+      }
+      
+      // Set loading state
+      setLoading(true);
+      
+      try {
+        // Send login request
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: username,
+            password: password
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          // Login successful - redirect to main interface
+          window.location.href = '/';
+        } else {
+          // Login failed - show error message
+          const errorMsg = data.error || 'Login failed. Please try again.';
+          showError(errorMsg);
+          setLoading(false);
+          
+          // Clear password field on failed attempt
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        showError('Connection error. Please check your network and try again.');
+        setLoading(false);
+      }
+    }
+
+    // Handle Enter key in form fields
+    usernameInput.addEventListener('keypress', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        passwordInput.focus();
+      }
+    });
+
+    passwordInput.addEventListener('keypress', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        loginForm.dispatchEvent(new Event('submit'));
+      }
+    });
+  </script>
+</body>
+</html>

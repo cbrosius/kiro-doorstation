@@ -115,6 +115,8 @@ extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 extern const uint8_t documentation_html_start[] asm("_binary_documentation_html_start");
 extern const uint8_t documentation_html_end[] asm("_binary_documentation_html_end");
+extern const uint8_t login_html_start[] asm("_binary_login_html_start");
+extern const uint8_t login_html_end[] asm("_binary_login_html_end");
 
 /**
  * @brief Check if a URI is a public endpoint that doesn't require authentication
@@ -197,18 +199,38 @@ static esp_err_t auth_filter(httpd_req_t *req) {
     // Check if session ID was found
     if (session_id[0] == '\0') {
         ESP_LOGW(TAG, "No session cookie found for %s", req->uri);
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_send(req, "{\"error\":\"Authentication required\"}", -1);
+        
+        // Check if this is an API request or HTML page request
+        if (strncmp(req->uri, "/api/", 5) == 0) {
+            // API request - return JSON error
+            httpd_resp_set_status(req, "401 Unauthorized");
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_send(req, "{\"error\":\"Authentication required\"}", -1);
+        } else {
+            // HTML page request - redirect to login page
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "/login.html");
+            httpd_resp_send(req, NULL, 0);
+        }
         return ESP_FAIL;
     }
     
     // Validate session
     if (!auth_validate_session(session_id)) {
         ESP_LOGW(TAG, "Invalid or expired session for %s", req->uri);
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_send(req, "{\"error\":\"Session expired\"}", -1);
+        
+        // Check if this is an API request or HTML page request
+        if (strncmp(req->uri, "/api/", 5) == 0) {
+            // API request - return JSON error
+            httpd_resp_set_status(req, "401 Unauthorized");
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_send(req, "{\"error\":\"Session expired\"}", -1);
+        } else {
+            // HTML page request - redirect to login page
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "/login.html");
+            httpd_resp_send(req, NULL, 0);
+        }
         return ESP_FAIL;
     }
     
@@ -2369,6 +2391,15 @@ static esp_err_t documentation_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t login_handler(httpd_req_t *req)
+{
+    // Login page is public - no authentication required
+    httpd_resp_set_type(req, "text/html");
+    const size_t login_html_size = (uintptr_t)login_html_end - (uintptr_t)login_html_start;
+    httpd_resp_send(req, (const char *)login_html_start, login_html_size);
+    return ESP_OK;
+}
+
 static const httpd_uri_t sip_status_uri = {
     .uri       = "/api/sip/status",
     .method    = HTTP_GET,
@@ -2497,6 +2528,10 @@ static const httpd_uri_t root_uri = {
 
 static const httpd_uri_t documentation_uri = {
     .uri = "/documentation.html", .method = HTTP_GET, .handler = documentation_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t login_uri = {
+    .uri = "/login.html", .method = HTTP_GET, .handler = login_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t wifi_config_get_uri = {
@@ -2752,6 +2787,7 @@ void web_server_start(void)
         // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &documentation_uri);
+        httpd_register_uri_handler(server, &login_uri);
         
         // Authentication API endpoints
         httpd_register_uri_handler(server, &auth_login_uri);
