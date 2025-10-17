@@ -20,10 +20,6 @@ extern const uint8_t login_html_start[] asm("_binary_login_html_start");
 extern const uint8_t login_html_end[] asm("_binary_login_html_end");
 extern const uint8_t setup_html_start[] asm("_binary_setup_html_start");
 extern const uint8_t setup_html_end[] asm("_binary_setup_html_end");
-extern const uint8_t ota_upload_functions_js_start[] asm("_binary_ota_upload_functions_js_start");
-extern const uint8_t ota_upload_functions_js_end[] asm("_binary_ota_upload_functions_js_end");
-extern const uint8_t ota_safety_warnings_js_start[] asm("_binary_ota_safety_warnings_js_start");
-extern const uint8_t ota_safety_warnings_js_end[] asm("_binary_ota_safety_warnings_js_end");
 
 /**
  * @brief Check if a URI is a public endpoint that doesn't require authentication
@@ -229,35 +225,6 @@ static esp_err_t setup_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-static esp_err_t ota_upload_functions_js_handler(httpd_req_t *req)
-{
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
-    httpd_resp_set_type(req, "application/javascript");
-    // Add cache control to prevent browser caching during development
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-    const size_t js_size = (uintptr_t)ota_upload_functions_js_end - (uintptr_t)ota_upload_functions_js_start;
-    httpd_resp_send(req, (const char *)ota_upload_functions_js_start, js_size);
-    return ESP_OK;
-}
-
-static esp_err_t ota_safety_warnings_js_handler(httpd_req_t *req)
-{
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
-    httpd_resp_set_type(req, "application/javascript");
-    // Add cache control to prevent browser caching during development
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-    const size_t js_size = (uintptr_t)ota_safety_warnings_js_end - (uintptr_t)ota_safety_warnings_js_start;
-    httpd_resp_send(req, (const char *)ota_safety_warnings_js_start, js_size);
-    return ESP_OK;
-}
 
 // URI handlers for HTML pages
 static const httpd_uri_t root_uri = {
@@ -276,13 +243,6 @@ static const httpd_uri_t setup_uri = {
     .uri = "/setup.html", .method = HTTP_GET, .handler = setup_handler, .user_ctx = NULL
 };
 
-static const httpd_uri_t ota_upload_functions_js_uri = {
-    .uri = "/ota_upload_functions.js", .method = HTTP_GET, .handler = ota_upload_functions_js_handler, .user_ctx = NULL
-};
-
-static const httpd_uri_t ota_safety_warnings_js_uri = {
-    .uri = "/ota_safety_warnings.js", .method = HTTP_GET, .handler = ota_safety_warnings_js_handler, .user_ctx = NULL
-};
 
 // HTTP to HTTPS redirect handler (used as error handler for 404)
 static esp_err_t http_redirect_handler(httpd_req_t *req, httpd_err_code_t err __attribute__((unused)))
@@ -441,9 +401,6 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &login_uri);
         httpd_register_uri_handler(server, &setup_uri);
         
-        // Register JavaScript file handlers
-        httpd_register_uri_handler(server, &ota_upload_functions_js_uri);
-        httpd_register_uri_handler(server, &ota_safety_warnings_js_uri);
         
         // Register all API handlers via the API module
         web_api_register_handlers(server);
