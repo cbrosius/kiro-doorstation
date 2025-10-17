@@ -8518,10 +8518,201 @@
     
     // ===== Initialization =====
     
+    // ===== Task 19: Session Management =====
+    
+    /**
+     * Session management state
+     */
+    const sessionManager = {
+      checkInterval: null,
+      warningTimeout: null,
+      sessionExpiresAt: null,
+      warningShown: false,
+      activityListeners: []
+    };
+    
+    /**
+     * Check if user has a valid session
+     * @returns {Promise<boolean>} True if session is valid
+     */
+    async function checkSession() {
+      try {
+        // Make a simple API call to check session validity
+        const response = await fetch('/api/system/info', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.status === 401) {
+          // Session invalid or expired - redirect to login
+          console.log('Session expired or invalid, redirecting to login');
+          window.location.href = '/login.html';
+          return false;
+        }
+        
+        if (response.ok) {
+          // Session is valid
+          return true;
+        }
+        
+        // Other error - log but don't redirect
+        console.warn('Session check returned unexpected status:', response.status);
+        return true; // Assume valid to avoid false redirects
+      } catch (error) {
+        console.error('Session check failed:', error);
+        // Network error - don't redirect, might be temporary
+        return true;
+      }
+    }
+    
+    /**
+     * Show session timeout warning
+     * @param {number} minutesRemaining - Minutes until session expires
+     */
+    function showSessionWarning(minutesRemaining) {
+      if (sessionManager.warningShown) {
+        return; // Already showing warning
+      }
+      
+      sessionManager.warningShown = true;
+      
+      const message = `Your session will expire in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}. Please save your work.`;
+      
+      showToast(message, 'warning', 0); // 0 = don't auto-dismiss
+      
+      console.log('Session timeout warning shown:', message);
+    }
+    
+    /**
+     * Extend session by making an API call
+     */
+    async function extendSession() {
+      try {
+        // Make any authenticated API call to extend session
+        const response = await fetch('/api/system/info', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          // Reset warning state
+          sessionManager.warningShown = false;
+          
+          // Update session expiration time (30 minutes from now)
+          sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
+          
+          console.log('Session extended');
+        }
+      } catch (error) {
+        console.error('Failed to extend session:', error);
+      }
+    }
+    
+    /**
+     * Setup automatic session extension on user activity
+     */
+    function setupActivityTracking() {
+      // Throttle activity tracking to avoid excessive API calls
+      let lastActivityTime = 0;
+      const ACTIVITY_THROTTLE = 60000; // 1 minute
+      
+      const handleActivity = () => {
+        const now = Date.now();
+        if (now - lastActivityTime > ACTIVITY_THROTTLE) {
+          lastActivityTime = now;
+          extendSession();
+        }
+      };
+      
+      // Track various user activities
+      const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+      
+      events.forEach(event => {
+        document.addEventListener(event, handleActivity, { passive: true });
+        sessionManager.activityListeners.push({ event, handler: handleActivity });
+      });
+      
+      console.log('Activity tracking initialized');
+    }
+    
+    /**
+     * Start session monitoring
+     */
+    function startSessionMonitoring() {
+      // Check session every 2 minutes
+      sessionManager.checkInterval = setInterval(async () => {
+        const isValid = await checkSession();
+        
+        if (isValid && sessionManager.sessionExpiresAt) {
+          const timeRemaining = sessionManager.sessionExpiresAt - Date.now();
+          const minutesRemaining = Math.floor(timeRemaining / 60000);
+          
+          // Show warning 5 minutes before expiration
+          if (minutesRemaining <= 5 && minutesRemaining > 0 && !sessionManager.warningShown) {
+            showSessionWarning(minutesRemaining);
+          }
+        }
+      }, 120000); // Check every 2 minutes
+      
+      // Set initial session expiration time (30 minutes from now)
+      sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
+      
+      console.log('Session monitoring started');
+    }
+    
+    /**
+     * Stop session monitoring (cleanup)
+     */
+    function stopSessionMonitoring() {
+      if (sessionManager.checkInterval) {
+        clearInterval(sessionManager.checkInterval);
+        sessionManager.checkInterval = null;
+      }
+      
+      if (sessionManager.warningTimeout) {
+        clearTimeout(sessionManager.warningTimeout);
+        sessionManager.warningTimeout = null;
+      }
+      
+      // Remove activity listeners
+      sessionManager.activityListeners.forEach(({ event, handler }) => {
+        document.removeEventListener(event, handler);
+      });
+      sessionManager.activityListeners = [];
+      
+      console.log('Session monitoring stopped');
+    }
+    
+    /**
+     * Initialize session management on page load
+     */
+    async function initSessionManagement() {
+      console.log('Initializing session management');
+      
+      // Check if session is valid on page load
+      const isValid = await checkSession();
+      
+      if (!isValid) {
+        // Will redirect to login, no need to continue
+        return;
+      }
+      
+      // Setup activity tracking for automatic session extension
+      setupActivityTracking();
+      
+      // Start monitoring session expiration
+      startSessionMonitoring();
+      
+      console.log('Session management initialized');
+    }
+    
     /**
      * Initialize the application
      */
     function initApp() {
+      // Initialize session management first
+      initSessionManagement();
+      
       // Initialize theme
       initTheme();
       

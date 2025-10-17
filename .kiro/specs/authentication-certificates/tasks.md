@@ -237,7 +237,12 @@
   - Add download button for current certificate
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 19. Implement session check on page load
+- [x] 19. Implement session check on page load
+
+
+
+
+
   - Add JavaScript to check session validity on page load
   - Redirect to login page if session is invalid or missing
   - Add session timeout warning (5 minutes before expiration)
