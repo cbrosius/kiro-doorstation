@@ -203,7 +203,6 @@
     }
 
     .global-search {
-      width: 250px;
       height: 36px;
       padding: 0 var(--spacing-md);
       background-color: var(--color-bg);
@@ -288,6 +287,24 @@
       overflow-x: hidden;
       transition: transform var(--transition-slow);
       z-index: 900;
+    }
+
+    .sidebar-search {
+      padding: var(--spacing-md);
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .sidebar-search .global-search {
+      width: 100%;
+      position: relative;
+    }
+
+    .sidebar-search .search-results {
+      margin-top: var(--spacing-xs);
     }
 
     .nav-menu {
@@ -546,10 +563,8 @@
     /* ===== Search Results Styles ===== */
 
     .search-results {
-      position: absolute;
-      top: calc(var(--header-height) - var(--spacing-sm));
-      right: var(--spacing-md);
-      width: 350px;
+      position: static;
+      width: 100%;
       max-height: 400px;
       background-color: var(--color-surface);
       border: 1px solid var(--color-border);
@@ -1182,17 +1197,12 @@
         max-width: none;
       }
 
-      .search-results {
-        left: var(--spacing-sm);
-        right: var(--spacing-sm);
-        width: auto;
-        top: var(--header-height);
+      .sidebar-search .search-results {
+        width: 100%;
       }
 
-      .global-search {
-        display: block;
+      .sidebar-search .global-search {
         width: 100%;
-        max-width: 200px;
       }
 
       /* Touch-friendly button sizes (minimum 44x44px) */
@@ -1240,8 +1250,8 @@
         font-size: var(--font-size-sm);
       }
 
-      .global-search {
-        width: 180px;
+      .sidebar-search .global-search {
+        width: 100%;
       }
 
       .status-grid {
@@ -1376,8 +1386,6 @@
     </button>
     <h1 class="app-title">ESP32 SIP Door Station</h1>
     <div class="header-actions">
-      <input type="search" class="global-search" id="global-search" placeholder="Search settings... (Ctrl+K)"
-        autocomplete="off" aria-label="Search settings">
       <button class="theme-toggle" aria-label="Toggle theme" id="theme-toggle">
         🌙
       </button>
@@ -1391,6 +1399,12 @@
 
   <!-- Sidebar Navigation -->
   <nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="sidebar-search">
+      <input type="search" class="global-search" id="global-search" placeholder="Search settings... (Ctrl+K)"
+        autocomplete="off" aria-label="Search settings">
+      <!-- Search Results Dropdown -->
+      <div class="search-results" id="search-results" hidden role="listbox"></div>
+    </div>
     <ul class="nav-menu">
       <li class="nav-item active" data-section="dashboard">
         <span class="nav-icon">🏠</span>
@@ -3625,9 +3639,6 @@
 
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- Search Results Dropdown -->
-  <div class="search-results" id="search-results" hidden role="listbox"></div>
 
   <script>
     // ===== Task 3: Core JavaScript Functionality =====
