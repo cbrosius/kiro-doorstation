@@ -539,6 +539,7 @@
       cursor: pointer;
       border-bottom: 1px solid var(--color-border-light);
       transition: background-color var(--transition-fast);
+      min-height: 44px;
     }
     
     .search-result:last-child {
@@ -718,7 +719,7 @@
       cursor: pointer;
       transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
       user-select: none;
-      min-height: 40px;
+      min-height: 44px;
     }
     
     .btn:hover:not(:disabled) {
@@ -1108,6 +1109,7 @@
       
       .status-card {
         padding: var(--spacing-sm);
+        min-height: 60px;
       }
       
       .status-icon {
@@ -1148,6 +1150,22 @@
       }
       
       .status-toggle {
+        min-height: 44px;
+      }
+      
+      /* Touch-friendly form inputs */
+      .form-group input[type="text"],
+      .form-group input[type="email"],
+      .form-group input[type="password"],
+      .form-group input[type="url"],
+      .form-group input[type="tel"],
+      .form-group input[type="number"],
+      .form-group select {
+        min-height: 44px;
+      }
+      
+      /* Ensure buttons in forms are touch-friendly */
+      .btn-sm {
         min-height: 44px;
       }
     }
@@ -2658,13 +2676,14 @@
         
         <div class="form-group">
           <label for="smtp-username">SMTP Username <span class="required">*</span></label>
-          <input type="text" 
+          <input type="email" 
                  id="smtp-username" 
                  name="smtp_username" 
                  required
                  placeholder="user@example.com"
                  data-error="Please enter your SMTP username">
           <span class="error-message" hidden></span>
+          <span class="form-help">Usually your email address</span>
         </div>
         
         <div class="form-group">
@@ -3155,6 +3174,86 @@
       if (menuToggle) {
         menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       }
+    }
+    
+    /**
+     * Open mobile sidebar
+     */
+    function openMobileSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const menuToggle = document.querySelector('.menu-toggle');
+      sidebar.classList.add('open');
+      if (menuToggle) {
+        menuToggle.setAttribute('aria-expanded', 'true');
+      }
+    }
+    
+    // ===== Task 16.2: Touch Gesture Support =====
+    
+    /**
+     * Initialize touch gesture support for mobile sidebar
+     */
+    function initTouchGestures() {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchEndX = 0;
+      let touchEndY = 0;
+      let isSwiping = false;
+      
+      const minSwipeDistance = 50; // Minimum distance for a swipe
+      const maxVerticalDistance = 100; // Maximum vertical movement to still count as horizontal swipe
+      const edgeThreshold = 30; // Distance from edge to trigger swipe-to-open
+      
+      // Handle touch start
+      document.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+        isSwiping = false;
+      }, { passive: true });
+      
+      // Handle touch move
+      document.addEventListener('touchmove', (e) => {
+        if (!isSwiping) {
+          const currentX = e.changedTouches[0].screenX;
+          const currentY = e.changedTouches[0].screenY;
+          const deltaX = Math.abs(currentX - touchStartX);
+          const deltaY = Math.abs(currentY - touchStartY);
+          
+          // Check if this is a horizontal swipe
+          if (deltaX > deltaY && deltaX > 10) {
+            isSwiping = true;
+          }
+        }
+      }, { passive: true });
+      
+      // Handle touch end
+      document.addEventListener('touchend', (e) => {
+        if (!isSwiping) return;
+        
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = Math.abs(touchEndY - touchStartY);
+        
+        // Only process if vertical movement is minimal (horizontal swipe)
+        if (deltaY > maxVerticalDistance) return;
+        
+        const sidebar = document.getElementById('sidebar');
+        const isSidebarOpen = sidebar.classList.contains('open');
+        
+        // Swipe right to open (from left edge)
+        if (deltaX > minSwipeDistance && touchStartX < edgeThreshold && !isSidebarOpen) {
+          openMobileSidebar();
+        }
+        
+        // Swipe left to close (when sidebar is open)
+        if (deltaX < -minSwipeDistance && isSidebarOpen) {
+          closeMobileSidebar();
+        }
+        
+        isSwiping = false;
+      }, { passive: true });
     }
     
     // ===== Task 3.2: Theme Toggle Functionality =====
@@ -7831,6 +7930,9 @@
       if (menuToggle) {
         menuToggle.addEventListener('click', toggleMobileSidebar);
       }
+      
+      // Initialize touch gestures for mobile (Task 16.2)
+      initTouchGestures();
       
       // Close sidebar when clicking outside on mobile
       document.addEventListener('click', (e) => {
