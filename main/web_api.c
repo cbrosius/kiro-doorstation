@@ -111,6 +111,51 @@ static email_config_t email_load_config(void)
     return config;
 }
 
+// Forward declarations for URI structures (defined at end of file)
+static const httpd_uri_t sip_status_uri;
+static const httpd_uri_t sip_config_get_uri;
+static const httpd_uri_t sip_config_post_uri;
+static const httpd_uri_t sip_test_uri;
+static const httpd_uri_t sip_test_call_uri;
+static const httpd_uri_t sip_log_uri;
+static const httpd_uri_t sip_connect_uri;
+static const httpd_uri_t sip_disconnect_uri;
+static const httpd_uri_t wifi_config_get_uri;
+static const httpd_uri_t wifi_config_post_uri;
+static const httpd_uri_t wifi_status_uri;
+static const httpd_uri_t wifi_scan_uri;
+static const httpd_uri_t wifi_connect_uri;
+static const httpd_uri_t network_ip_uri;
+static const httpd_uri_t email_config_get_uri;
+static const httpd_uri_t email_config_post_uri;
+static const httpd_uri_t ota_version_uri;
+static const httpd_uri_t system_status_uri;
+static const httpd_uri_t system_restart_uri;
+static const httpd_uri_t system_info_uri;
+static const httpd_uri_t ntp_status_uri;
+static const httpd_uri_t ntp_config_get_uri;
+static const httpd_uri_t ntp_config_post_uri;
+static const httpd_uri_t ntp_sync_uri;
+static const httpd_uri_t dtmf_security_get_uri;
+static const httpd_uri_t dtmf_security_post_uri;
+static const httpd_uri_t dtmf_logs_uri;
+static const httpd_uri_t hardware_test_doorbell_uri;
+static const httpd_uri_t hardware_test_door_uri;
+static const httpd_uri_t hardware_test_light_uri;
+static const httpd_uri_t hardware_state_uri;
+static const httpd_uri_t hardware_status_uri;
+static const httpd_uri_t hardware_test_stop_uri;
+static const httpd_uri_t cert_info_uri;
+static const httpd_uri_t cert_upload_uri;
+static const httpd_uri_t cert_generate_uri;
+static const httpd_uri_t cert_download_uri;
+static const httpd_uri_t cert_delete_uri;
+static const httpd_uri_t auth_login_uri;
+static const httpd_uri_t auth_logout_uri;
+static const httpd_uri_t auth_set_password_uri;
+static const httpd_uri_t auth_change_password_uri;
+static const httpd_uri_t auth_logs_uri;
+
 // Register all API endpoint handlers with the server
 void web_api_register_handlers(httpd_handle_t server) {
     ESP_LOGI(TAG, "Registering API handlers");
