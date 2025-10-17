@@ -3,19 +3,111 @@
 #include "wifi_manager.h"
 #include "ntp_sync.h"
 #include "dtmf_decoder.h"
+#include "hardware_test.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
+#include "esp_netif.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
+// Email configuration structure
+typedef struct {
+    char smtp_server[64];
+    uint16_t smtp_port;
+    char smtp_username[64];
+    char smtp_password[64];
+    char recipient_email[64];
+    bool enabled;
+    bool configured;
+} email_config_t;
+
+// Email configuration NVS functions
+static void email_save_config(const email_config_t *config)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("email_config", NVS_READWRITE, &nvs_handle);
+    
+    if (err == ESP_OK) {
+        nvs_set_str(nvs_handle, "smtp_server", config->smtp_server);
+        nvs_set_u16(nvs_handle, "smtp_port", config->smtp_port);
+        nvs_set_str(nvs_handle, "smtp_user", config->smtp_username);
+        nvs_set_str(nvs_handle, "smtp_pass", config->smtp_password);
+        nvs_set_str(nvs_handle, "recipient", config->recipient_email);
+        nvs_set_u8(nvs_handle, "enabled", config->enabled ? 1 : 0);
+        
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+        
+        ESP_LOGI(TAG, "Email configuration saved to NVS");
+    } else {
+        ESP_LOGE(TAG, "Failed to open NVS for email config: %s", esp_err_to_name(err));
+    }
+}
+
+static email_config_t email_load_config(void)
+{
+    email_config_t config = {0};
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("email_config", NVS_READONLY, &nvs_handle);
+    
+    if (err == ESP_OK) {
+        size_t len;
+        
+        len = sizeof(config.smtp_server);
+        if (nvs_get_str(nvs_handle, "smtp_server", config.smtp_server, &len) != ESP_OK) {
+            config.smtp_server[0] = '\0';
+        }
+        
+        if (nvs_get_u16(nvs_handle, "smtp_port", &config.smtp_port) != ESP_OK) {
+            config.smtp_port = 587; // Default SMTP port
+        }
+        
+        len = sizeof(config.smtp_username);
+        if (nvs_get_str(nvs_handle, "smtp_user", config.smtp_username, &len) != ESP_OK) {
+            config.smtp_username[0] = '\0';
+        }
+        
+        len = sizeof(config.smtp_password);
+        if (nvs_get_str(nvs_handle, "smtp_pass", config.smtp_password, &len) != ESP_OK) {
+            config.smtp_password[0] = '\0';
+        }
+        
+        len = sizeof(config.recipient_email);
+        if (nvs_get_str(nvs_handle, "recipient", config.recipient_email, &len) != ESP_OK) {
+            config.recipient_email[0] = '\0';
+        }
+        
+        uint8_t enabled;
+        if (nvs_get_u8(nvs_handle, "enabled", &enabled) == ESP_OK) {
+            config.enabled = (enabled != 0);
+        } else {
+            config.enabled = false;
+        }
+        
+        config.configured = (config.smtp_server[0] != '\0');
+        
+        nvs_close(nvs_handle);
+    } else {
+        config.configured = false;
+        config.enabled = false;
+        config.smtp_port = 587;
+    }
+    
+    return config;
+}
+
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
+extern const uint8_t documentation_html_start[] asm("_binary_documentation_html_start");
+extern const uint8_t documentation_html_end[] asm("_binary_documentation_html_end");
 
 static esp_err_t get_sip_status_handler(httpd_req_t *req)
 {
@@ -276,6 +368,74 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 }
 
 // WiFi API Handlers
+static esp_err_t get_wifi_config_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Load WiFi configuration
+    wifi_manager_config_t config = wifi_load_config();
+    
+    cJSON_AddStringToObject(root, "ssid", config.configured ? config.ssid : "");
+    cJSON_AddBoolToObject(root, "configured", config.configured);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_wifi_config_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+    const cJSON *password = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(ssid) || (ssid->valuestring == NULL)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing SSID");
+        return ESP_FAIL;
+    }
+
+    const char* pwd = (cJSON_IsString(password) && password->valuestring) ? password->valuestring : "";
+
+    ESP_LOGI(TAG, "WiFi config save request: SSID=%s", ssid->valuestring);
+    
+    // Save WiFi configuration (does not connect)
+    wifi_save_config(ssid->valuestring, pwd);
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi configuration saved\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"WiFi configuration saved\"}"));
+    return ESP_OK;
+}
+
 static esp_err_t get_wifi_status_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
@@ -388,6 +548,227 @@ static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// Network API Handlers
+static esp_err_t get_network_ip_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    bool is_connected = wifi_is_connected();
+    cJSON_AddBoolToObject(root, "connected", is_connected);
+
+    if (is_connected) {
+        // Get network interface
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        
+        if (netif != NULL) {
+            // Get IP information
+            esp_netif_ip_info_t ip_info;
+            if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                char ip_str[16], netmask_str[16], gateway_str[16];
+                
+                snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+                snprintf(netmask_str, sizeof(netmask_str), IPSTR, IP2STR(&ip_info.netmask));
+                snprintf(gateway_str, sizeof(gateway_str), IPSTR, IP2STR(&ip_info.gw));
+                
+                cJSON_AddStringToObject(root, "ip_address", ip_str);
+                cJSON_AddStringToObject(root, "netmask", netmask_str);
+                cJSON_AddStringToObject(root, "gateway", gateway_str);
+            }
+            
+            // Get DNS information
+            esp_netif_dns_info_t dns_info;
+            if (esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
+                char dns_str[16];
+                snprintf(dns_str, sizeof(dns_str), IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+                cJSON_AddStringToObject(root, "dns", dns_str);
+            } else {
+                cJSON_AddStringToObject(root, "dns", "");
+            }
+        } else {
+            cJSON_AddStringToObject(root, "ip_address", "");
+            cJSON_AddStringToObject(root, "netmask", "");
+            cJSON_AddStringToObject(root, "gateway", "");
+            cJSON_AddStringToObject(root, "dns", "");
+        }
+    } else {
+        cJSON_AddStringToObject(root, "ip_address", "");
+        cJSON_AddStringToObject(root, "netmask", "");
+        cJSON_AddStringToObject(root, "gateway", "");
+        cJSON_AddStringToObject(root, "dns", "");
+    }
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+// Email API Handlers
+static esp_err_t get_email_config_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    email_config_t config = email_load_config();
+    
+    cJSON_AddStringToObject(root, "smtp_server", config.smtp_server);
+    cJSON_AddNumberToObject(root, "smtp_port", config.smtp_port);
+    cJSON_AddStringToObject(root, "smtp_username", config.smtp_username);
+    // Do not include password in response
+    cJSON_AddStringToObject(root, "recipient_email", config.recipient_email);
+    cJSON_AddBoolToObject(root, "enabled", config.enabled);
+    cJSON_AddBoolToObject(root, "configured", config.configured);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_email_config_handler(httpd_req_t *req)
+{
+    char buf[1024];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    email_config_t config = email_load_config(); // Start with existing config
+
+    const cJSON *smtp_server = cJSON_GetObjectItem(root, "smtp_server");
+    const cJSON *smtp_port = cJSON_GetObjectItem(root, "smtp_port");
+    const cJSON *smtp_username = cJSON_GetObjectItem(root, "smtp_username");
+    const cJSON *smtp_password = cJSON_GetObjectItem(root, "smtp_password");
+    const cJSON *recipient_email = cJSON_GetObjectItem(root, "recipient_email");
+    const cJSON *enabled = cJSON_GetObjectItem(root, "enabled");
+
+    // Validate and update SMTP server
+    if (cJSON_IsString(smtp_server) && smtp_server->valuestring != NULL) {
+        if (strlen(smtp_server->valuestring) >= sizeof(config.smtp_server)) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "SMTP server too long");
+            return ESP_FAIL;
+        }
+        strncpy(config.smtp_server, smtp_server->valuestring, sizeof(config.smtp_server) - 1);
+        config.smtp_server[sizeof(config.smtp_server) - 1] = '\0';
+    }
+
+    // Validate and update SMTP port
+    if (cJSON_IsNumber(smtp_port)) {
+        int port = smtp_port->valueint;
+        if (port < 1 || port > 65535) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SMTP port (must be 1-65535)");
+            return ESP_FAIL;
+        }
+        config.smtp_port = (uint16_t)port;
+    }
+
+    // Update SMTP username
+    if (cJSON_IsString(smtp_username) && smtp_username->valuestring != NULL) {
+        if (strlen(smtp_username->valuestring) >= sizeof(config.smtp_username)) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "SMTP username too long");
+            return ESP_FAIL;
+        }
+        strncpy(config.smtp_username, smtp_username->valuestring, sizeof(config.smtp_username) - 1);
+        config.smtp_username[sizeof(config.smtp_username) - 1] = '\0';
+    }
+
+    // Update SMTP password
+    if (cJSON_IsString(smtp_password) && smtp_password->valuestring != NULL) {
+        if (strlen(smtp_password->valuestring) >= sizeof(config.smtp_password)) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "SMTP password too long");
+            return ESP_FAIL;
+        }
+        strncpy(config.smtp_password, smtp_password->valuestring, sizeof(config.smtp_password) - 1);
+        config.smtp_password[sizeof(config.smtp_password) - 1] = '\0';
+    }
+
+    // Validate and update recipient email
+    if (cJSON_IsString(recipient_email) && recipient_email->valuestring != NULL) {
+        if (strlen(recipient_email->valuestring) >= sizeof(config.recipient_email)) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Recipient email too long");
+            return ESP_FAIL;
+        }
+        // Basic email validation - must contain @
+        if (strchr(recipient_email->valuestring, '@') == NULL) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid email format");
+            return ESP_FAIL;
+        }
+        strncpy(config.recipient_email, recipient_email->valuestring, sizeof(config.recipient_email) - 1);
+        config.recipient_email[sizeof(config.recipient_email) - 1] = '\0';
+    }
+
+    // Update enabled flag
+    if (cJSON_IsBool(enabled)) {
+        config.enabled = cJSON_IsTrue(enabled);
+    }
+
+    config.configured = true;
+
+    cJSON_Delete(root);
+
+    // Save configuration
+    email_save_config(&config);
+
+    ESP_LOGI(TAG, "Email config updated: server=%s, port=%d, enabled=%d",
+             config.smtp_server, config.smtp_port, config.enabled);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"Email configuration saved\"}", 
+                    strlen("{\"status\":\"success\",\"message\":\"Email configuration saved\"}"));
+    return ESP_OK;
+}
+
+// OTA API Handlers
+static esp_err_t get_ota_version_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Firmware version (hardcoded for now)
+    cJSON_AddStringToObject(root, "version", "v1.0.0");
+    cJSON_AddStringToObject(root, "project_name", "sip_doorbell");
+    cJSON_AddStringToObject(root, "build_date", __DATE__);
+    cJSON_AddStringToObject(root, "build_time", __TIME__);
+    cJSON_AddStringToObject(root, "idf_version", IDF_VER);
+
+    // OTA partition info (placeholder values)
+    cJSON_AddNumberToObject(root, "ota_partition_size", 1572864);
+    cJSON_AddNumberToObject(root, "ota_available_space", 1048576);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 // System API Handlers
 static esp_err_t get_system_status_handler(httpd_req_t *req)
 {
@@ -441,6 +822,47 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
     
+    return ESP_OK;
+}
+
+static esp_err_t get_system_info_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Chip model (hardcoded for ESP32-S3)
+    cJSON_AddStringToObject(root, "chip_model", "ESP32-S3");
+    cJSON_AddNumberToObject(root, "chip_revision", 0);
+    cJSON_AddNumberToObject(root, "cpu_cores", 2);
+    cJSON_AddNumberToObject(root, "cpu_freq_mhz", 240);
+    cJSON_AddNumberToObject(root, "flash_size_mb", 8);
+    
+    // MAC address
+    uint8_t mac[6] = {0};
+    esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
+    char mac_str[18];
+    if (ret == ESP_OK) {
+        snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+        strcpy(mac_str, "00:00:00:00:00:00");
+    }
+    cJSON_AddStringToObject(root, "mac_address", mac_str);
+    
+    // System info
+    uint32_t free_heap = esp_get_free_heap_size();
+    cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
+    
+    uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    cJSON_AddNumberToObject(root, "uptime_seconds", uptime_ms / 1000);
+    
+    // Firmware version
+    cJSON_AddStringToObject(root, "firmware_version", "v1.0.0");
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
     return ESP_OK;
 }
 
@@ -748,11 +1170,214 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// Hardware Test API Handlers
+static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *bell = cJSON_GetObjectItem(root, "bell");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsNumber(bell)) {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Invalid or missing bell number");
+    } else {
+        int bell_num = bell->valueint;
+        doorbell_t doorbell = (bell_num == 1) ? DOORBELL_1 : DOORBELL_2;
+        
+        esp_err_t result = hardware_test_doorbell(doorbell);
+        
+        if (result == ESP_OK) {
+            cJSON_AddBoolToObject(response, "success", true);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Doorbell %d test triggered", bell_num);
+            cJSON_AddStringToObject(response, "message", msg);
+            ESP_LOGI(TAG, "Doorbell %d test executed", bell_num);
+        } else {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Invalid bell number (must be 1 or 2)");
+        }
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
+{
+    char buf[256];
+    int ret;
+    int remaining = req->content_len;
+
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    const cJSON *duration = cJSON_GetObjectItem(root, "duration");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    if (!cJSON_IsNumber(duration)) {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Invalid or missing duration");
+    } else {
+        uint32_t duration_ms = (uint32_t)duration->valueint;
+        
+        esp_err_t result = hardware_test_door_opener(duration_ms);
+        
+        if (result == ESP_OK) {
+            cJSON_AddBoolToObject(response, "success", true);
+            cJSON_AddNumberToObject(response, "duration", duration_ms);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Door opener activated for %lu ms", duration_ms);
+            cJSON_AddStringToObject(response, "message", msg);
+            ESP_LOGI(TAG, "Door opener test: %lu ms", duration_ms);
+        } else if (result == ESP_ERR_INVALID_ARG) {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Duration must be between 1000 and 10000 ms");
+        } else if (result == ESP_ERR_INVALID_STATE) {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Door opener test already in progress");
+        } else {
+            cJSON_AddBoolToObject(response, "success", false);
+            cJSON_AddStringToObject(response, "message", "Door opener test failed");
+        }
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    bool new_state = false;
+    esp_err_t result = hardware_test_light_toggle(&new_state);
+    
+    if (result == ESP_OK) {
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "state", new_state ? "on" : "off");
+        ESP_LOGI(TAG, "Light relay toggled: %s", new_state ? "on" : "off");
+    } else {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Light toggle failed");
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+static esp_err_t get_hardware_state_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    hardware_state_t state;
+    hardware_test_get_state(&state);
+    
+    cJSON_AddBoolToObject(response, "door_relay_active", state.door_relay_active);
+    cJSON_AddBoolToObject(response, "light_relay_active", state.light_relay_active);
+    cJSON_AddBoolToObject(response, "bell1_pressed", state.bell1_pressed);
+    cJSON_AddBoolToObject(response, "bell2_pressed", state.bell2_pressed);
+    cJSON_AddNumberToObject(response, "door_relay_remaining_ms", state.door_relay_remaining_ms);
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+
+    esp_err_t result = hardware_test_stop_all();
+    
+    if (result == ESP_OK) {
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "All tests stopped");
+        ESP_LOGI(TAG, "Emergency stop executed");
+    } else {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Emergency stop failed");
+    }
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
     const size_t index_html_size = (uintptr_t)index_html_end - (uintptr_t)index_html_start;
     httpd_resp_send(req, (const char *)index_html_start, index_html_size);
+    return ESP_OK;
+}
+
+static esp_err_t documentation_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    const size_t documentation_html_size = (uintptr_t)documentation_html_end - (uintptr_t)documentation_html_start;
+    httpd_resp_send(req, (const char *)documentation_html_start, documentation_html_size);
     return ESP_OK;
 }
 
@@ -817,6 +1442,18 @@ static const httpd_uri_t root_uri = {
     .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t documentation_uri = {
+    .uri = "/documentation.html", .method = HTTP_GET, .handler = documentation_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_config_get_uri = {
+    .uri = "/api/wifi/config", .method = HTTP_GET, .handler = get_wifi_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t wifi_config_post_uri = {
+    .uri = "/api/wifi/config", .method = HTTP_POST, .handler = post_wifi_config_handler, .user_ctx = NULL
+};
+
 static const httpd_uri_t wifi_status_uri = {
     .uri = "/api/wifi/status", .method = HTTP_GET, .handler = get_wifi_status_handler, .user_ctx = NULL
 };
@@ -829,12 +1466,32 @@ static const httpd_uri_t wifi_connect_uri = {
     .uri = "/api/wifi/connect", .method = HTTP_POST, .handler = post_wifi_connect_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t network_ip_uri = {
+    .uri = "/api/network/ip", .method = HTTP_GET, .handler = get_network_ip_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t email_config_get_uri = {
+    .uri = "/api/email/config", .method = HTTP_GET, .handler = get_email_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t email_config_post_uri = {
+    .uri = "/api/email/config", .method = HTTP_POST, .handler = post_email_config_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_version_uri = {
+    .uri = "/api/ota/version", .method = HTTP_GET, .handler = get_ota_version_handler, .user_ctx = NULL
+};
+
 static const httpd_uri_t system_status_uri = {
     .uri = "/api/system/status", .method = HTTP_GET, .handler = get_system_status_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t system_restart_uri = {
     .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_info_uri = {
+    .uri = "/api/system/info", .method = HTTP_GET, .handler = get_system_info_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t ntp_status_uri = {
@@ -865,14 +1522,39 @@ static const httpd_uri_t dtmf_logs_uri = {
     .uri = "/api/dtmf/logs", .method = HTTP_GET, .handler = get_dtmf_logs_handler, .user_ctx = NULL
 };
 
+static const httpd_uri_t hardware_test_doorbell_uri = {
+    .uri = "/api/hardware/test/doorbell", .method = HTTP_POST, .handler = post_hardware_test_doorbell_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_door_uri = {
+    .uri = "/api/hardware/test/door", .method = HTTP_POST, .handler = post_hardware_test_door_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_light_uri = {
+    .uri = "/api/hardware/test/light", .method = HTTP_POST, .handler = post_hardware_test_light_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_state_uri = {
+    .uri = "/api/hardware/state", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_status_uri = {
+    .uri = "/api/hardware/status", .method = HTTP_GET, .handler = get_hardware_state_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_test_stop_uri = {
+    .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
+};
+
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 24; // Increase handler limit for DTMF endpoints
+    config.max_uri_handlers = 38; // Increased for all API endpoints including new ones
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Register all URI handlers
         httpd_register_uri_handler(server, &root_uri);
+        httpd_register_uri_handler(server, &documentation_uri);
         
         // SIP API endpoints
         httpd_register_uri_handler(server, &sip_status_uri);
@@ -885,13 +1567,26 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &sip_disconnect_uri);
         
         // WiFi API endpoints
+        httpd_register_uri_handler(server, &wifi_config_get_uri);
+        httpd_register_uri_handler(server, &wifi_config_post_uri);
         httpd_register_uri_handler(server, &wifi_status_uri);
         httpd_register_uri_handler(server, &wifi_scan_uri);
         httpd_register_uri_handler(server, &wifi_connect_uri);
         
+        // Network API endpoints
+        httpd_register_uri_handler(server, &network_ip_uri);
+        
+        // Email API endpoints
+        httpd_register_uri_handler(server, &email_config_get_uri);
+        httpd_register_uri_handler(server, &email_config_post_uri);
+        
+        // OTA API endpoints
+        httpd_register_uri_handler(server, &ota_version_uri);
+        
         // System API endpoints
         httpd_register_uri_handler(server, &system_status_uri);
         httpd_register_uri_handler(server, &system_restart_uri);
+        httpd_register_uri_handler(server, &system_info_uri);
         
         // NTP API endpoints
         httpd_register_uri_handler(server, &ntp_status_uri);
@@ -903,6 +1598,14 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &dtmf_security_get_uri);
         httpd_register_uri_handler(server, &dtmf_security_post_uri);
         httpd_register_uri_handler(server, &dtmf_logs_uri);
+        
+        // Hardware Test API endpoints
+        httpd_register_uri_handler(server, &hardware_test_doorbell_uri);
+        httpd_register_uri_handler(server, &hardware_test_door_uri);
+        httpd_register_uri_handler(server, &hardware_test_light_uri);
+        httpd_register_uri_handler(server, &hardware_state_uri);
+        httpd_register_uri_handler(server, &hardware_status_uri);
+        httpd_register_uri_handler(server, &hardware_test_stop_uri);
         
         ESP_LOGI(TAG, "Web server started with all API endpoints");
     } else {
