@@ -223,7 +223,12 @@
   - Add styling for professional appearance
   - _Requirements: 1.1, 1.2_
 
-- [ ] 18. Add certificate management section to web interface
+- [x] 18. Add certificate management section to web interface
+
+
+
+
+
   - Add "Security" menu item to sidebar navigation
   - Display current certificate information (type, CN, expiration)
   - Add file upload interface for custom certificate and private key

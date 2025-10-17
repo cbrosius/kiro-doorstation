@@ -2435,6 +2435,163 @@
           <li><strong>Security Best Practices:</strong> Use a PIN that is not easily guessable and change it regularly</li>
         </ul>
       </div>
+      
+      <!-- Certificate Management Section (Task 18) -->
+      <div class="config-form">
+        <h3>TLS Certificate Management</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Manage HTTPS certificates for secure web interface access. The device can use self-signed certificates or custom certificates from a trusted Certificate Authority.
+        </p>
+        
+        <!-- Certificate Information Display (Task 18: Display current certificate information) -->
+        <div id="cert-info-panel" style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Current Certificate</h4>
+          
+          <!-- Certificate Expiration Warning (Task 18: Display warning when certificate is expiring soon) -->
+          <div id="cert-expiry-warning" style="display: none; padding: var(--spacing-md); background-color: rgba(255, 193, 7, 0.1); border: 1px solid var(--color-warning); border-radius: var(--border-radius); margin-bottom: var(--spacing-md);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+              <span style="font-size: var(--font-size-xl);">⚠️</span>
+              <div>
+                <strong style="color: var(--color-warning);">Certificate Expiring Soon</strong>
+                <p style="margin: var(--spacing-xs) 0 0 0; font-size: var(--font-size-sm); color: var(--color-text-secondary);" id="cert-expiry-warning-text">
+                  Your certificate will expire soon. Please renew or generate a new certificate.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Certificate Type</div>
+              <div id="cert-type" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Common Name (CN)</div>
+              <div id="cert-cn" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Issuer</div>
+              <div id="cert-issuer" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Valid From</div>
+              <div id="cert-valid-from" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Expires</div>
+              <div id="cert-expires" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Days Remaining</div>
+              <div id="cert-days-remaining" style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">Loading...</div>
+            </div>
+          </div>
+          
+          <!-- Download Certificate Button (Task 18: Add download button for current certificate) -->
+          <div style="margin-top: var(--spacing-md);">
+            <button class="btn btn-sm btn-secondary" onclick="downloadCertificate()">
+              <span>💾</span>
+              <span>Download Certificate</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Generate Self-Signed Certificate (Task 18: Add button to generate new self-signed certificate) -->
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Generate Self-Signed Certificate</h4>
+          <p style="margin-bottom: var(--spacing-md); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+            Generate a new self-signed certificate for HTTPS. This is suitable for internal use but will show a security warning in browsers.
+          </p>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="cert-common-name">
+              Common Name (CN)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="cert-common-name" 
+              placeholder="doorstation.local"
+              value="doorstation.local"
+              style="width: 100%; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Hostname or domain name for the certificate</span>
+          </div>
+          
+          <button class="btn btn-primary" onclick="generateSelfSignedCertificate()" id="generate-cert-btn">
+            <span class="btn-text">
+              <span>🔐</span>
+              <span>Generate Certificate</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Upload Custom Certificate (Task 18: Add file upload interface for custom certificate and private key) -->
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); margin-bottom: var(--spacing-lg);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md);">Upload Custom Certificate</h4>
+          <p style="margin-bottom: var(--spacing-md); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+            Upload a custom certificate and private key from a trusted Certificate Authority. Both files must be in PEM format.
+          </p>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="cert-file-input">
+              Certificate File (PEM)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="file" 
+              id="cert-file-input" 
+              accept=".pem,.crt,.cer"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Select your certificate file (.pem, .crt, or .cer)</span>
+          </div>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="key-file-input">
+              Private Key File (PEM)
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="file" 
+              id="key-file-input" 
+              accept=".pem,.key"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Select your private key file (.pem or .key)</span>
+          </div>
+          
+          <div class="form-group" style="margin-bottom: var(--spacing-md);">
+            <label for="chain-file-input">
+              Certificate Chain (Optional)
+            </label>
+            <input 
+              type="file" 
+              id="chain-file-input" 
+              accept=".pem,.crt,.cer"
+              style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-surface); color: var(--color-text);">
+            <span class="form-help">Optional: Certificate chain for intermediate CAs</span>
+          </div>
+          
+          <button class="btn btn-primary" onclick="uploadCustomCertificate()" id="upload-cert-btn">
+            <span class="btn-text">
+              <span>📤</span>
+              <span>Upload Certificate</span>
+            </span>
+            <span class="btn-spinner" hidden>⏳</span>
+          </button>
+        </div>
+        
+        <!-- Certificate Information -->
+        <div style="padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <h4 style="margin-top: 0; margin-bottom: var(--spacing-md); color: var(--color-info);">ℹ️ Certificate Information</h4>
+          <ul style="margin: 0; padding-left: var(--spacing-lg); line-height: 1.8; font-size: var(--font-size-sm);">
+            <li><strong>Self-Signed Certificates:</strong> Generated automatically by the device. Browsers will show a security warning, but the connection is still encrypted.</li>
+            <li><strong>Custom Certificates:</strong> Obtained from a trusted Certificate Authority (CA) like Let's Encrypt. No browser warnings.</li>
+            <li><strong>Certificate Expiration:</strong> Certificates expire after a set period. You'll receive warnings 30 days before expiration.</li>
+            <li><strong>PEM Format:</strong> Certificates and keys must be in PEM format (Base64 encoded text starting with -----BEGIN CERTIFICATE-----).</li>
+            <li><strong>Security:</strong> Always keep your private key secure. Never share it or store it in an insecure location.</li>
+          </ul>
+        </div>
+      </div>
     </section>
 
     <!-- System Logs Section (Task 11) -->
@@ -3187,6 +3344,8 @@
       } else if (sectionId === 'security') {
         // Load Security Settings (Task 10.4)
         loadSecurityConfiguration();
+        // Load Certificate Information (Task 18)
+        loadCertificateInfo();
       } else if (sectionId === 'logs') {
         // Initialize System Logs section (Task 11)
         initLogsSection();
@@ -6089,11 +6248,284 @@
     }
     
     /**
+     * Task 18: Load certificate information and display
+     */
+    async function loadCertificateInfo() {
+      try {
+        const response = await apiRequest('/api/cert/info', { silentError: true });
+        
+        if (response) {
+          // Update certificate type
+          const certTypeElement = document.getElementById('cert-type');
+          if (certTypeElement) {
+            certTypeElement.textContent = response.is_self_signed ? 'Self-Signed' : 'CA-Signed';
+          }
+          
+          // Update common name
+          const certCNElement = document.getElementById('cert-cn');
+          if (certCNElement) {
+            certCNElement.textContent = response.common_name || 'N/A';
+          }
+          
+          // Update issuer
+          const certIssuerElement = document.getElementById('cert-issuer');
+          if (certIssuerElement) {
+            certIssuerElement.textContent = response.issuer || 'N/A';
+          }
+          
+          // Update valid from
+          const certValidFromElement = document.getElementById('cert-valid-from');
+          if (certValidFromElement) {
+            certValidFromElement.textContent = response.not_before || 'N/A';
+          }
+          
+          // Update expires
+          const certExpiresElement = document.getElementById('cert-expires');
+          if (certExpiresElement) {
+            certExpiresElement.textContent = response.not_after || 'N/A';
+          }
+          
+          // Update days remaining
+          const certDaysRemainingElement = document.getElementById('cert-days-remaining');
+          if (certDaysRemainingElement) {
+            const daysRemaining = response.days_until_expiry || 0;
+            certDaysRemainingElement.textContent = daysRemaining > 0 ? `${daysRemaining} days` : 'Expired';
+            
+            // Color code based on days remaining
+            if (daysRemaining < 0) {
+              certDaysRemainingElement.style.color = 'var(--color-danger)';
+            } else if (daysRemaining < 30) {
+              certDaysRemainingElement.style.color = 'var(--color-warning)';
+            } else {
+              certDaysRemainingElement.style.color = 'var(--color-success)';
+            }
+          }
+          
+          // Show expiration warning if needed
+          const warningElement = document.getElementById('cert-expiry-warning');
+          const warningTextElement = document.getElementById('cert-expiry-warning-text');
+          if (warningElement && warningTextElement) {
+            const daysRemaining = response.days_until_expiry || 0;
+            if (response.is_expiring_soon || daysRemaining < 30) {
+              warningElement.style.display = 'block';
+              if (daysRemaining < 0) {
+                warningTextElement.textContent = 'Your certificate has expired! Please generate a new certificate or upload a valid one.';
+                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                warningElement.style.borderColor = 'var(--color-danger)';
+              } else if (daysRemaining < 7) {
+                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Please renew it soon.`;
+                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                warningElement.style.borderColor = 'var(--color-danger)';
+              } else {
+                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Consider renewing it.`;
+              }
+            } else {
+              warningElement.style.display = 'none';
+            }
+          }
+          
+          console.log('Certificate information loaded successfully');
+        }
+      } catch (error) {
+        console.error('Error loading certificate information:', error);
+        // Set default values if cert info doesn't exist
+        const certTypeElement = document.getElementById('cert-type');
+        if (certTypeElement) certTypeElement.textContent = 'Not Available';
+      }
+    }
+    
+    /**
+     * Task 18: Generate self-signed certificate
+     */
+    async function generateSelfSignedCertificate() {
+      const button = document.getElementById('generate-cert-btn');
+      const commonNameInput = document.getElementById('cert-common-name');
+      
+      if (!commonNameInput || !commonNameInput.value.trim()) {
+        showToast('Please enter a common name for the certificate', 'error');
+        return;
+      }
+      
+      const commonName = commonNameInput.value.trim();
+      
+      // Confirm action
+      const confirmed = await showConfirmDialog(
+        'Generate Self-Signed Certificate',
+        `This will generate a new self-signed certificate for "${commonName}". The web server will restart and you may need to reconnect. Continue?`,
+        'warning'
+      );
+      
+      if (!confirmed) return;
+      
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Generating self-signed certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ common_name: commonName })
+        });
+        
+        if (response && response.success) {
+          showToast('Certificate generated successfully! Web server will restart...', 'success');
+          
+          // Reload certificate info after a delay
+          setTimeout(() => {
+            loadCertificateInfo();
+          }, 3000);
+        } else {
+          showToast(response?.message || 'Failed to generate certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error generating certificate:', error);
+        showToast('Error generating certificate: ' + error.message, 'error');
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Task 18: Upload custom certificate
+     */
+    async function uploadCustomCertificate() {
+      const button = document.getElementById('upload-cert-btn');
+      const certFileInput = document.getElementById('cert-file-input');
+      const keyFileInput = document.getElementById('key-file-input');
+      const chainFileInput = document.getElementById('chain-file-input');
+      
+      if (!certFileInput || !certFileInput.files || certFileInput.files.length === 0) {
+        showToast('Please select a certificate file', 'error');
+        return;
+      }
+      
+      if (!keyFileInput || !keyFileInput.files || keyFileInput.files.length === 0) {
+        showToast('Please select a private key file', 'error');
+        return;
+      }
+      
+      // Confirm action
+      const confirmed = await showConfirmDialog(
+        'Upload Custom Certificate',
+        'This will replace the current certificate. The web server will restart and you may need to reconnect. Continue?',
+        'warning'
+      );
+      
+      if (!confirmed) return;
+      
+      if (button) setLoadingState(button, true);
+      
+      try {
+        showToast('Uploading certificate...', 'info');
+        
+        // Read files as text
+        const certPem = await readFileAsText(certFileInput.files[0]);
+        const keyPem = await readFileAsText(keyFileInput.files[0]);
+        const chainPem = chainFileInput && chainFileInput.files && chainFileInput.files.length > 0 
+          ? await readFileAsText(chainFileInput.files[0]) 
+          : null;
+        
+        // Validate PEM format
+        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) {
+          showToast('Invalid certificate file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
+        
+        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) {
+          showToast('Invalid private key file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
+        
+        // Upload certificate
+        const response = await apiRequest('/api/cert/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cert_pem: certPem,
+            key_pem: keyPem,
+            chain_pem: chainPem
+          })
+        });
+        
+        if (response && response.success) {
+          showToast('Certificate uploaded successfully! Web server will restart...', 'success');
+          
+          // Clear file inputs
+          certFileInput.value = '';
+          keyFileInput.value = '';
+          if (chainFileInput) chainFileInput.value = '';
+          
+          // Reload certificate info after a delay
+          setTimeout(() => {
+            loadCertificateInfo();
+          }, 3000);
+        } else {
+          showToast(response?.message || 'Failed to upload certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error uploading certificate:', error);
+        showToast('Error uploading certificate: ' + error.message, 'error');
+      } finally {
+        if (button) setLoadingState(button, false);
+      }
+    }
+    
+    /**
+     * Task 18: Download current certificate
+     */
+    async function downloadCertificate() {
+      try {
+        showToast('Downloading certificate...', 'info');
+        
+        const response = await apiRequest('/api/cert/download');
+        
+        if (response && response.cert_pem) {
+          // Create a blob and download
+          const blob = new Blob([response.cert_pem], { type: 'application/x-pem-file' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'certificate.pem';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          
+          showToast('Certificate downloaded successfully', 'success');
+        } else {
+          showToast('Failed to download certificate', 'error');
+        }
+      } catch (error) {
+        console.error('Error downloading certificate:', error);
+        showToast('Error downloading certificate: ' + error.message, 'error');
+      }
+    }
+    
+    /**
+     * Helper function to read file as text
+     * @param {File} file - File to read
+     * @returns {Promise<string>} File content as text
+     */
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('Failed to read file'));
+        reader.readAsText(file);
+      });
+    }
+    
+    /**
      * Initialize Security Settings section
      */
     function initSecuritySettings() {
       // Load existing configuration
       loadSecurityConfiguration();
+      // Load certificate information (Task 18)
+      loadCertificateInfo();
     }
     
     // ===== Task 11: System Logs Section Functions =====
