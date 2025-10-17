@@ -12,7 +12,12 @@
   - Add OTA context structure with state machine (IDLE, BEGIN, WRITING, VALIDATING, COMPLETE, ABORT, ERROR)
   - _Requirements: 3.1.2, 3.1.4_
 
-- [ ] 2. Implement OTA update process functions
+- [x] 2. Implement OTA update process functions
+
+
+
+
+
   - Implement `ota_begin_update()` to initialize OTA partition and handle
   - Implement `ota_write_chunk()` to write firmware data to flash
   - Implement `ota_end_update()` to finalize and validate the update
