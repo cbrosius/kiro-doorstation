@@ -77,7 +77,12 @@
   - Add rollback button (initially disabled)
   - _Requirements: 3.1.2, 3.1.3, 3.1.5_
 
-- [ ] 7. Implement web interface JavaScript for OTA upload
+- [x] 7. Implement web interface JavaScript for OTA upload
+
+
+
+
+
   - Create `uploadFirmware()` function with file validation (.bin extension)
   - Implement FormData creation and XMLHttpRequest upload
   - Add upload progress event handler to update progress bar

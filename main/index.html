@@ -3643,7 +3643,7 @@
 
         <!-- Upload Button -->
         <div style="margin-top: var(--spacing-lg);">
-          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="handleOTAUpload()" disabled>
+          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="uploadFirmware()" disabled>
             <span class="btn-text">
               <span>⬆️</span>
               <span>Upload Firmware</span>
@@ -9598,6 +9598,140 @@
       initOTAFileUpload();
 
       console.log('OTA Update section initialized');
+    }
+
+    /**
+     * Task 7: Upload firmware with confirmation dialog and progress tracking
+     * This function implements the complete OTA upload workflow as specified in requirements
+     */
+    async function uploadFirmware() {
+      // Validate file is selected
+      if (!otaSelectedFile) {
+        showToast('Please select a firmware file first', 'error');
+        return;
+      }
+
+      // Validate file extension (.bin)
+      if (!otaSelectedFile.name.endsWith('.bin')) {
+        showToast('Invalid file format. Please select a .bin file.', 'error');
+        return;
+      }
+
+      // Show confirmation dialog before starting update (Requirement 3.1.6)
+      const confirmed = await showConfirmDialog(
+        'Upload Firmware?',
+        `You are about to upload firmware file "${otaSelectedFile.name}" (${formatFileSize(otaSelectedFile.size)}). The device will need to restart after upload to apply the update. Do you want to continue?`,
+        'Upload',
+        'warning'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const uploadBtn = document.getElementById('ota-upload-btn');
+      setLoadingState(uploadBtn, true);
+
+      // Show progress container
+      const progressContainer = document.getElementById('ota-progress-container');
+      progressContainer.style.display = 'block';
+
+      // Reset progress
+      otaUploadStartTime = Date.now();
+      otaUploadedBytes = 0;
+      updateOTAProgress(0, 'Preparing upload...');
+
+      try {
+        // Create FormData with firmware file
+        const formData = new FormData();
+        formData.append('firmware', otaSelectedFile);
+
+        // Create XMLHttpRequest for upload with progress tracking
+        const xhr = new XMLHttpRequest();
+
+        // Upload progress event handler (Requirement 3.1.5)
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            otaUploadedBytes = e.loaded;
+
+            // Calculate speed and time remaining
+            const elapsedTime = (Date.now() - otaUploadStartTime) / 1000; // seconds
+            const speed = e.loaded / elapsedTime; // bytes per second
+            const remainingBytes = e.total - e.loaded;
+            const timeRemaining = remainingBytes / speed; // seconds
+
+            // Update progress bar with percentage
+            updateOTAProgress(percentComplete, 'Uploading...', speed, timeRemaining);
+          }
+        });
+
+        // Success handler (Requirement 3.1.7)
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              updateOTAProgress(100, 'Upload complete!');
+              showToast('Firmware uploaded successfully! You can now apply the update.', 'success');
+
+              // Show apply section
+              document.getElementById('ota-apply-section').style.display = 'block';
+
+              // Scroll to apply section for user convenience
+              setTimeout(() => {
+                document.getElementById('ota-apply-section').scrollIntoView({ 
+                  behavior: 'smooth', 
+                  block: 'nearest' 
+                });
+              }, 500);
+
+            } catch (error) {
+              // Error handler - invalid response
+              updateOTAProgress(0, 'Upload failed');
+              showToast('Upload failed: Invalid response from server', 'error');
+            }
+          } else {
+            // Error handler - HTTP error status
+            let errorMessage = `Upload failed with status ${xhr.status}`;
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              if (errorResponse.error) {
+                errorMessage = errorResponse.error;
+              }
+            } catch (e) {
+              // Use default error message
+            }
+            updateOTAProgress(0, 'Upload failed');
+            showToast(errorMessage, 'error');
+          }
+          setLoadingState(uploadBtn, false);
+        });
+
+        // Error handler - network error (Requirement 3.1.8)
+        xhr.addEventListener('error', () => {
+          updateOTAProgress(0, 'Upload failed');
+          showToast('Upload failed: Network error. Please check your connection and try again.', 'error');
+          setLoadingState(uploadBtn, false);
+        });
+
+        // Error handler - upload cancelled
+        xhr.addEventListener('abort', () => {
+          updateOTAProgress(0, 'Upload cancelled');
+          showToast('Upload was cancelled', 'warning');
+          setLoadingState(uploadBtn, false);
+        });
+
+        // Send POST request to /api/ota/upload
+        xhr.open('POST', '/api/ota/upload');
+        xhr.send(formData);
+
+      } catch (error) {
+        // Error handler - unexpected error
+        console.error('Error uploading firmware:', error);
+        showToast('Upload failed: ' + error.message, 'error');
+        updateOTAProgress(0, 'Upload failed');
+        setLoadingState(uploadBtn, false);
+      }
     }
 
     // ===== Task 15: Documentation Section =====
