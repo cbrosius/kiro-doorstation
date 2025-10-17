@@ -76,7 +76,12 @@
   - Define certificate storage structure
   - _Requirements: 5.1, 5.5_
 
-- [ ] 7. Implement self-signed certificate generation
+- [x] 7. Implement self-signed certificate generation
+
+
+
+
+
   - Implement `cert_generate_self_signed()` using mbedtls
   - Generate 2048-bit RSA key pair
   - Create X.509 certificate with 10-year validity

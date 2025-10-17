@@ -4,6 +4,14 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "mbedtls/x509_crt.h"
+#include "mbedtls/x509_csr.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/rsa.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/error.h"
+#include "mbedtls/bignum.h"
 
 static const char *TAG = "CERT_MANAGER";
 
@@ -126,30 +134,195 @@ esp_err_t cert_generate_self_signed(const char* common_name, uint32_t validity_d
     ESP_LOGI(TAG, "Generating self-signed certificate for CN=%s, validity=%d days", 
              common_name, validity_days);
     
-    // TODO: Implement actual certificate generation using mbedtls
-    // This is a placeholder implementation
+    int ret = 0;
+    esp_err_t err = ESP_OK;
     
-    // For now, just store metadata
+    // Initialize mbedtls structures
+    mbedtls_pk_context key;
+    mbedtls_x509write_cert crt;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    
+    mbedtls_pk_init(&key);
+    mbedtls_x509write_crt_init(&crt);
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+    
+    // Seed the random number generator
+    const char *pers = "cert_gen";
+    ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                                 (const unsigned char *)pers, strlen(pers));
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_ctr_drbg_seed failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Generate 2048-bit RSA key pair
+    ESP_LOGI(TAG, "Generating 2048-bit RSA key pair...");
+    ret = mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_pk_setup failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(key), mbedtls_ctr_drbg_random, &ctr_drbg, 2048, 65537);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_rsa_gen_key failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    ESP_LOGI(TAG, "RSA key pair generated successfully");
+    
+    // Set certificate parameters
+    mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
+    mbedtls_x509write_crt_set_subject_key(&crt, &key);
+    mbedtls_x509write_crt_set_issuer_key(&crt, &key);
+    
+    // Set subject name (Common Name)
+    char subject_name[128];
+    snprintf(subject_name, sizeof(subject_name), "CN=%s", common_name);
+    ret = mbedtls_x509write_crt_set_subject_name(&crt, subject_name);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_subject_name failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Set issuer name (same as subject for self-signed)
+    ret = mbedtls_x509write_crt_set_issuer_name(&crt, subject_name);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_issuer_name failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Set serial number (use random serial for self-signed)
+    unsigned char serial_raw[16];
+    ret = mbedtls_ctr_drbg_random(&ctr_drbg, serial_raw, sizeof(serial_raw));
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to generate random serial: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    ret = mbedtls_x509write_crt_set_serial_raw(&crt, serial_raw, sizeof(serial_raw));
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_serial_raw failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Set validity period
+    char not_before[16];
+    char not_after[16];
+    time_t now = time(NULL);
+    struct tm timeinfo_buf;
+    const struct tm *timeinfo = gmtime_r(&now, &timeinfo_buf);
+    if (!timeinfo) {
+        ESP_LOGE(TAG, "gmtime_r failed for not_before");
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", timeinfo);
+    
+    time_t expiry = now + ((time_t)validity_days * 24 * 60 * 60);
+    timeinfo = gmtime_r(&expiry, &timeinfo_buf);
+    if (!timeinfo) {
+        ESP_LOGE(TAG, "gmtime_r failed for not_after");
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", timeinfo);
+    
+    ret = mbedtls_x509write_crt_set_validity(&crt, not_before, not_after);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_validity failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Set basic constraints (CA:FALSE)
+    ret = mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_basic_constraints failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Set key usage
+    ret = mbedtls_x509write_crt_set_key_usage(&crt, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | 
+                                                     MBEDTLS_X509_KU_KEY_ENCIPHERMENT);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_set_key_usage failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Write certificate to PEM buffer
+    unsigned char cert_buf[CERT_PEM_MAX_SIZE];
+    memset(cert_buf, 0, sizeof(cert_buf));
+    
+    ret = mbedtls_x509write_crt_pem(&crt, cert_buf, sizeof(cert_buf),
+                                     mbedtls_ctr_drbg_random, &ctr_drbg);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_x509write_crt_pem failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    // Write private key to PEM buffer
+    unsigned char key_buf[CERT_KEY_PEM_MAX_SIZE];
+    memset(key_buf, 0, sizeof(key_buf));
+    
+    ret = mbedtls_pk_write_key_pem(&key, key_buf, sizeof(key_buf));
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_pk_write_key_pem failed: -0x%04x", -ret);
+        err = ESP_FAIL;
+        goto cleanup;
+    }
+    
+    ESP_LOGI(TAG, "Certificate and key generated successfully");
+    
+    // Store certificate and key in NVS
     nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(CERT_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    err = nvs_open(CERT_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
-        return err;
+        goto cleanup;
+    }
+    
+    // Store certificate
+    size_t cert_len = strlen((char*)cert_buf);
+    err = nvs_set_blob(nvs_handle, CERT_NVS_CERT_KEY, cert_buf, cert_len + 1);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to store certificate: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        goto cleanup;
+    }
+    
+    // Store private key
+    size_t key_len = strlen((char*)key_buf);
+    err = nvs_set_blob(nvs_handle, CERT_NVS_KEY_KEY, key_buf, key_len + 1);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to store private key: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        goto cleanup;
     }
     
     // Store self-signed flag
     err = nvs_set_u8(nvs_handle, CERT_NVS_SELF_SIGNED_KEY, 1);
     if (err != ESP_OK) {
-        nvs_close(nvs_handle);
-        return err;
+        ESP_LOGW(TAG, "Failed to store self-signed flag: %s", esp_err_to_name(err));
     }
     
     // Store generation timestamp
     uint32_t current_time = get_current_time();
     err = nvs_set_u32(nvs_handle, CERT_NVS_GENERATED_AT_KEY, current_time);
     if (err != ESP_OK) {
-        nvs_close(nvs_handle);
-        return err;
+        ESP_LOGW(TAG, "Failed to store timestamp: %s", esp_err_to_name(err));
     }
     
     // Commit changes
@@ -157,10 +330,17 @@ esp_err_t cert_generate_self_signed(const char* common_name, uint32_t validity_d
     nvs_close(nvs_handle);
     
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Self-signed certificate metadata stored successfully");
+        ESP_LOGI(TAG, "Self-signed certificate stored successfully in NVS");
     } else {
-        ESP_LOGE(TAG, "Failed to store certificate metadata: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Failed to commit certificate: %s", esp_err_to_name(err));
     }
+    
+cleanup:
+    // Clean up mbedtls structures
+    mbedtls_pk_free(&key);
+    mbedtls_x509write_crt_free(&crt);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+    mbedtls_entropy_free(&entropy);
     
     return err;
 }

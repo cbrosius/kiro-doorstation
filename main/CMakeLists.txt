@@ -10,6 +10,8 @@ idf_component_register(
         "ntp_sync.c"
         "rtp_handler.c"
         "hardware_test.c"
+        "auth_manager.c"
+        "cert_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
