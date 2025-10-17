@@ -313,7 +313,10 @@
   - Invalidate all sessions on password reset
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
 
-- [ ] 25. Add comprehensive security logging
+- [ ]* 25. Add comprehensive security logging
+
+
+
 
   - Log all authentication events (login, logout, password change)
   - Log certificate operations (upload, generate, delete)
