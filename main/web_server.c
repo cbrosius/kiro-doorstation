@@ -2732,7 +2732,7 @@ void web_server_start(void)
     
     // Configure HTTPS server
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-    config.httpd.max_uri_handlers = 40;  // Increased for auth endpoints
+    config.httpd.max_uri_handlers = 50;  // Increased for auth and certificate endpoints
     config.httpd.server_port = 443;
     config.httpd.ctrl_port = 32768;
     
