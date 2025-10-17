@@ -14,12 +14,12 @@
       if (savedTheme) {
         // User has explicitly chosen a theme
         if (savedTheme === 'light') {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.dataset.theme = 'light';
         }
       } else {
         // No saved preference - check system preference
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.dataset.theme = 'light';
         }
       }
     })();
@@ -4203,7 +4203,7 @@
       // Check localStorage first
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme) {
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.documentElement.dataset.theme = savedTheme;
         updateThemeIcon(savedTheme);
         return;
       }
@@ -4212,7 +4212,7 @@
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = prefersDark ? 'dark' : 'light';
       if (theme === 'light') {
-        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.dataset.theme = 'light';
       }
       updateThemeIcon(theme);
     }
@@ -4221,9 +4221,9 @@
      * Toggle between light and dark theme
      */
     function toggleTheme() {
-      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const currentTheme = document.documentElement.dataset.theme;
       const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', newTheme);
+      document.documentElement.dataset.theme = newTheme;
       localStorage.setItem('theme', newTheme);
       updateThemeIcon(newTheme);
     }
@@ -4334,19 +4334,19 @@
         const status = response && response.status ? response.status.toLowerCase() : '';
 
         if (status === 'connected' || response.connected === true) {
-          card.setAttribute('data-status', 'connected');
+          card.dataset.status = 'connected';
           valueSpan.textContent = `Connected (${response.ip_address || response.ip || 'N/A'})`;
         } else if (status === 'connecting') {
-          card.setAttribute('data-status', 'connecting');
+          card.dataset.status = 'connecting';
           valueSpan.textContent = 'Connecting...';
         } else {
-          card.setAttribute('data-status', 'disconnected');
+          card.dataset.status = 'disconnected';
           valueSpan.textContent = response && response.ssid ? `Disconnected (${response.ssid})` : 'Disconnected';
         }
       } catch (error) {
         console.error('WiFi status error:', error);
         const card = document.getElementById('wifi-status');
-        card.setAttribute('data-status', 'disconnected');
+        card.dataset.status = 'disconnected';
         card.querySelector('.status-value').textContent = 'Error';
       }
     }
@@ -4364,18 +4364,18 @@
         const status = response.status ? response.status.toLowerCase() : '';
 
         if (status === 'registered') {
-          card.setAttribute('data-status', 'registered');
+          card.dataset.status = 'registered';
           valueSpan.textContent = `Registered (${response.state || 'IDLE'})`;
         } else if (status === 'connecting') {
-          card.setAttribute('data-status', 'connecting');
+          card.dataset.status = 'connecting';
           valueSpan.textContent = 'Connecting...';
         } else {
-          card.setAttribute('data-status', 'disconnected');
+          card.dataset.status = 'disconnected';
           valueSpan.textContent = response.status || 'Disconnected';
         }
       } catch (error) {
         const card = document.getElementById('sip-status');
-        card.setAttribute('data-status', 'disconnected');
+        card.dataset.status = 'disconnected';
         card.querySelector('.status-value').textContent = 'Error';
       }
     }
@@ -4390,15 +4390,15 @@
         const valueSpan = card.querySelector('.status-value');
 
         if (response.door && response.door.status === 'open') {
-          card.setAttribute('data-status', 'open');
+          card.dataset.status = 'open';
           valueSpan.textContent = 'Open';
         } else {
-          card.setAttribute('data-status', 'closed');
+          card.dataset.status = 'closed';
           valueSpan.textContent = 'Closed';
         }
       } catch (error) {
         const card = document.getElementById('door-status');
-        card.setAttribute('data-status', 'closed');
+        card.dataset.status = 'closed';
         card.querySelector('.status-value').textContent = 'Closed';
       }
     }
@@ -4413,15 +4413,15 @@
         const valueSpan = card.querySelector('.status-value');
 
         if (response.light && response.light.status === 'on') {
-          card.setAttribute('data-status', 'on');
+          card.dataset.status = 'on';
           valueSpan.textContent = 'On';
         } else {
-          card.setAttribute('data-status', 'off');
+          card.dataset.status = 'off';
           valueSpan.textContent = 'Off';
         }
       } catch (error) {
         const card = document.getElementById('light-status');
-        card.setAttribute('data-status', 'off');
+        card.dataset.status = 'off';
         card.querySelector('.status-value').textContent = 'Off';
       }
     }
@@ -7259,7 +7259,7 @@
 
         // Update status card color
         if (pinStatusCard) {
-          pinStatusCard.setAttribute('data-status', isEnabled ? 'connected' : 'disconnected');
+          pinStatusCard.dataset.status = isEnabled ? 'connected' : 'disconnected';
         }
       }
 

@@ -2695,10 +2695,10 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req)
             if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
                 // Parse session_id from cookie string
                 // Cookie format: "session_id=<value>; other=value"
-                char* session_start = strstr(cookie_str, "session_id=");
+                const char* session_start = strstr(cookie_str, "session_id=");
                 if (session_start) {
                     session_start += strlen("session_id=");
-                    char* session_end = strchr(session_start, ';');
+                    const char* session_end = strchr(session_start, ';');
                     size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
                     
                     if (session_len < AUTH_SESSION_ID_SIZE) {

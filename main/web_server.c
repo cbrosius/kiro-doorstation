@@ -67,13 +67,13 @@ esp_err_t auth_filter(httpd_req_t *req) {
     if (is_public_endpoint(req->uri)) {
         return ESP_OK;
     }
-    
+
     // Check if password is set - if not, redirect to setup page
     if (!auth_is_password_set()) {
         ESP_LOGW(TAG, "No password set - redirecting to setup page");
-        
+
         // Check if this is an API request or HTML page request
-        if (strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "403 Forbidden");
             httpd_resp_set_type(req, "application/json");
@@ -97,10 +97,10 @@ esp_err_t auth_filter(httpd_req_t *req) {
             if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
                 // Parse session_id from cookie string
                 // Cookie format: "session_id=<value>; other=value"
-                char* session_start = strstr(cookie_str, "session_id=");
+                const char* session_start = strstr(cookie_str, "session_id=");
                 if (session_start) {
                     session_start += strlen("session_id=");
-                    char* session_end = strchr(session_start, ';');
+                    const char* session_end = strchr(session_start, ';');
                     size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
                     
                     if (session_len < AUTH_SESSION_ID_SIZE) {
@@ -116,9 +116,9 @@ esp_err_t auth_filter(httpd_req_t *req) {
     // Check if session ID was found
     if (session_id[0] == '\0') {
         ESP_LOGW(TAG, "No session cookie found for %s", req->uri);
-        
+
         // Check if this is an API request or HTML page request
-        if (strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -135,9 +135,9 @@ esp_err_t auth_filter(httpd_req_t *req) {
     // Validate session
     if (!auth_validate_session(session_id)) {
         ESP_LOGW(TAG, "Invalid or expired session for %s", req->uri);
-        
+
         // Check if this is an API request or HTML page request
-        if (strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri && strncmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -261,14 +261,14 @@ static esp_err_t http_redirect_handler(httpd_req_t *req, httpd_err_code_t err __
     // Construct HTTPS URL with sufficient buffer size
     // Max: "https://" (8) + host (127) + uri (512) + null (1) = 648 bytes
     char https_url[700];
-    snprintf(https_url, sizeof(https_url), "https://%s%s", host, req->uri);
+    snprintf(https_url, sizeof(https_url), "https://%s%s", host, req->uri ? req->uri : "/");
     
     // Send 301 Moved Permanently redirect
     httpd_resp_set_status(req, "301 Moved Permanently");
     httpd_resp_set_hdr(req, "Location", https_url);
     httpd_resp_send(req, NULL, 0);
     
-    ESP_LOGI(TAG, "HTTP redirect: %s -> %s", req->uri, https_url);
+    ESP_LOGI(TAG, "HTTP redirect: %s -> %s", req->uri ? req->uri : "/", https_url);
     
     return ESP_OK;
 }
