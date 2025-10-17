@@ -8,7 +8,7 @@
 
 static const char *TAG = "GPIO";
 static bool light_state = false;
-static QueueHandle_t doorbell_queue = NULL;
+QueueHandle_t doorbell_queue = NULL;  // Non-static for hardware test access
 static TaskHandle_t doorbell_task_handle = NULL;
 
 typedef struct {
