@@ -3099,11 +3099,11 @@ static esp_err_t get_hardware_info_handler(httpd_req_t *req)
 
     httpd_resp_set_type(req, "application/json");
 
-    // Collect hardware information
+    // Get cached hardware information (no polling needed!)
     hardware_info_t info;
-    if (!hardware_info_collect(&info)) {
+    if (!hardware_info_get(&info)) {
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"Failed to collect hardware information\"}", -1);
+        httpd_resp_send(req, "{\"error\":\"Hardware information cache not available\"}", -1);
         return ESP_FAIL;
     }
 

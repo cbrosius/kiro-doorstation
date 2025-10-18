@@ -18,6 +18,7 @@
 #include "ntp_sync.h"
 #include "cert_manager.h"
 #include "bootlog.h"
+#include "hardware_info.h"
 
 static const char *TAG = "MAIN";
 
@@ -90,6 +91,9 @@ void app_main(void)
 
     // Finalize bootlog capture now that initialization is complete
     bootlog_finalize();
+
+    // Initialize hardware info cache (one-time parsing of bootlog)
+    hardware_info_init_cache();
 
     // Main loop
     while (1) {

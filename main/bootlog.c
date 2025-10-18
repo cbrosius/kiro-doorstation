@@ -43,8 +43,8 @@ static int bootlog_vprintf(const char *format, va_list args)
                     char temp_buffer[256];
                     vsnprintf(temp_buffer, sizeof(temp_buffer), format, args);
                     if (strstr(temp_buffer, "MAIN: All components initialized")) {
+                        ESP_LOGI(TAG, "Found 'MAIN: All components initialized', stopping bootlog capture");
                         bootlog_active = false;
-                        ESP_LOGI(TAG, "Bootlog capture stopped at 'MAIN: All components initialized'");
                     }
                 }
             }

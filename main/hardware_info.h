@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// Hardware information structure
+typedef struct hardware_info_t hardware_info_t;
+
 // Partition information structure
 typedef struct {
     char label[16];
@@ -14,8 +17,8 @@ typedef struct {
     int32_t used_bytes;  // -1 if unknown
 } partition_info_t;
 
-// Hardware information structure
-typedef struct {
+// Hardware information structure definition
+struct hardware_info_t {
     // Chip information
     char chip_model[32];
     uint32_t chip_revision;
@@ -56,7 +59,11 @@ typedef struct {
 
     // Bootlog (pointer to captured log)
     const char* bootlog;
-} hardware_info_t;
+};
+
+// Cached hardware information structure
+extern hardware_info_t cached_hardware_info;
+extern bool hardware_info_cached;
 
 /**
  * Collect static hardware information
@@ -66,5 +73,24 @@ typedef struct {
  * @return true on success, false on failure
  */
 bool hardware_info_collect(hardware_info_t* info);
+
+/**
+ * Initialize hardware info cache
+ * This function should be called once at startup to populate the cache
+ * All subsequent calls to hardware_info_get() will return cached data
+ *
+ * @return true on success, false on failure
+ */
+bool hardware_info_init_cache(void);
+
+/**
+ * Get cached hardware information
+ * Returns the cached hardware information without re-parsing bootlog
+ * This is much faster and safer than hardware_info_collect()
+ *
+ * @param info Pointer to hardware_info_t structure to fill with cached data
+ * @return true if cache is available, false if not initialized
+ */
+bool hardware_info_get(hardware_info_t* info);
 
 #endif // HARDWARE_INFO_H

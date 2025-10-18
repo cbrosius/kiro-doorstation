@@ -8,6 +8,10 @@
 
 static const char *TAG = "hardware_info";
 
+// Global cache for hardware information
+hardware_info_t cached_hardware_info;
+bool hardware_info_cached = false;
+
 // Parse WiFi MAC address from bootlog
 static void parse_mac_address_from_bootlog(const char* bootlog, char* mac_address, size_t mac_address_size)
 {
@@ -44,6 +48,18 @@ static void parse_mac_address_from_bootlog(const char* bootlog, char* mac_addres
         }
     }
 
+    // Another pattern: "wifi: MAC address: xx:xx:xx:xx:xx:xx"
+    const char* wifi_pattern = strstr(bootlog, "wifi: MAC address:");
+    if (wifi_pattern) {
+        char temp_mac[18];
+        if (sscanf(wifi_pattern, "wifi: MAC address: %17s", temp_mac) == 1) {
+            strncpy(mac_address, temp_mac, mac_address_size - 1);
+            mac_address[mac_address_size - 1] = '\0';
+            ESP_LOGD(TAG, "Parsed wifi MAC address from bootlog: %s", mac_address);
+            return;
+        }
+    }
+
     // If not found, use default
     ESP_LOGW(TAG, "MAC address not found in bootlog, using default");
     strncpy(mac_address, "00:00:00:00:00:00", mac_address_size - 1);
@@ -63,27 +79,32 @@ static void parse_partition_line(const char* line, size_t* total_used, hardware_
     // Expected format: "  0 nvs              WiFi data        01 02 00009000 00010000"
     // Format: "index label             usage            type subtype address  size"
     int index;
-    char label[32], type_code[8], subtype_code[8];
-    unsigned int address, size;
+    char label[32];
+    unsigned int type, subtype, address, size;
 
-    // Try to parse the actual partition table format
-    if (sscanf(line, "%d %31s %*s %*s %*s %*s %s %s %x %x",
-               &index, label, type_code, subtype_code, &address, &size) >= 4) {
+    // Try to parse the actual partition table format with fixed positions
+    // The format is: "  0 nvs              WiFi data        01 02 00009000 00010000"
+    if (sscanf(line, "%d %s %*s %*s %*s %*s %x %x %x %x",
+               &index, label, &type, &subtype, &address, &size) >= 4) {
+
+        // Trim trailing spaces from label
+        char *end = label + strlen(label) - 1;
+        while (end > label && *end == ' ') {
+            *end = '\0';
+            end--;
+        }
 
         // Convert type and subtype codes to strings
         char type_str[16] = "unknown";
         char subtype_str[16] = "unknown";
-
-        // Parse type code (first two hex digits)
-        int type = 0, subtype = 0;
-        sscanf(type_code, "%x", &type);
-        sscanf(subtype_code, "%x", &subtype);
 
         // Convert type to string
         if (type == 0x00) {
             strcpy(type_str, "app");
         } else if (type == 0x01) {
             strcpy(type_str, "data");
+        } else {
+            snprintf(type_str, sizeof(type_str), "0x%02x", type);
         }
 
         // Convert subtype to string based on type
@@ -98,6 +119,8 @@ static void parse_partition_line(const char* line, size_t* total_used, hardware_
             else if (subtype == 0x82) strcpy(subtype_str, "spiffs");
             else if (subtype == 0x00) strcpy(subtype_str, "otadata");
             else snprintf(subtype_str, sizeof(subtype_str), "0x%02x", subtype);
+        } else {
+            snprintf(subtype_str, sizeof(subtype_str), "0x%02x", subtype);
         }
 
         if (total_used) {
@@ -139,20 +162,44 @@ static void parse_partition_info_from_bootlog(const char* bootlog, size_t* total
     const char* partition_section = strstr(bootlog, "Partition Table:");
     if (!partition_section) {
         ESP_LOGW(TAG, "No partition table found in bootlog");
+        ESP_LOGD(TAG, "Bootlog content around partition area: %.200s", bootlog + strlen(bootlog) - 200);
         return;
     }
 
-    // Skip "Partition Table:" line and start parsing
+    ESP_LOGD(TAG, "Found partition table section at offset: %d", partition_section - bootlog);
+
+    // Skip "Partition Table:" line and header line, start parsing partition data
     const char* line_start = partition_section + strlen("Partition Table:");
     char line[256];
     int line_pos = 0;
+    bool found_header = false;
+
+    ESP_LOGD(TAG, "Partition section found, starting to parse lines");
 
     // Parse each partition line
     while (*line_start && (info ? info->partition_count < 16 : true)) {
         if (*line_start == '\n' || *line_start == '\r') {
             if (line_pos > 0) {
                 line[line_pos] = '\0';
-                parse_partition_line(line, total_used, info);
+
+                // Skip the header line "## Label..."
+                if (strstr(line, "## Label")) {
+                    found_header = true;
+                    line_pos = 0;
+                    line_start++;
+                    continue;
+                }
+
+                // Skip "End of partition table" line
+                if (strstr(line, "End of partition table")) {
+                    break;
+                }
+
+                // Only parse actual partition lines (after header)
+                if (found_header && strlen(line) > 10) {
+                    ESP_LOGD(TAG, "Parsing partition line: %s", line);
+                    parse_partition_line(line, total_used, info);
+                }
                 line_pos = 0;
             }
         } else if (line_pos < sizeof(line) - 1) {
@@ -162,10 +209,53 @@ static void parse_partition_info_from_bootlog(const char* bootlog, size_t* total
     }
 
     // Handle last line if no newline
-    if (line_pos > 0 && (info ? info->partition_count < 16 : true)) {
+    if (line_pos > 0 && found_header && (info ? info->partition_count < 16 : true)) {
         line[line_pos] = '\0';
-        parse_partition_line(line, total_used, info);
+        if (strlen(line) > 10 && !strstr(line, "End of partition table")) {
+            parse_partition_line(line, total_used, info);
+        }
     }
+}
+
+// Initialize hardware info cache
+// This function should be called once at startup to populate the cache
+bool hardware_info_init_cache(void)
+{
+    ESP_LOGI(TAG, "Initializing hardware info cache");
+
+    if (hardware_info_cached) {
+        ESP_LOGI(TAG, "Hardware info cache already initialized");
+        return true;
+    }
+
+    // Collect hardware information once
+    if (!hardware_info_collect(&cached_hardware_info)) {
+        ESP_LOGE(TAG, "Failed to collect hardware information for cache");
+        return false;
+    }
+
+    hardware_info_cached = true;
+    ESP_LOGI(TAG, "Hardware info cache initialized successfully");
+    return true;
+}
+
+// Get cached hardware information
+// Returns the cached hardware information without re-parsing bootlog
+bool hardware_info_get(hardware_info_t* info)
+{
+    if (!hardware_info_cached) {
+        ESP_LOGE(TAG, "Hardware info cache not initialized");
+        return false;
+    }
+
+    if (!info) {
+        ESP_LOGE(TAG, "Invalid info pointer");
+        return false;
+    }
+
+    // Copy cached data to provided structure
+    memcpy(info, &cached_hardware_info, sizeof(hardware_info_t));
+    return true;
 }
 
 bool hardware_info_collect(hardware_info_t* info)
@@ -183,6 +273,9 @@ bool hardware_info_collect(hardware_info_t* info)
         ESP_LOGE(TAG, "No bootlog available");
         return false;
     }
+
+    ESP_LOGD(TAG, "Bootlog length: %d bytes", strlen(bootlog));
+    ESP_LOGD(TAG, "Bootlog preview: %.100s...", bootlog);
 
     // Parse chip model from bootlog
     if (strstr(bootlog, "ESP32-S3")) {
@@ -231,7 +324,9 @@ bool hardware_info_collect(hardware_info_t* info)
 
     // Calculate used flash space by parsing partition table from bootlog
     size_t total_used = 0;
+    ESP_LOGD(TAG, "About to parse partition info from bootlog");
     parse_partition_info_from_bootlog(bootlog, &total_used, info);
+    ESP_LOGI(TAG, "Parsed %d partitions, total used: %d bytes", info->partition_count, total_used);
 
     info->flash_used_bytes = total_used;
     info->flash_available_bytes = (info->flash_total_bytes > total_used) ?
