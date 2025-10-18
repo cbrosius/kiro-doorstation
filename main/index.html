@@ -9971,29 +9971,74 @@
     };
 
     /**
+     * Check if session cookie exists in browser
+     * @returns {boolean} True if session cookie exists
+     */
+    function hasSessionCookie() {
+      return document.cookie.includes('session_id=');
+    }
+    
+    /**
+     * Check if user is currently logged in (has valid session cookie)
+     * @returns {boolean} True if user appears to be logged in
+     */
+    function isLoggedIn() {
+      return hasSessionCookie();
+    }
+    
+    /**
+     * Force logout by clearing session cookie and redirecting to login
+     */
+    function forceLogout() {
+      // Clear session cookie by setting it to expire immediately
+      document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    
+      // Clear any cached session data
+      if (typeof apiCache !== 'undefined') {
+        // Clear all cached data that might contain sensitive information
+        Object.keys(apiCache).forEach(key => {
+          if (apiCache[key] && typeof apiCache[key] === 'object') {
+            apiCache[key].data = null;
+            apiCache[key].timestamp = 0;
+          }
+        });
+      }
+    
+      // Redirect to login page
+      window.location.href = '/login.html';
+    }
+    
+    /**
      * Check if user has a valid session
      * @returns {Promise<boolean>} True if session is valid
      */
     async function checkSession() {
+      // First check if session cookie exists
+      if (!hasSessionCookie()) {
+        console.log('No session cookie found, redirecting to login');
+        window.location.href = '/login.html';
+        return false;
+      }
+    
       try {
         // Make a simple API call to check session validity
         const response = await fetch('/api/system/info', {
           method: 'GET',
           credentials: 'include'
         });
-
+    
         if (response.status === 401) {
           // Session invalid or expired - redirect to login
           console.log('Session expired or invalid, redirecting to login');
           window.location.href = '/login.html';
           return false;
         }
-
+    
         if (response.ok) {
           // Session is valid
           return true;
         }
-
+    
         // Other error - log but don't redirect
         console.warn('Session check returned unexpected status:', response.status);
         return true; // Assume valid to avoid false redirects
@@ -10080,22 +10125,29 @@
     function startSessionMonitoring() {
       // Check session every 2 minutes
       sessionManager.checkInterval = setInterval(async () => {
+        // First check if session cookie still exists
+        if (!hasSessionCookie()) {
+          console.log('Session cookie lost during session, redirecting to login');
+          window.location.href = '/login.html';
+          return;
+        }
+    
         const isValid = await checkSession();
-
+    
         if (isValid && sessionManager.sessionExpiresAt) {
           const timeRemaining = sessionManager.sessionExpiresAt - Date.now();
           const minutesRemaining = Math.floor(timeRemaining / 60000);
-
+    
           // Show warning 5 minutes before expiration
           if (minutesRemaining <= 5 && minutesRemaining > 0 && !sessionManager.warningShown) {
             showSessionWarning(minutesRemaining);
           }
         }
       }, 120000); // Check every 2 minutes
-
+    
       // Set initial session expiration time (30 minutes from now)
       sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
-
+    
       console.log('Session monitoring started');
     }
 
@@ -10127,21 +10179,28 @@
      */
     async function initSessionManagement() {
       console.log('Initializing session management');
-
+    
+      // IMMEDIATE CHECK: Verify session cookie exists before proceeding
+      if (!hasSessionCookie()) {
+        console.log('No session cookie found on page load, redirecting to login');
+        window.location.href = '/login.html';
+        return;
+      }
+    
       // Check if session is valid on page load
       const isValid = await checkSession();
-
+    
       if (!isValid) {
         // Will redirect to login, no need to continue
         return;
       }
-
+    
       // Setup activity tracking for automatic session extension
       setupActivityTracking();
-
+    
       // Start monitoring session expiration
       startSessionMonitoring();
-
+    
       console.log('Session management initialized');
     }
 
