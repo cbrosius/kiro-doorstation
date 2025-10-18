@@ -380,6 +380,12 @@ void web_server_start(void)
     config.httpd.max_uri_handlers = 60;  // Increased for auth, certificate, and JS file endpoints
     config.httpd.server_port = 443;
     config.httpd.ctrl_port = 32768;
+
+    // Enable HTTP keep-alive for better performance on consecutive requests
+    config.httpd.keep_alive_enable = true;
+    config.httpd.keep_alive_idle = 10;      // 10 seconds idle timeout
+    config.httpd.keep_alive_interval = 5;   // 5 seconds between keep-alive packets
+    config.httpd.keep_alive_count = 5;      // Send 5 keep-alive packets before closing
     
     // Set certificate and key
     config.servercert = (const uint8_t*)cert_pem;
@@ -412,6 +418,12 @@ void web_server_start(void)
         redirect_config.server_port = 80;
         redirect_config.ctrl_port = 32769;  // Different control port
         redirect_config.max_uri_handlers = 1;  // Need at least 1 for error handler
+
+        // Enable HTTP keep-alive for better performance on consecutive requests
+        redirect_config.keep_alive_enable = true;
+        redirect_config.keep_alive_idle = 10;      // 10 seconds idle timeout
+        redirect_config.keep_alive_interval = 5;   // 5 seconds between keep-alive packets
+        redirect_config.keep_alive_count = 5;      // Send 5 keep-alive packets before closing
         
         esp_err_t redirect_err = httpd_start(&redirect_server, &redirect_config);
         if (redirect_err == ESP_OK) {
