@@ -19,6 +19,8 @@
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
 #include "ota_handler.h"
+#include "bootlog.h"
+#include "hardware_info.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -153,6 +155,7 @@ static const httpd_uri_t hardware_test_door_uri;
 static const httpd_uri_t hardware_test_light_uri;
 static const httpd_uri_t hardware_state_uri;
 static const httpd_uri_t hardware_test_stop_uri;
+static const httpd_uri_t hardware_info_uri;
 static const httpd_uri_t cert_info_uri;
 static const httpd_uri_t cert_upload_uri;
 static const httpd_uri_t cert_generate_uri;
@@ -227,12 +230,13 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &dtmf_security_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &dtmf_logs_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register Hardware Test API handlers (5 endpoints)
+    // Register Hardware Test API handlers (6 endpoints)
     if (httpd_register_uri_handler(server, &hardware_test_doorbell_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_door_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_light_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_stop_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &hardware_info_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register Certificate Management API handlers (5 endpoints)
     if (httpd_register_uri_handler(server, &cert_info_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -255,7 +259,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 46 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 47 API handlers registered successfully");
     }
 }
 
@@ -3083,6 +3087,75 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// ============================================================================
+// Hardware Info API Handler
+// ============================================================================
+
+static esp_err_t get_hardware_info_handler(httpd_req_t *req)
+{
+    // Check authentication
+    if (auth_filter(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+
+    // Collect hardware information
+    hardware_info_t info;
+    if (!hardware_info_collect(&info)) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_send(req, "{\"error\":\"Failed to collect hardware information\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Create JSON response
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_send(req, "{\"error\":\"Memory allocation failed\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Add hardware information
+    cJSON_AddStringToObject(root, "chip_model", info.chip_model);
+    cJSON_AddNumberToObject(root, "chip_revision", info.chip_revision);
+    cJSON_AddNumberToObject(root, "cpu_cores", info.cpu_cores);
+    cJSON_AddNumberToObject(root, "cpu_freq_mhz", info.cpu_freq_mhz);
+
+    cJSON_AddNumberToObject(root, "flash_size_mb", info.flash_size_mb);
+    cJSON_AddNumberToObject(root, "flash_total_bytes", info.flash_total_bytes);
+    cJSON_AddNumberToObject(root, "flash_used_bytes", info.flash_used_bytes);
+    cJSON_AddNumberToObject(root, "flash_available_bytes", info.flash_available_bytes);
+
+    cJSON_AddStringToObject(root, "mac_address", info.mac_address);
+    cJSON_AddStringToObject(root, "firmware_version", info.firmware_version);
+    cJSON_AddStringToObject(root, "idf_version", info.idf_version);
+    cJSON_AddStringToObject(root, "build_date", info.build_date);
+
+    // Add bootlog if available
+    if (info.bootlog && strlen(info.bootlog) > 0) {
+        cJSON_AddStringToObject(root, "bootlog", info.bootlog);
+    } else {
+        cJSON_AddStringToObject(root, "bootlog", "");
+    }
+
+    // Serialize and send response
+    char *json_string = cJSON_Print(root);
+    if (!json_string) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_send(req, "{\"error\":\"JSON serialization failed\"}", -1);
+        return ESP_FAIL;
+    }
+
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+
+    ESP_LOGI(TAG, "Hardware info sent successfully");
+    return ESP_OK;
+}
+
 
 // ============================================================================
 // URI Handler Structures
@@ -3267,6 +3340,10 @@ static const httpd_uri_t hardware_state_uri = {
 
 static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t hardware_info_uri = {
+    .uri = "/api/hardware/info", .method = HTTP_GET, .handler = get_hardware_info_handler, .user_ctx = NULL
 };
 
 // Certificate Management API URI handlers

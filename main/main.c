@@ -17,11 +17,15 @@
 #include "dtmf_decoder.h"
 #include "ntp_sync.h"
 #include "cert_manager.h"
+#include "bootlog.h"
 
 static const char *TAG = "MAIN";
 
 void app_main(void)
 {
+    // Initialize bootlog capture FIRST to catch all subsequent logs
+    bootlog_init();
+
     ESP_LOGI(TAG, "ESP32 SIP Door Station started");
 
     // PSRAM Diagnostic
@@ -83,6 +87,9 @@ void app_main(void)
     ESP_LOGI(TAG, "SPIRAM heap free: %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     ESP_LOGI(TAG, "Largest internal block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+
+    // Finalize bootlog capture now that initialization is complete
+    bootlog_finalize();
 
     // Main loop
     while (1) {

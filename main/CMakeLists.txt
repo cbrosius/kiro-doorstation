@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS 
+    SRCS
         "main.c"
         "sip_client.c"
         "audio_handler.c"
@@ -14,6 +14,8 @@ idf_component_register(
         "auth_manager.c"
         "cert_manager.c"
         "ota_handler.c"
+        "bootlog.c"
+        "hardware_info.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
