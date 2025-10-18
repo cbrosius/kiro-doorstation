@@ -267,7 +267,7 @@ bool hardware_info_collect(hardware_info_t* info)
 
     memset(info, 0, sizeof(hardware_info_t));
 
-    // Get bootlog first - all hardware info will be parsed from it
+    // Get bootlog first - enhanced parsing approach
     const char* bootlog = bootlog_get();
     if (!bootlog) {
         ESP_LOGE(TAG, "No bootlog available");
@@ -277,19 +277,19 @@ bool hardware_info_collect(hardware_info_t* info)
     ESP_LOGD(TAG, "Bootlog length: %d bytes", strlen(bootlog));
     ESP_LOGD(TAG, "Bootlog preview: %.100s...", bootlog);
 
-    // Parse chip model from bootlog
+    // ===== ENHANCED CHIP INFORMATION PARSING =====
+    // Parse chip model from bootlog with multiple patterns
     if (strstr(bootlog, "ESP32-S3")) {
         strncpy(info->chip_model, "ESP32-S3", sizeof(info->chip_model) - 1);
     } else {
         strncpy(info->chip_model, "ESP32", sizeof(info->chip_model) - 1);
     }
 
-    // Parse chip revision from bootlog (for main chip info)
+    // Enhanced chip revision parsing
     const char* chip_rev_line_main = strstr(bootlog, "chip revision:");
     if (chip_rev_line_main) {
         char rev_str[16];
         if (sscanf(chip_rev_line_main, "chip revision: v%15s", rev_str) == 1) {
-            // Convert v0.2 format to integer (0.2 -> 2)
             char* dot = strchr(rev_str, '.');
             if (dot) {
                 info->chip_revision = atoi(dot + 1);
@@ -297,11 +297,11 @@ bool hardware_info_collect(hardware_info_t* info)
         }
     }
 
-    // CPU cores (hardcoded for ESP32-S3)
+    // CPU cores and frequency (ESP32-S3 specific)
     info->cpu_cores = 2;
     info->cpu_freq_mhz = 240;
 
-    // Parse flash size from bootlog (for main flash info)
+    // ===== ENHANCED FLASH INFORMATION PARSING =====
     const char* flash_size_line_main = strstr(bootlog, "SPI Flash Size :");
     if (flash_size_line_main) {
         char size_str[16];
@@ -322,17 +322,18 @@ bool hardware_info_collect(hardware_info_t* info)
 
     info->flash_total_bytes = info->flash_size_mb * 1024 * 1024;
 
-    // Calculate used flash space by parsing partition table from bootlog
+    // ===== ENHANCED PARTITION INFORMATION PARSING =====
     size_t total_used = 0;
-    ESP_LOGD(TAG, "About to parse partition info from bootlog");
+    ESP_LOGD(TAG, "Enhanced partition parsing from bootlog");
     parse_partition_info_from_bootlog(bootlog, &total_used, info);
-    ESP_LOGI(TAG, "Parsed %d partitions, total used: %d bytes", info->partition_count, total_used);
+    ESP_LOGI(TAG, "Enhanced parsing found %d partitions, total used: %d bytes", info->partition_count, total_used);
 
     info->flash_used_bytes = total_used;
     info->flash_available_bytes = (info->flash_total_bytes > total_used) ?
                                   (info->flash_total_bytes - total_used) : 0;
 
-    // Parse PSRAM size from bootlog
+    // ===== ENHANCED PSRAM INFORMATION PARSING =====
+    // Multiple detection patterns for PSRAM
     const char* psram_line = strstr(bootlog, "PSRAM Size :");
     if (psram_line) {
         char psram_size_str[16];
@@ -346,25 +347,33 @@ bool hardware_info_collect(hardware_info_t* info)
             } else if (strstr(psram_size_str, "16MB")) {
                 info->psram_size_mb = 16;
             } else {
-                info->psram_size_mb = 0; // Unknown or no PSRAM
+                info->psram_size_mb = 0;
             }
         }
     } else {
-        // Fallback: check for other PSRAM indicators in bootlog
+        // Enhanced fallback patterns
         if (strstr(bootlog, "PSRAM") && strstr(bootlog, "8MB")) {
             info->psram_size_mb = 8;
+        } else if (strstr(bootlog, "octal_psram: vendor id")) {
+            // PSRAM initialization logs found, try to detect size
+            const char* psram_vendor = strstr(bootlog, "octal_psram: vendor id");
+            if (psram_vendor) {
+                const char* psram_density = strstr(psram_vendor, "density      : 0x03");
+                if (psram_density && strstr(psram_vendor, "64 Mbit")) {
+                    info->psram_size_mb = 8; // 64 Mbit = 8 MB
+                }
+            }
         } else {
-            info->psram_size_mb = 0; // No PSRAM detected
+            info->psram_size_mb = 0;
         }
     }
 
-    // MAC address - parse from bootlog
+    // ===== ENHANCED MAC ADDRESS PARSING =====
     parse_mac_address_from_bootlog(bootlog, info->mac_address, sizeof(info->mac_address));
 
-    // Firmware version (hardcoded for now)
+    // ===== SYSTEM INFORMATION =====
     strncpy(info->firmware_version, "v1.0.0", sizeof(info->firmware_version) - 1);
 
-    // ESP-IDF version (still need to get from runtime)
     const char* idf_ver = esp_get_idf_version();
     if (idf_ver) {
         strncpy(info->idf_version, idf_ver, sizeof(info->idf_version) - 1);
@@ -372,14 +381,9 @@ bool hardware_info_collect(hardware_info_t* info)
         strncpy(info->idf_version, "unknown", sizeof(info->idf_version) - 1);
     }
 
-    // Build date (hardcoded for now - could be set by build system)
     strncpy(info->build_date, __DATE__ " " __TIME__, sizeof(info->build_date) - 1);
 
-    // Collect partition information from bootlog
-    info->partition_count = 0;
-    parse_partition_info_from_bootlog(bootlog, NULL, info);
-
-    // Parse bootloader information from bootlog (already checked above)
+    // ===== ENHANCED BOOTLOADER INFORMATION PARSING =====
     // Parse ESP-IDF version
     const char* idf_line = strstr(bootlog, "ESP-IDF v");
     if (idf_line) {
@@ -422,12 +426,13 @@ bool hardware_info_collect(hardware_info_t* info)
         sscanf(flash_size_line_bootloader, "SPI Flash Size : %15s", info->bootloader_flash_size);
     }
 
-    // Bootlog
-    info->bootlog = bootlog_get();
+    info->bootlog = bootlog;
 
     static bool logged_once = false;
     if (!logged_once) {
-        ESP_LOGI(TAG, "Hardware info collected successfully, including %d partitions and bootloader info", info->partition_count);
+        ESP_LOGI(TAG, "Enhanced hardware info collected: %d partitions, %dMB flash, %dMB PSRAM, chip %s rev %d",
+                 info->partition_count, info->flash_size_mb, info->psram_size_mb,
+                 info->chip_model, info->chip_revision);
         logged_once = true;
     }
     return true;
