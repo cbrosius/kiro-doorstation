@@ -19,8 +19,6 @@
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
 #include "ota_handler.h"
-#include "bootlog.h"
-#include "hardware_info.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -155,7 +153,6 @@ static const httpd_uri_t hardware_test_door_uri;
 static const httpd_uri_t hardware_test_light_uri;
 static const httpd_uri_t hardware_state_uri;
 static const httpd_uri_t hardware_test_stop_uri;
-static const httpd_uri_t hardware_info_uri;
 static const httpd_uri_t cert_info_uri;
 static const httpd_uri_t cert_upload_uri;
 static const httpd_uri_t cert_generate_uri;
@@ -236,7 +233,6 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &hardware_test_light_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_stop_uri) == ESP_OK) registered_count++; else failed_count++;
-    if (httpd_register_uri_handler(server, &hardware_info_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register Certificate Management API handlers (5 endpoints)
     if (httpd_register_uri_handler(server, &cert_info_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -2692,10 +2688,10 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
 
     if (result.authenticated) {
-        // Set session cookie with security flags
+        // Set session cookie with security flags (removed HttpOnly to allow frontend detection)
         char cookie[256];
         snprintf(cookie, sizeof(cookie),
-                 "session_id=%s; HttpOnly; Secure; SameSite=Strict; Max-Age=%d; Path=/",
+                 "session_id=%s; Secure; SameSite=Strict; Max-Age=%d; Path=/",
                  result.session_id,
                  AUTH_SESSION_TIMEOUT_SECONDS);
         httpd_resp_set_hdr(req, "Set-Cookie", cookie);
@@ -2771,7 +2767,7 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req)
     // Clear session cookie by setting Max-Age=0
     char cookie[128];
     snprintf(cookie, sizeof(cookie),
-             "session_id=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/");
+             "session_id=; Secure; SameSite=Strict; Max-Age=0; Path=/");
     httpd_resp_set_hdr(req, "Set-Cookie", cookie);
     
     // Send success response
@@ -3087,101 +3083,6 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// ============================================================================
-// Hardware Info API Handler
-// ============================================================================
-
-static esp_err_t get_hardware_info_handler(httpd_req_t *req)
-{
-    // Check authentication (don't extend session for status polling)
-    if (auth_filter(req, false) != ESP_OK) {
-        return ESP_FAIL;
-    }
-
-    httpd_resp_set_type(req, "application/json");
-
-    // Get cached hardware information (no polling needed!)
-    hardware_info_t info;
-    if (!hardware_info_get(&info)) {
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"Hardware information cache not available\"}", -1);
-        return ESP_FAIL;
-    }
-
-    // Create JSON response
-    cJSON *root = cJSON_CreateObject();
-    if (!root) {
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"Memory allocation failed\"}", -1);
-        return ESP_FAIL;
-    }
-
-    // Add hardware information
-    cJSON_AddStringToObject(root, "chip_model", info.chip_model);
-    cJSON_AddNumberToObject(root, "chip_revision", info.chip_revision);
-    cJSON_AddNumberToObject(root, "cpu_cores", info.cpu_cores);
-    cJSON_AddNumberToObject(root, "cpu_freq_mhz", info.cpu_freq_mhz);
-
-    cJSON_AddNumberToObject(root, "flash_size_mb", info.flash_size_mb);
-    cJSON_AddNumberToObject(root, "flash_total_bytes", info.flash_total_bytes);
-    cJSON_AddNumberToObject(root, "flash_used_bytes", info.flash_used_bytes);
-    cJSON_AddNumberToObject(root, "flash_available_bytes", info.flash_available_bytes);
-
-    cJSON_AddStringToObject(root, "mac_address", info.mac_address);
-    cJSON_AddStringToObject(root, "firmware_version", info.firmware_version);
-    cJSON_AddStringToObject(root, "idf_version", info.idf_version);
-    cJSON_AddStringToObject(root, "build_date", info.build_date);
-
-    // Add bootloader information
-    cJSON_AddStringToObject(root, "bootloader_version", info.bootloader_version);
-    cJSON_AddStringToObject(root, "bootloader_compile_time", info.bootloader_compile_time);
-    cJSON_AddStringToObject(root, "bootloader_chip_revision", info.bootloader_chip_revision);
-    cJSON_AddStringToObject(root, "bootloader_efuse_revision", info.bootloader_efuse_revision);
-    cJSON_AddStringToObject(root, "bootloader_spi_speed", info.bootloader_spi_speed);
-    cJSON_AddStringToObject(root, "bootloader_spi_mode", info.bootloader_spi_mode);
-    cJSON_AddStringToObject(root, "bootloader_flash_size", info.bootloader_flash_size);
-
-    // Add partition information
-    cJSON *partitions_array = cJSON_CreateArray();
-    if (partitions_array) {
-        for (uint32_t i = 0; i < info.partition_count; i++) {
-            cJSON *partition = cJSON_CreateObject();
-            if (partition) {
-                cJSON_AddStringToObject(partition, "label", info.partitions[i].label);
-                cJSON_AddStringToObject(partition, "type", info.partitions[i].type);
-                cJSON_AddStringToObject(partition, "subtype", info.partitions[i].subtype);
-                cJSON_AddNumberToObject(partition, "address", info.partitions[i].address);
-                cJSON_AddNumberToObject(partition, "size", info.partitions[i].size);
-                cJSON_AddNumberToObject(partition, "used_bytes", info.partitions[i].used_bytes);
-                cJSON_AddItemToArray(partitions_array, partition);
-            }
-        }
-        cJSON_AddItemToObject(root, "partitions", partitions_array);
-    }
-
-    // Add bootlog if available
-    if (info.bootlog && strlen(info.bootlog) > 0) {
-        cJSON_AddStringToObject(root, "bootlog", info.bootlog);
-    } else {
-        cJSON_AddStringToObject(root, "bootlog", "");
-    }
-
-    // Serialize and send response
-    char *json_string = cJSON_Print(root);
-    if (!json_string) {
-        cJSON_Delete(root);
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"JSON serialization failed\"}", -1);
-        return ESP_FAIL;
-    }
-
-    httpd_resp_send(req, json_string, strlen(json_string));
-    free(json_string);
-    cJSON_Delete(root);
-
-    // Remove excessive logging for hardware info endpoint
-    return ESP_OK;
-}
 
 
 // ============================================================================
@@ -3369,9 +3270,6 @@ static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
 };
 
-static const httpd_uri_t hardware_info_uri = {
-    .uri = "/api/hardware/info", .method = HTTP_GET, .handler = get_hardware_info_handler, .user_ctx = NULL
-};
 
 // Certificate Management API URI handlers
 static const httpd_uri_t cert_info_uri = {

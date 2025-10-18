@@ -17,8 +17,6 @@
 #include "dtmf_decoder.h"
 #include "ntp_sync.h"
 #include "cert_manager.h"
-#include "bootlog.h"
-#include "hardware_info.h"
 #include "auth_manager.h"
 
 static const char *TAG = "MAIN";
@@ -38,8 +36,6 @@ static void session_cleanup_task(void *pvParameters) {
 
 void app_main(void)
 {
-    // Initialize bootlog capture FIRST to catch all subsequent logs
-    bootlog_init();
 
     ESP_LOGI(TAG, "ESP32 SIP Door Station started");
 
@@ -106,11 +102,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Largest internal block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
-    // Finalize bootlog capture now that initialization is complete
-    bootlog_finalize();
 
-    // Initialize hardware info cache (one-time parsing of bootlog)
-    hardware_info_init_cache();
 
     // Start session cleanup task
     xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);
