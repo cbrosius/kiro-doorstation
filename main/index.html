@@ -10467,97 +10467,11 @@
           `;
 
           // Start polling for device availability
-          // startDeviceReconnectPolling();
           startReconnectPolling();
         }
       }, 1000);
     }
 
-    /**
-     * Poll device for availability and redirect to login page when ready
-     * OTA updates invalidate all RAM-based sessions, so redirect to login
-     */
-    function startDeviceReconnectPolling() {
-      let attempts = 0;
-      const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
-      
-      // Check if session was invalidated by OTA update
-      const sessionInvalidated = sessionStorage.getItem('ota_session_invalidated') === 'true';
-      console.log('OTA reconnect polling started, session invalidated:', sessionInvalidated);
-
-      const pollInterval = setInterval(async () => {
-        attempts++;
-
-        try {
-          // Try to fetch system state
-          const response = await fetch('/api/system/state', {
-            method: 'GET',
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(2000) // 2 second timeout
-          });
-
-          if (response.ok) {
-            // Device is back online!
-            clearInterval(pollInterval);
-            console.log('Device back online after OTA, redirecting to login page');
-
-            // Clear session invalidation flag
-            sessionStorage.removeItem('ota_session_invalidated');
-
-            // Show success message briefly
-            const overlay = document.querySelector('div[style*="z-index: 9999"]');
-            if (overlay) {
-              const countdownBox = overlay.querySelector('div');
-              if (countdownBox) {
-                countdownBox.innerHTML = `
-                  <div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div>
-                  <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
-                    Device Online!
-                  </h2>
-                  <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
-                    ${sessionInvalidated ? 'Redirecting to login page...' : 'Reloading page...'}
-                  </p>
-                `;
-              }
-            }
-
-            // Redirect to login page (OTA updates invalidate all sessions)
-            setTimeout(() => {
-              window.location.href = '/login.html';
-            }, 1000);
-          }
-        } catch (error) {
-          // Device not ready yet, continue polling
-          console.log(`Reconnect attempt ${attempts}/${maxAttempts}...`);
-        }
-
-        // Give up after max attempts
-        if (attempts >= maxAttempts) {
-          clearInterval(pollInterval);
-          console.log('Reconnect timeout - redirecting to login page');
-
-          const overlay = document.querySelector('div[style*="z-index: 9999"]');
-          if (overlay) {
-            const countdownBox = overlay.querySelector('div');
-            if (countdownBox) {
-              countdownBox.innerHTML = `
-                <div style="font-size: 64px; margin-bottom: var(--spacing-md);">⚠️</div>
-                <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-warning); margin-bottom: var(--spacing-md);">
-                  Connection Timeout
-                </h2>
-                <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
-                  Device is taking longer than expected to restart.
-                </p>
-                <button class="btn btn-primary" onclick="window.location.href='/login.html'">
-                  <span>🔄</span>
-                  <span>Go to Login Page</span>
-                </button>
-              `;
-            }
-          }
-        }
-      }, 500); // Poll every 500ms
-    }
 
     /**
      * Handle OTA rollback
