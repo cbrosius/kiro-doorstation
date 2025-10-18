@@ -88,24 +88,23 @@ esp_err_t auth_filter(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
-    // Extract session cookie
+    // Extract session cookie - optimized parsing
     char session_id[AUTH_SESSION_ID_SIZE] = {0};
     size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
-    
-    if (cookie_len > 0) {
+
+    if (cookie_len > 0 && cookie_len < 512) {  // Reasonable cookie size limit
         char* cookie_str = malloc(cookie_len + 1);
         if (cookie_str) {
             if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
-                // Parse session_id from cookie string
-                // Cookie format: "session_id=<value>; other=value"
-                const char* session_start = strstr(cookie_str, "session_id=");
+                // Optimized cookie parsing - look for session_id= directly
+                char* session_start = strstr(cookie_str, "session_id=");
                 if (session_start) {
-                    session_start += strlen("session_id=");
-                    const char* session_end = strchr(session_start, ';');
+                    session_start += 11; // Skip "session_id="
+                    char* session_end = strchr(session_start, ';');
                     size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
-                    
-                    if (session_len < AUTH_SESSION_ID_SIZE) {
-                        strncpy(session_id, session_start, session_len);
+
+                    if (session_len > 0 && session_len < AUTH_SESSION_ID_SIZE) {
+                        memcpy(session_id, session_start, session_len);
                         session_id[session_len] = '\0';
                     }
                 }

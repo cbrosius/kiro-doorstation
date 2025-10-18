@@ -37,6 +37,15 @@ static int bootlog_vprintf(const char *format, va_list args)
 
                 if (written > 0 && bootlog_length + written < BOOTLOG_MAX_SIZE) {
                     bootlog_length += written;
+
+                    // Check if this log message indicates we should stop capturing
+                    // Look for "MAIN: All components initialized"
+                    char temp_buffer[256];
+                    vsnprintf(temp_buffer, sizeof(temp_buffer), format, args);
+                    if (strstr(temp_buffer, "MAIN: All components initialized")) {
+                        bootlog_active = false;
+                        ESP_LOGI(TAG, "Bootlog capture stopped at 'MAIN: All components initialized'");
+                    }
                 }
             }
             xSemaphoreGive(bootlog_mutex);
@@ -70,7 +79,7 @@ void bootlog_init(void)
 
 const char* bootlog_get(void)
 {
-    if (!bootlog_active || bootlog_length == 0) {
+    if (bootlog_length == 0) {
         return NULL;
     }
 
@@ -86,13 +95,13 @@ void bootlog_finalize(void)
 {
     ESP_LOGI(TAG, "Finalizing bootlog capture");
 
-    bootlog_active = false;
-
-    // Restore original vprintf handler
+    // Restore original vprintf handler BEFORE setting active to false
     if (original_vprintf) {
         esp_log_set_vprintf(original_vprintf);
         original_vprintf = NULL;
     }
+
+    bootlog_active = false;
 
     // Ensure buffer is null-terminated
     if (bootlog_length < BOOTLOG_MAX_SIZE) {

@@ -1,13 +1,172 @@
 #include "hardware_info.h"
 #include "esp_system.h"
-#include "esp_partition.h"
-#include "esp_wifi.h"
 #include "esp_log.h"
 #include "bootlog.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static const char *TAG = "hardware_info";
+
+// Parse WiFi MAC address from bootlog
+static void parse_mac_address_from_bootlog(const char* bootlog, char* mac_address, size_t mac_address_size)
+{
+    if (!bootlog || !mac_address) {
+        if (mac_address && mac_address_size > 0) {
+            strncpy(mac_address, "00:00:00:00:00:00", mac_address_size - 1);
+            mac_address[mac_address_size - 1] = '\0';
+        }
+        return;
+    }
+
+    // Look for MAC address in bootlog - format: "MAC address: xx:xx:xx:xx:xx:xx"
+    const char* mac_line = strstr(bootlog, "MAC address:");
+    if (mac_line) {
+        // Try to extract MAC address from the line
+        char temp_mac[18];
+        if (sscanf(mac_line, "MAC address: %17s", temp_mac) == 1) {
+            strncpy(mac_address, temp_mac, mac_address_size - 1);
+            mac_address[mac_address_size - 1] = '\0';
+            ESP_LOGD(TAG, "Parsed MAC address from bootlog: %s", mac_address);
+            return;
+        }
+    }
+
+    // Fallback: look for other MAC address patterns
+    const char* wifi_mac_line = strstr(bootlog, "WiFi MAC:");
+    if (wifi_mac_line) {
+        char temp_mac[18];
+        if (sscanf(wifi_mac_line, "WiFi MAC: %17s", temp_mac) == 1) {
+            strncpy(mac_address, temp_mac, mac_address_size - 1);
+            mac_address[mac_address_size - 1] = '\0';
+            ESP_LOGD(TAG, "Parsed WiFi MAC address from bootlog: %s", mac_address);
+            return;
+        }
+    }
+
+    // If not found, use default
+    ESP_LOGW(TAG, "MAC address not found in bootlog, using default");
+    strncpy(mac_address, "00:00:00:00:00:00", mac_address_size - 1);
+    mac_address[mac_address_size - 1] = '\0';
+}
+
+// Parse a single partition line from bootlog
+static void parse_partition_line(const char* line, size_t* total_used, hardware_info_t* info)
+{
+    if (!line || strlen(line) < 10) return;
+
+    // Skip header line and end marker
+    if (strstr(line, "## Label") || strstr(line, "End of partition table")) {
+        return;
+    }
+
+    // Expected format: "  0 nvs              WiFi data        01 02 00009000 00010000"
+    // Format: "index label             usage            type subtype address  size"
+    int index;
+    char label[32], type_code[8], subtype_code[8];
+    unsigned int address, size;
+
+    // Try to parse the actual partition table format
+    if (sscanf(line, "%d %31s %*s %*s %*s %*s %s %s %x %x",
+               &index, label, type_code, subtype_code, &address, &size) >= 4) {
+
+        // Convert type and subtype codes to strings
+        char type_str[16] = "unknown";
+        char subtype_str[16] = "unknown";
+
+        // Parse type code (first two hex digits)
+        int type = 0, subtype = 0;
+        sscanf(type_code, "%x", &type);
+        sscanf(subtype_code, "%x", &subtype);
+
+        // Convert type to string
+        if (type == 0x00) {
+            strcpy(type_str, "app");
+        } else if (type == 0x01) {
+            strcpy(type_str, "data");
+        }
+
+        // Convert subtype to string based on type
+        if (type == 0x00) { // ESP_PARTITION_TYPE_APP
+            if (subtype == 0x10) strcpy(subtype_str, "ota_0");
+            else if (subtype == 0x11) strcpy(subtype_str, "ota_1");
+            else if (subtype == 0x00) strcpy(subtype_str, "factory");
+            else snprintf(subtype_str, sizeof(subtype_str), "0x%02x", subtype);
+        } else if (type == 0x01) { // ESP_PARTITION_TYPE_DATA
+            if (subtype == 0x02) strcpy(subtype_str, "nvs");
+            else if (subtype == 0x01) strcpy(subtype_str, "phy");
+            else if (subtype == 0x82) strcpy(subtype_str, "spiffs");
+            else if (subtype == 0x00) strcpy(subtype_str, "otadata");
+            else snprintf(subtype_str, sizeof(subtype_str), "0x%02x", subtype);
+        }
+
+        if (total_used) {
+            *total_used += size;
+        }
+
+        if (info && info->partition_count < 16) {
+            partition_info_t *part_info = &info->partitions[info->partition_count];
+
+            // Copy partition details
+            strncpy(part_info->label, label, sizeof(part_info->label) - 1);
+            part_info->label[sizeof(part_info->label) - 1] = '\0';
+
+            strncpy(part_info->type, type_str, sizeof(part_info->type) - 1);
+            part_info->type[sizeof(part_info->type) - 1] = '\0';
+
+            strncpy(part_info->subtype, subtype_str, sizeof(part_info->subtype) - 1);
+            part_info->subtype[sizeof(part_info->subtype) - 1] = '\0';
+
+            part_info->address = address;
+            part_info->size = size;
+            part_info->used_bytes = -1; // -1 means unknown
+
+            info->partition_count++;
+
+            ESP_LOGD(TAG, "Parsed partition: %s (%s:%s) at 0x%x, size 0x%x",
+                     label, type_str, subtype_str, address, size);
+        }
+    }
+}
+
+// Parse partition information from bootlog text
+// This replaces the need for esp_partition_find() calls that could cause deadlocks
+static void parse_partition_info_from_bootlog(const char* bootlog, size_t* total_used, hardware_info_t* info)
+{
+    if (!bootlog) return;
+
+    // Look for partition table in bootlog
+    const char* partition_section = strstr(bootlog, "Partition Table:");
+    if (!partition_section) {
+        ESP_LOGW(TAG, "No partition table found in bootlog");
+        return;
+    }
+
+    // Skip "Partition Table:" line and start parsing
+    const char* line_start = partition_section + strlen("Partition Table:");
+    char line[256];
+    int line_pos = 0;
+
+    // Parse each partition line
+    while (*line_start && (info ? info->partition_count < 16 : true)) {
+        if (*line_start == '\n' || *line_start == '\r') {
+            if (line_pos > 0) {
+                line[line_pos] = '\0';
+                parse_partition_line(line, total_used, info);
+                line_pos = 0;
+            }
+        } else if (line_pos < sizeof(line) - 1) {
+            line[line_pos++] = *line_start;
+        }
+        line_start++;
+    }
+
+    // Handle last line if no newline
+    if (line_pos > 0 && (info ? info->partition_count < 16 : true)) {
+        line[line_pos] = '\0';
+        parse_partition_line(line, total_used, info);
+    }
+}
 
 bool hardware_info_collect(hardware_info_t* info)
 {
@@ -70,30 +229,42 @@ bool hardware_info_collect(hardware_info_t* info)
 
     info->flash_total_bytes = info->flash_size_mb * 1024 * 1024;
 
-    // Calculate used flash space from partitions
+    // Calculate used flash space by parsing partition table from bootlog
     size_t total_used = 0;
-    esp_partition_iterator_t it_calc = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
-    while (it_calc != NULL) {
-        const esp_partition_t *part = esp_partition_get(it_calc);
-        total_used += part->size;
-        it_calc = esp_partition_next(it_calc);
-    }
-    esp_partition_iterator_release(it_calc);
+    parse_partition_info_from_bootlog(bootlog, &total_used, info);
 
     info->flash_used_bytes = total_used;
     info->flash_available_bytes = (info->flash_total_bytes > total_used) ?
                                   (info->flash_total_bytes - total_used) : 0;
 
-    // MAC address (still need to get from hardware)
-    uint8_t mac[6] = {0};
-    esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
-    if (ret == ESP_OK) {
-        snprintf(info->mac_address, sizeof(info->mac_address),
-                 "%02X:%02X:%02X:%02X:%02X:%02X",
-                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    // Parse PSRAM size from bootlog
+    const char* psram_line = strstr(bootlog, "PSRAM Size :");
+    if (psram_line) {
+        char psram_size_str[16];
+        if (sscanf(psram_line, "PSRAM Size : %15s", psram_size_str) == 1) {
+            if (strstr(psram_size_str, "8MB")) {
+                info->psram_size_mb = 8;
+            } else if (strstr(psram_size_str, "4MB")) {
+                info->psram_size_mb = 4;
+            } else if (strstr(psram_size_str, "2MB")) {
+                info->psram_size_mb = 2;
+            } else if (strstr(psram_size_str, "16MB")) {
+                info->psram_size_mb = 16;
+            } else {
+                info->psram_size_mb = 0; // Unknown or no PSRAM
+            }
+        }
     } else {
-        strncpy(info->mac_address, "00:00:00:00:00:00", sizeof(info->mac_address) - 1);
+        // Fallback: check for other PSRAM indicators in bootlog
+        if (strstr(bootlog, "PSRAM") && strstr(bootlog, "8MB")) {
+            info->psram_size_mb = 8;
+        } else {
+            info->psram_size_mb = 0; // No PSRAM detected
+        }
     }
+
+    // MAC address - parse from bootlog
+    parse_mac_address_from_bootlog(bootlog, info->mac_address, sizeof(info->mac_address));
 
     // Firmware version (hardcoded for now)
     strncpy(info->firmware_version, "v1.0.0", sizeof(info->firmware_version) - 1);
@@ -109,66 +280,9 @@ bool hardware_info_collect(hardware_info_t* info)
     // Build date (hardcoded for now - could be set by build system)
     strncpy(info->build_date, __DATE__ " " __TIME__, sizeof(info->build_date) - 1);
 
-    // Collect partition information
+    // Collect partition information from bootlog
     info->partition_count = 0;
-    esp_partition_iterator_t it_part = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
-
-    while (it_part != NULL && info->partition_count < 16) {
-        const esp_partition_t *part = esp_partition_get(it_part);
-        partition_info_t *part_info = &info->partitions[info->partition_count];
-
-        // Copy partition details
-        strncpy(part_info->label, part->label, sizeof(part_info->label) - 1);
-        part_info->label[sizeof(part_info->label) - 1] = '\0';
-
-        // Set type string
-        const char *type_str = "unknown";
-        if (part->type == ESP_PARTITION_TYPE_APP) {
-            type_str = "app";
-        } else if (part->type == ESP_PARTITION_TYPE_DATA) {
-            type_str = "data";
-        }
-        strncpy(part_info->type, type_str, sizeof(part_info->type) - 1);
-
-        // Set subtype string
-        char subtype_str[16];
-        if (part->type == ESP_PARTITION_TYPE_APP) {
-            if (part->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY) {
-                strcpy(subtype_str, "factory");
-            } else if (part->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-                strcpy(subtype_str, "ota_0");
-            } else if (part->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_1) {
-                strcpy(subtype_str, "ota_1");
-            } else {
-                snprintf(subtype_str, sizeof(subtype_str), "0x%02x", part->subtype);
-            }
-        } else if (part->type == ESP_PARTITION_TYPE_DATA) {
-            if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_NVS) {
-                strcpy(subtype_str, "nvs");
-            } else if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_PHY) {
-                strcpy(subtype_str, "phy");
-            } else if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT) {
-                strcpy(subtype_str, "fat");
-            } else if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS) {
-                strcpy(subtype_str, "spiffs");
-            } else {
-                snprintf(subtype_str, sizeof(subtype_str), "0x%02x", part->subtype);
-            }
-        } else {
-            snprintf(subtype_str, sizeof(subtype_str), "0x%02x", part->subtype);
-        }
-        strncpy(part_info->subtype, subtype_str, sizeof(part_info->subtype) - 1);
-
-        part_info->address = part->address;
-        part_info->size = part->size;
-
-        // Try to get used space for NVS partitions
-        part_info->used_bytes = -1; // -1 means unknown
-
-        info->partition_count++;
-        it_part = esp_partition_next(it_part);
-    }
-    esp_partition_iterator_release(it_part);
+    parse_partition_info_from_bootlog(bootlog, NULL, info);
 
     // Parse bootloader information from bootlog (already checked above)
     // Parse ESP-IDF version
@@ -216,6 +330,10 @@ bool hardware_info_collect(hardware_info_t* info)
     // Bootlog
     info->bootlog = bootlog_get();
 
-    ESP_LOGI(TAG, "Hardware info collected successfully, including %d partitions and bootloader info", info->partition_count);
+    static bool logged_once = false;
+    if (!logged_once) {
+        ESP_LOGI(TAG, "Hardware info collected successfully, including %d partitions and bootloader info", info->partition_count);
+        logged_once = true;
+    }
     return true;
 }

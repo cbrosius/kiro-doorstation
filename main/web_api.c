@@ -1486,11 +1486,7 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
-    // Chip model (hardcoded for ESP32-S3)
-    cJSON_AddStringToObject(root, "chip_model", "ESP32-S3");
-    cJSON_AddNumberToObject(root, "chip_revision", 0);
-    cJSON_AddNumberToObject(root, "cpu_cores", 2);
-    cJSON_AddNumberToObject(root, "cpu_freq_mhz", 240);
+    // Get actual flash size - will be calculated from partitions
     
     // Get actual flash size - will be calculated from partitions
     uint32_t flash_size = 0;
@@ -1642,12 +1638,15 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
     // System info
     uint32_t free_heap = esp_get_free_heap_size();
     cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
-    
+
     uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
     cJSON_AddNumberToObject(root, "uptime_seconds", uptime_ms / 1000);
-    
+
     // Firmware version
     cJSON_AddStringToObject(root, "firmware_version", "v1.0.0");
+
+    // PSRAM information (not available in ESP32-S3)
+    cJSON_AddStringToObject(root, "psram_size", "Not Available");
 
     char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
@@ -3179,7 +3178,7 @@ static esp_err_t get_hardware_info_handler(httpd_req_t *req)
     free(json_string);
     cJSON_Delete(root);
 
-    ESP_LOGI(TAG, "Hardware info sent successfully");
+    // Remove excessive logging for hardware info endpoint
     return ESP_OK;
 }
 

@@ -27,6 +27,7 @@ typedef struct {
     uint32_t flash_total_bytes;
     uint32_t flash_used_bytes;
     uint32_t flash_available_bytes;
+    uint32_t psram_size_mb;  // PSRAM size in MB (0 if not available)
 
     // MAC address
     char mac_address[18];
