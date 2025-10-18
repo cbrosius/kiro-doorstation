@@ -10720,7 +10720,7 @@
           `;
 
           // Start polling for device availability
-          startCertificateReconnectPolling();
+          startReconnectPolling();
         }
       }, 1000);
     }
@@ -10729,27 +10729,36 @@
      * Poll device for availability after certificate restart and redirect to login
      * Certificate restarts invalidate all sessions, so redirect to login page
      */
-    function startCertificateReconnectPolling() {
+    function startReconnectPolling() {
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
 
-      console.log('Certificate restart reconnect polling started');
+      console.log('Restart reconnect polling started');
 
       const pollInterval = setInterval(async () => {
         attempts++;
 
         try {
           // Try to fetch system state
-          const response = await fetch('/api/system/state', {
-            method: 'GET',
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(2000) // 2 second timeout
-          });
-
-          if (response.ok) {
+          // const response = await fetch('/api/system/state', {
+          //   method: 'GET',
+          //   cache: 'no-cache',
+          //   signal: AbortSignal.timeout(2000) // 2 second timeout
+          // });
+          fetch('/')
+              .then(response => {
+                // If this block is reached, the device is online.
+                console.log('Device is back online. Redirecting to login page...');
+                window.location.href = '/login.html';
+              })
+              .catch(err => {
+                // This block will only be reached on a network error.
+                throw new Error('Device not ready yet');
+              }); 
+          if (response) {
             // Device is back online and session is valid!
             clearInterval(pollInterval);
-            console.log('Device back online after certificate restart, redirecting to login page');
+            console.log('Device back online after restart, redirecting to login page');
 
             // Clear certificate restart flag
             sessionStorage.removeItem('cert_restart_pending');
@@ -10778,7 +10787,7 @@
           } else if (response.status === 401) {
             // Device is back online but session is invalid (expected after restart)
             clearInterval(pollInterval);
-            console.log('Device back online after certificate restart (401 received), redirecting to login page');
+            console.log('Device back online after restart (401 received), redirecting to login page');
 
             // Clear certificate restart flag
             sessionStorage.removeItem('cert_restart_pending');
