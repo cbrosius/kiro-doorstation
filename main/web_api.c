@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "esp_heap_caps.h"
 
 static const char *TAG = "web_api";
 

@@ -5,6 +5,7 @@
 #include "freertos/event_groups.h"
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "nvs_flash.h"
 
 #include "wifi_manager.h"
@@ -22,7 +23,15 @@ static const char *TAG = "MAIN";
 void app_main(void)
 {
     ESP_LOGI(TAG, "ESP32 SIP Door Station started");
-    
+
+    // PSRAM Diagnostic
+    ESP_LOGI(TAG, "PSRAM Diagnostic:");
+    ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Internal heap free: %d bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "SPIRAM heap free: %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    ESP_LOGI(TAG, "Largest internal block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -66,7 +75,15 @@ void app_main(void)
     sip_client_init();
     
     ESP_LOGI(TAG, "All components initialized");
-    
+
+    // Final PSRAM Diagnostic after initialization
+    ESP_LOGI(TAG, "Post-init PSRAM Diagnostic:");
+    ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Internal heap free: %d bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "SPIRAM heap free: %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    ESP_LOGI(TAG, "Largest internal block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+
     // Main loop
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
