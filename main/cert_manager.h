@@ -16,6 +16,8 @@ extern "C" {
 #define CERT_PEM_MAX_SIZE 4096
 #define CERT_KEY_PEM_MAX_SIZE 2048
 #define CERT_CHAIN_PEM_MAX_SIZE 4096
+#define CERT_SAN_MAX_LEN 256  // Subject Alternative Name
+#define CERT_SAN_COUNT_MAX 16 // Maximum number of SAN entries
 
 // Certificate expiration warning thresholds
 #define CERT_EXPIRING_SOON_DAYS 30
@@ -31,6 +33,9 @@ typedef struct {
     uint32_t days_until_expiry;
     bool is_expired;
     bool is_expiring_soon;  // < 30 days
+    // Subject Alternative Name (SAN) support
+    char san_entries[CERT_SAN_COUNT_MAX][CERT_SAN_MAX_LEN];
+    int san_count;
 } cert_info_t;
 
 // Certificate storage structure

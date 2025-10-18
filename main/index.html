@@ -7470,7 +7470,7 @@
     }
 
     /**
-     * Task 18: Upload custom certificate
+     * Task 18: Upload custom certificate with enhanced restart handling
      */
     async function uploadCustomCertificate() {
       const button = document.getElementById('upload-cert-btn');
@@ -7488,10 +7488,20 @@
         return;
       }
 
-      // Confirm action
+      // Confirm action with detailed warning
       const confirmed = await showConfirmDialog(
         'Upload Custom Certificate',
-        'This will replace the current certificate. The web server will restart and you may need to reconnect. Continue?',
+        `<strong>⚠️ Certificate Upload Warning:</strong><br><br>` +
+        `• This will replace the current certificate<br>` +
+        `• The web server will restart automatically<br>` +
+        `• You will lose connection temporarily<br>` +
+        `• All active sessions will be invalidated<br>` +
+        `• You will need to log in again after restart<br><br>` +
+        `<strong>File:</strong> ${certFileInput.files[0].name}<br>` +
+        `<strong>Key:</strong> ${keyFileInput.files[0].name}<br><br>` +
+        `Do you want to proceed?`,
+        'Upload and Restart',
+        'Cancel',
         'warning'
       );
 
@@ -7534,17 +7544,20 @@
         });
 
         if (response && response.success) {
-          showToast('Certificate uploaded successfully! Web server will restart...', 'success');
+          // Certificate uploaded successfully - device will restart
+          showToast('Certificate uploaded successfully! Device will restart in 3 seconds...', 'success');
 
           // Clear file inputs
           certFileInput.value = '';
           keyFileInput.value = '';
           if (chainFileInput) chainFileInput.value = '';
 
-          // Reload certificate info after a delay
-          setTimeout(() => {
-            loadCertificateInfo();
-          }, 3000);
+          // Mark session as invalidated for certificate restart
+          sessionStorage.setItem('cert_restart_pending', 'true');
+
+          // Show restart countdown and handle reconnection
+          showCertificateRestartCountdown();
+
         } else {
           showToast(response?.message || 'Failed to upload certificate', 'error');
         }
@@ -10628,6 +10641,201 @@
       loadOTAInfo();
       setupOTAFileHandlers();
       console.log('OTA section initialized');
+    }
+
+    /**
+     * Show certificate restart countdown and handle reconnection
+     * Similar to OTA restart but specifically for certificate uploads
+     */
+    function showCertificateRestartCountdown() {
+      // Create countdown overlay
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      const countdownBox = document.createElement('div');
+      countdownBox.style.cssText = `
+        background-color: var(--color-surface);
+        border-radius: var(--border-radius-lg);
+        padding: var(--spacing-xl);
+        text-align: center;
+        max-width: 500px;
+        box-shadow: var(--shadow-xl);
+      `;
+
+      countdownBox.innerHTML = `
+        <div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔐</div>
+        <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
+          Certificate Updated Successfully!
+        </h2>
+        <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+          Device is restarting with new certificate...
+        </p>
+        <div style="font-size: 48px; font-weight: var(--font-weight-bold); color: var(--color-primary); margin-bottom: var(--spacing-md);">
+          <span id="cert-restart-countdown">3</span>s
+        </div>
+        <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+          You will need to log in again after restart
+        </p>
+      `;
+
+      overlay.appendChild(countdownBox);
+      document.body.appendChild(overlay);
+
+      // Countdown from 3 to 0
+      let countdown = 3;
+      const countdownElement = document.getElementById('cert-restart-countdown');
+
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdownElement) {
+          countdownElement.textContent = countdown;
+        }
+
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+
+          // Change message to "waiting for device"
+          countdownBox.innerHTML = `
+            <div style="font-size: 64px; margin-bottom: var(--spacing-md); animation: spin 2s linear infinite;">⏳</div>
+            <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
+              Waiting for Device...
+            </h2>
+            <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+              Device is restarting with new certificate. This may take up to 30 seconds.
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+              Attempting to reconnect...
+            </p>
+          `;
+
+          // Start polling for device availability
+          startCertificateReconnectPolling();
+        }
+      }, 1000);
+    }
+
+    /**
+     * Poll device for availability after certificate restart and redirect to login
+     * Certificate restarts invalidate all sessions, so redirect to login page
+     */
+    function startCertificateReconnectPolling() {
+      let attempts = 0;
+      const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
+
+      console.log('Certificate restart reconnect polling started');
+
+      const pollInterval = setInterval(async () => {
+        attempts++;
+
+        try {
+          // Try to fetch system state
+          const response = await fetch('/api/system/state', {
+            method: 'GET',
+            cache: 'no-cache',
+            signal: AbortSignal.timeout(2000) // 2 second timeout
+          });
+
+          if (response.ok) {
+            // Device is back online and session is valid!
+            clearInterval(pollInterval);
+            console.log('Device back online after certificate restart, redirecting to login page');
+
+            // Clear certificate restart flag
+            sessionStorage.removeItem('cert_restart_pending');
+
+            // Show success message briefly
+            const overlay = document.querySelector('div[style*="z-index: 9999"]');
+            if (overlay) {
+              const countdownBox = overlay.querySelector('div');
+              if (countdownBox) {
+                countdownBox.innerHTML = `
+                  <div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div>
+                  <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
+                    Device Online!
+                  </h2>
+                  <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
+                    Redirecting to login page...
+                  </p>
+                `;
+              }
+            }
+
+            // Redirect to login page (certificate restarts invalidate all sessions)
+            setTimeout(() => {
+              window.location.href = '/login.html';
+            }, 1000);
+          } else if (response.status === 401) {
+            // Device is back online but session is invalid (expected after restart)
+            clearInterval(pollInterval);
+            console.log('Device back online after certificate restart (401 received), redirecting to login page');
+
+            // Clear certificate restart flag
+            sessionStorage.removeItem('cert_restart_pending');
+
+            // Show success message briefly
+            const overlay = document.querySelector('div[style*="z-index: 9999"]');
+            if (overlay) {
+              const countdownBox = overlay.querySelector('div');
+              if (countdownBox) {
+                countdownBox.innerHTML = `
+                  <div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔐</div>
+                  <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
+                    Device Online!
+                  </h2>
+                  <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
+                    Session expired. Redirecting to login page...
+                  </p>
+                `;
+              }
+            }
+
+            // Redirect to login page (certificate restarts invalidate all sessions)
+            setTimeout(() => {
+              window.location.href = '/login.html';
+            }, 1000);
+          }
+        } catch (error) {
+          // Device not ready yet, continue polling
+          console.log(`Certificate reconnect attempt ${attempts}/${maxAttempts}...`);
+        }
+
+        // Give up after max attempts
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          console.log('Certificate reconnect timeout - redirecting to login page');
+
+          const overlay = document.querySelector('div[style*="z-index: 9999"]');
+          if (overlay) {
+            const countdownBox = overlay.querySelector('div');
+            if (countdownBox) {
+              countdownBox.innerHTML = `
+                <div style="font-size: 64px; margin-bottom: var(--spacing-md);">⚠️</div>
+                <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-warning); margin-bottom: var(--spacing-md);">
+                  Connection Timeout
+                </h2>
+                <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+                  Device is taking longer than expected to restart.
+                </p>
+                <button class="btn btn-primary" onclick="window.location.href='/login.html'">
+                  <span>🔐</span>
+                  <span>Go to Login Page</span>
+                </button>
+              `;
+            }
+          }
+        }
+      }, 500); // Poll every 500ms
     }
 
     /**

@@ -138,9 +138,10 @@ esp_err_t cert_get_info(cert_info_t* info) {
     if (!info) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     // Initialize structure
     memset(info, 0, sizeof(cert_info_t));
+    info->san_count = 0;
     
     // Check if certificate exists
     if (!cert_exists()) {
@@ -299,12 +300,38 @@ esp_err_t cert_get_info(cert_info_t* info) {
     
     // Check if expiring soon (< 30 days)
     info->is_expiring_soon = (!info->is_expired && info->days_until_expiry < CERT_EXPIRING_SOON_DAYS);
-    
+
+    // Extract Subject Alternative Name (SAN) extension
+    ESP_LOGI(TAG, "Extracting SAN information");
+    info->san_count = 0;
+
+    // For now, add the Common Name as the primary SAN entry
+    // This is a basic implementation - full SAN parsing would require
+    // more complex ASN.1 parsing of the certificate extensions
+    if (strlen(info->common_name) > 0) {
+        strncpy(info->san_entries[0], info->common_name, CERT_SAN_MAX_LEN - 1);
+        info->san_entries[0][CERT_SAN_MAX_LEN - 1] = '\0';
+        info->san_count = 1;
+        ESP_LOGI(TAG, "Added CN as SAN entry: %s", info->san_entries[0]);
+    }
+
+    // TODO: Implement full SAN extension parsing using mbedtls_x509_get_ext
+    // and proper ASN.1 decoding for complete SAN support
+    ESP_LOGI(TAG, "Total SAN entries found: %d (basic implementation)", info->san_count);
+
     // Clean up
     mbedtls_x509_crt_free(&crt);
     
-    ESP_LOGI(TAG, "Certificate info retrieved: CN=%s, Issuer=%s, Days until expiry=%d, Expired=%d, Expiring soon=%d", 
-             info->common_name, info->issuer, info->days_until_expiry, info->is_expired, info->is_expiring_soon);
+    ESP_LOGI(TAG, "Certificate info retrieved: CN=%s, Issuer=%s, Days until expiry=%d, Expired=%d, Expiring soon=%d, SAN count=%d",
+             info->common_name, info->issuer, info->days_until_expiry, info->is_expired, info->is_expiring_soon, info->san_count);
+
+    // Log SAN entries if present
+    for (int i = 0; i < info->san_count && i < 3; i++) {  // Log first 3 SAN entries
+        ESP_LOGI(TAG, "  SAN[%d]: %s", i, info->san_entries[i]);
+    }
+    if (info->san_count > 3) {
+        ESP_LOGI(TAG, "  ... and %d more SAN entries", info->san_count - 3);
+    }
     
     return ESP_OK;
 }
@@ -758,28 +785,39 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
         ESP_LOGE(TAG, "Certificate or key is NULL");
         return ESP_ERR_INVALID_ARG;
     }
-    
-    ESP_LOGI(TAG, "Uploading custom certificate");
+
+    ESP_LOGI(TAG, "Uploading custom certificate - cert_len: %d, key_len: %d",
+             cert_pem ? strlen(cert_pem) : 0, key_pem ? strlen(key_pem) : 0);
     
     // Validate certificate and key
+    ESP_LOGI(TAG, "Validating certificate and key");
     esp_err_t err = cert_validate(cert_pem, key_pem);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Certificate validation failed");
+        ESP_LOGE(TAG, "Certificate validation failed: %s", esp_err_to_name(err));
         return err;
     }
+
+    ESP_LOGI(TAG, "Certificate validation passed");
     
     // Check sizes
     size_t cert_len = strlen(cert_pem);
     size_t key_len = strlen(key_pem);
-    
+
+    ESP_LOGI(TAG, "Certificate upload sizes - cert: %d bytes, key: %d bytes", cert_len, key_len);
+
     if (cert_len >= CERT_PEM_MAX_SIZE) {
         ESP_LOGE(TAG, "Certificate too large: %d bytes (max %d)", cert_len, CERT_PEM_MAX_SIZE);
         return ESP_ERR_INVALID_SIZE;
     }
-    
+
     if (key_len >= CERT_KEY_PEM_MAX_SIZE) {
         ESP_LOGE(TAG, "Private key too large: %d bytes (max %d)", key_len, CERT_KEY_PEM_MAX_SIZE);
         return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (cert_len == 0 || key_len == 0) {
+        ESP_LOGE(TAG, "Certificate or key is empty");
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Validate certificate chain if provided
@@ -826,31 +864,36 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
     }
     
     // Open NVS
+    ESP_LOGI(TAG, "Opening NVS for certificate upload");
     nvs_handle_t nvs_handle;
     err = nvs_open(CERT_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
         return err;
     }
+
+    ESP_LOGI(TAG, "NVS opened successfully for certificate upload");
     
     // Store certificate
+    ESP_LOGI(TAG, "Storing certificate in NVS (%d bytes)", cert_len);
     err = nvs_set_blob(nvs_handle, CERT_NVS_CERT_KEY, cert_pem, cert_len + 1);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to store certificate: %s", esp_err_to_name(err));
         nvs_close(nvs_handle);
         return err;
     }
-    
+
     ESP_LOGI(TAG, "Certificate stored in NVS (%d bytes)", cert_len);
-    
+
     // Store private key
+    ESP_LOGI(TAG, "Storing private key in NVS (%d bytes)", key_len);
     err = nvs_set_blob(nvs_handle, CERT_NVS_KEY_KEY, key_pem, key_len + 1);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to store private key: %s", esp_err_to_name(err));
         nvs_close(nvs_handle);
         return err;
     }
-    
+
     ESP_LOGI(TAG, "Private key stored in NVS (%d bytes)", key_len);
     
     // Store certificate chain if provided
@@ -883,13 +926,17 @@ esp_err_t cert_upload_custom(const char* cert_pem, const char* key_pem, const ch
     }
     
     // Commit changes
+    ESP_LOGI(TAG, "Committing certificate to NVS");
     err = nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
-    
+
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Custom certificate uploaded successfully");
     } else {
         ESP_LOGE(TAG, "Failed to commit certificate: %s", esp_err_to_name(err));
+        if (err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) {
+            ESP_LOGE(TAG, "NVS storage is full - consider deleting old certificates or increasing partition size");
+        }
     }
     
     return err;

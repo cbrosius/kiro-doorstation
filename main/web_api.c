@@ -19,6 +19,9 @@
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
 #include "ota_handler.h"
+
+// Use the same SAN constants as cert_manager
+#define CERT_SAN_COUNT_MAX 16
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -2300,6 +2303,16 @@ static esp_err_t get_cert_info_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "days_until_expiry", info.days_until_expiry);
     cJSON_AddBoolToObject(root, "is_expired", info.is_expired);
     cJSON_AddBoolToObject(root, "is_expiring_soon", info.is_expiring_soon);
+
+    // Add SAN information
+    cJSON *san_array = cJSON_CreateArray();
+    for (int i = 0; i < info.san_count && i < CERT_SAN_COUNT_MAX; i++) {
+        if (strlen(info.san_entries[i]) > 0) {
+            cJSON_AddItemToArray(san_array, cJSON_CreateString(info.san_entries[i]));
+        }
+    }
+    cJSON_AddItemToObject(root, "san_entries", san_array);
+    cJSON_AddNumberToObject(root, "san_count", info.san_count);
     
     char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
@@ -2311,55 +2324,149 @@ static esp_err_t get_cert_info_handler(httpd_req_t *req)
 
 static esp_err_t post_cert_upload_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "Certificate upload handler called - content length: %d", req->content_len);
+
     // Check authentication (extend session for user action - certificate upload)
     if (auth_filter(req, true) != ESP_OK) {
+        ESP_LOGE(TAG, "Certificate upload authentication failed");
         return ESP_FAIL;
     }
+
+    ESP_LOGI(TAG, "Certificate upload authentication passed");
     
     // Allocate buffer for request body
     size_t content_len = req->content_len;
+    ESP_LOGI(TAG, "Certificate upload content length: %d bytes", content_len);
+
+    if (content_len <= 0) {
+        ESP_LOGE(TAG, "Certificate upload invalid content length: %d", content_len);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid content length");
+        return ESP_FAIL;
+    }
+
     if (content_len > 16384) {  // 16KB max for certificate upload
+        ESP_LOGE(TAG, "Certificate upload content too large: %d bytes (max 16KB)", content_len);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too large (max 16KB)");
         return ESP_FAIL;
     }
     
     char *buf = malloc(content_len + 1);
     if (!buf) {
+        ESP_LOGE(TAG, "Certificate upload failed to allocate buffer for %d bytes", content_len + 1);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
         return ESP_FAIL;
     }
-    
+
+    ESP_LOGI(TAG, "Certificate upload buffer allocated, receiving request body");
+
     // Receive request body
     int ret = httpd_req_recv(req, buf, content_len);
     if (ret <= 0) {
+        ESP_LOGE(TAG, "Certificate upload failed to receive request body: %d", ret);
         free(buf);
         if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
             httpd_resp_send_408(req);
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive request body");
         }
         return ESP_FAIL;
     }
     buf[ret] = '\0';
-    
-    // Parse JSON
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    
-    if (root == NULL) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+
+    ESP_LOGI(TAG, "Certificate upload received %d bytes of data", ret);
+
+    // Validate that we received the expected amount of data
+    if (ret != (int)content_len) {
+        ESP_LOGE(TAG, "Certificate upload received incomplete data: expected %d, got %d", content_len, ret);
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete request body");
         return ESP_FAIL;
     }
     
-    const cJSON *cert_pem = cJSON_GetObjectItem(root, "certificate");
-    const cJSON *key_pem = cJSON_GetObjectItem(root, "private_key");
-    const cJSON *chain_pem = cJSON_GetObjectItem(root, "chain");
+    // Parse JSON
+    ESP_LOGI(TAG, "Certificate upload parsing JSON data");
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+
+    if (root == NULL) {
+        ESP_LOGE(TAG, "Certificate upload failed to parse JSON");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON format");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Certificate upload JSON parsed successfully");
+
+    // Validate JSON structure
+    if (!cJSON_IsObject(root)) {
+        ESP_LOGE(TAG, "Certificate upload JSON is not an object");
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "JSON must be an object");
+        return ESP_FAIL;
+    }
+
+    // Debug: Log available JSON fields
+    ESP_LOGI(TAG, "Certificate upload JSON fields available:");
+    cJSON *field = NULL;
+    cJSON_ArrayForEach(field, root) {
+        ESP_LOGI(TAG, "  - %s", field->string);
+    }
+    
+    const cJSON *cert_pem = cJSON_GetObjectItem(root, "cert_pem");
+    const cJSON *key_pem = cJSON_GetObjectItem(root, "key_pem");
+    const cJSON *chain_pem = cJSON_GetObjectItem(root, "chain_pem");
+
+    // Fallback to alternative field names if not found
+    if (!cert_pem) {
+        cert_pem = cJSON_GetObjectItem(root, "cert");
+    }
+    if (!cert_pem) {
+        cert_pem = cJSON_GetObjectItem(root, "certificate");
+    }
+    if (!key_pem) {
+        key_pem = cJSON_GetObjectItem(root, "key");
+    }
+    if (!key_pem) {
+        key_pem = cJSON_GetObjectItem(root, "private_key");
+    }
+    if (!chain_pem) {
+        chain_pem = cJSON_GetObjectItem(root, "chain");
+    }
     
     // Validate required fields
-    if (!cJSON_IsString(cert_pem) || (cert_pem->valuestring == NULL) ||
-        !cJSON_IsString(key_pem) || (key_pem->valuestring == NULL)) {
+    if (!cJSON_IsString(cert_pem) || (cert_pem->valuestring == NULL)) {
+        ESP_LOGE(TAG, "Certificate upload missing certificate field (checked 'cert_pem', 'cert', 'certificate')");
         cJSON_Delete(root);
         httpd_resp_set_status(req, "400 Bad Request");
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_send(req, "{\"error\":\"Missing certificate or private_key\"}", -1);
+        httpd_resp_send(req, "{\"error\":\"Missing certificate field. Expected 'cert_pem', 'cert', or 'certificate'\"}", -1);
+        return ESP_FAIL;
+    }
+
+    if (!cJSON_IsString(key_pem) || (key_pem->valuestring == NULL)) {
+        ESP_LOGE(TAG, "Certificate upload missing private_key field (checked 'key_pem', 'key', 'private_key')");
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing private key field. Expected 'key_pem', 'key', or 'private_key'\"}", -1);
+        return ESP_FAIL;
+    }
+
+    // Validate certificate content
+    if (strlen(cert_pem->valuestring) == 0) {
+        ESP_LOGE(TAG, "Certificate upload certificate field is empty");
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Certificate field is empty\"}", -1);
+        return ESP_FAIL;
+    }
+
+    if (strlen(key_pem->valuestring) == 0) {
+        ESP_LOGE(TAG, "Certificate upload private_key field is empty");
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Private key field is empty\"}", -1);
         return ESP_FAIL;
     }
     
@@ -2370,43 +2477,76 @@ static esp_err_t post_cert_upload_handler(httpd_req_t *req)
     }
     
     // Upload certificate
+    ESP_LOGI(TAG, "Certificate upload calling cert_upload_custom - cert_size: %d, key_size: %d",
+             strlen(cert_pem->valuestring), strlen(key_pem->valuestring));
     esp_err_t err = cert_upload_custom(cert_pem->valuestring, key_pem->valuestring, chain_str);
-    
+
+    ESP_LOGI(TAG, "Certificate upload result: %s", esp_err_to_name(err));
+
+    // Log certificate validation results for debugging
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Certificate upload validation PASSED - certificate is valid and properly formatted");
+    } else {
+        ESP_LOGI(TAG, "Certificate upload validation FAILED - err: %s", esp_err_to_name(err));
+    }
+
     cJSON_Delete(root);
     
     httpd_resp_set_type(req, "application/json");
     
     if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Certificate upload successful - preparing restart in 3 seconds");
+
         cJSON *response = cJSON_CreateObject();
-        cJSON_AddBoolToObject(response, "success", true);
-        cJSON_AddStringToObject(response, "message", "Certificate uploaded successfully. Server restart required for changes to take effect.");
-        
-        char *json_string = cJSON_Print(response);
-        httpd_resp_send(req, json_string, strlen(json_string));
-        free(json_string);
-        cJSON_Delete(response);
-        
-        ESP_LOGI(TAG, "Custom certificate uploaded successfully");
+        if (response) {
+            cJSON_AddBoolToObject(response, "success", true);
+            cJSON_AddStringToObject(response, "message", "Certificate uploaded successfully. Device will restart in 3 seconds to apply changes.");
+            cJSON_AddBoolToObject(response, "session_invalidated", true);
+            cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+
+            char *json_string = cJSON_Print(response);
+            if (json_string) {
+                httpd_resp_send(req, json_string, strlen(json_string));
+                free(json_string);
+            }
+            cJSON_Delete(response);
+        }
+
+        ESP_LOGI(TAG, "Certificate uploaded successfully - restarting device in 3 seconds");
+        ESP_LOGI(TAG, "All sessions will be invalidated after restart");
+
+        // Delay to allow response to be sent to client
+        vTaskDelay(pdMS_TO_TICKS(3000));
+
+        // Restart the device to apply new certificate
+        ESP_LOGI(TAG, "Restarting device to apply new certificate");
+        esp_restart();
     } else {
         httpd_resp_set_status(req, "400 Bad Request");
-        
+
         cJSON *response = cJSON_CreateObject();
-        cJSON_AddBoolToObject(response, "success", false);
-        
-        // Provide specific error messages
-        if (err == ESP_ERR_INVALID_ARG) {
-            cJSON_AddStringToObject(response, "error", "Invalid certificate format or private key does not match certificate");
-        } else if (err == ESP_ERR_INVALID_SIZE) {
-            cJSON_AddStringToObject(response, "error", "Certificate or key too large");
-        } else {
-            cJSON_AddStringToObject(response, "error", "Failed to upload certificate");
+        if (response) {
+            cJSON_AddBoolToObject(response, "success", false);
+
+            // Provide specific error messages
+            if (err == ESP_ERR_INVALID_ARG) {
+                cJSON_AddStringToObject(response, "error", "Invalid certificate format or private key does not match certificate");
+            } else if (err == ESP_ERR_INVALID_SIZE) {
+                cJSON_AddStringToObject(response, "error", "Certificate or key too large");
+            } else if (err == ESP_ERR_NO_MEM) {
+                cJSON_AddStringToObject(response, "error", "Out of memory");
+            } else {
+                cJSON_AddStringToObject(response, "error", "Failed to upload certificate");
+            }
+
+            char *json_string = cJSON_Print(response);
+            if (json_string) {
+                httpd_resp_send(req, json_string, strlen(json_string));
+                free(json_string);
+            }
+            cJSON_Delete(response);
         }
-        
-        char *json_string = cJSON_Print(response);
-        httpd_resp_send(req, json_string, strlen(json_string));
-        free(json_string);
-        cJSON_Delete(response);
-        
+
         ESP_LOGW(TAG, "Certificate upload failed: %s", esp_err_to_name(err));
     }
     
