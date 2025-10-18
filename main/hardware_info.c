@@ -306,6 +306,7 @@ bool hardware_info_collect(hardware_info_t* info)
     if (flash_size_line_main) {
         char size_str[16];
         if (sscanf(flash_size_line_main, "SPI Flash Size : %15s", size_str) == 1) {
+            ESP_LOGD(TAG, "Found flash size string: %s", size_str);
             if (strstr(size_str, "2MB")) {
                 info->flash_size_mb = 2;
             } else if (strstr(size_str, "4MB")) {
@@ -317,10 +318,48 @@ bool hardware_info_collect(hardware_info_t* info)
             } else if (strstr(size_str, "32MB")) {
                 info->flash_size_mb = 32;
             }
+        } else {
+            ESP_LOGW(TAG, "Failed to parse flash size from line: %s", flash_size_line_main);
         }
+    } else {
+        ESP_LOGW(TAG, "Flash size pattern 'SPI Flash Size :' not found in bootlog");
     }
 
     info->flash_total_bytes = info->flash_size_mb * 1024 * 1024;
+
+    // If flash size is still 0, try alternative detection methods
+    if (info->flash_size_mb == 0) {
+        ESP_LOGD(TAG, "Flash size still 0, trying alternative detection");
+
+        // Try to detect from partition table
+        if (info->partition_count > 0) {
+            uint32_t max_address = 0;
+            for (uint32_t i = 0; i < info->partition_count; i++) {
+                uint32_t partition_end = info->partitions[i].address + info->partitions[i].size;
+                if (partition_end > max_address) {
+                    max_address = partition_end;
+                }
+            }
+
+            ESP_LOGD(TAG, "Max partition address: 0x%x (%d bytes)", max_address, max_address);
+
+            // Determine flash size from max partition address
+            if (max_address <= 2 * 1024 * 1024) {
+                info->flash_size_mb = 2;
+            } else if (max_address <= 4 * 1024 * 1024) {
+                info->flash_size_mb = 4;
+            } else if (max_address <= 8 * 1024 * 1024) {
+                info->flash_size_mb = 8;
+            } else if (max_address <= 16 * 1024 * 1024) {
+                info->flash_size_mb = 16;
+            } else {
+                info->flash_size_mb = 32; // Assume 32MB for larger sizes
+            }
+
+            info->flash_total_bytes = info->flash_size_mb * 1024 * 1024;
+            ESP_LOGD(TAG, "Detected flash size from partitions: %d MB", info->flash_size_mb);
+        }
+    }
 
     // ===== ENHANCED PARTITION INFORMATION PARSING =====
     size_t total_used = 0;
@@ -338,6 +377,7 @@ bool hardware_info_collect(hardware_info_t* info)
     if (psram_line) {
         char psram_size_str[16];
         if (sscanf(psram_line, "PSRAM Size : %15s", psram_size_str) == 1) {
+            ESP_LOGD(TAG, "Found PSRAM size string: %s", psram_size_str);
             if (strstr(psram_size_str, "8MB")) {
                 info->psram_size_mb = 8;
             } else if (strstr(psram_size_str, "4MB")) {
@@ -349,21 +389,28 @@ bool hardware_info_collect(hardware_info_t* info)
             } else {
                 info->psram_size_mb = 0;
             }
+        } else {
+            ESP_LOGW(TAG, "Failed to parse PSRAM size from line: %s", psram_line);
         }
     } else {
+        ESP_LOGD(TAG, "PSRAM size pattern 'PSRAM Size :' not found in bootlog");
         // Enhanced fallback patterns
         if (strstr(bootlog, "PSRAM") && strstr(bootlog, "8MB")) {
+            ESP_LOGD(TAG, "Found PSRAM fallback pattern (PSRAM + 8MB)");
             info->psram_size_mb = 8;
         } else if (strstr(bootlog, "octal_psram: vendor id")) {
+            ESP_LOGD(TAG, "Found PSRAM octal_psram pattern");
             // PSRAM initialization logs found, try to detect size
             const char* psram_vendor = strstr(bootlog, "octal_psram: vendor id");
             if (psram_vendor) {
                 const char* psram_density = strstr(psram_vendor, "density      : 0x03");
                 if (psram_density && strstr(psram_vendor, "64 Mbit")) {
+                    ESP_LOGD(TAG, "Found PSRAM density pattern (64 Mbit = 8 MB)");
                     info->psram_size_mb = 8; // 64 Mbit = 8 MB
                 }
             }
         } else {
+            ESP_LOGD(TAG, "No PSRAM patterns found in bootlog");
             info->psram_size_mb = 0;
         }
     }
@@ -388,42 +435,63 @@ bool hardware_info_collect(hardware_info_t* info)
     const char* idf_line = strstr(bootlog, "ESP-IDF v");
     if (idf_line) {
         sscanf(idf_line, "ESP-IDF v%31s", info->bootloader_version);
+        ESP_LOGD(TAG, "Found IDF version: %s", info->bootloader_version);
+    } else {
+        ESP_LOGD(TAG, "IDF version pattern 'ESP-IDF v' not found in bootlog");
     }
 
     // Parse compile time
     const char* compile_line = strstr(bootlog, "compile time");
     if (compile_line) {
         sscanf(compile_line, "compile time %31[^\n]", info->bootloader_compile_time);
+        ESP_LOGD(TAG, "Found compile time: %s", info->bootloader_compile_time);
+    } else {
+        ESP_LOGD(TAG, "Compile time pattern 'compile time' not found in bootlog");
     }
 
     // Parse chip revision
     const char* chip_rev_line_bootloader = strstr(bootlog, "chip revision:");
     if (chip_rev_line_bootloader) {
         sscanf(chip_rev_line_bootloader, "chip revision: %15s", info->bootloader_chip_revision);
+        ESP_LOGD(TAG, "Found bootloader chip revision: %s", info->bootloader_chip_revision);
+    } else {
+        ESP_LOGD(TAG, "Bootloader chip revision pattern 'chip revision:' not found in bootlog");
     }
 
     // Parse efuse revision
     const char* efuse_rev_line = strstr(bootlog, "efuse block revision:");
     if (efuse_rev_line) {
         sscanf(efuse_rev_line, "efuse block revision: %15s", info->bootloader_efuse_revision);
+        ESP_LOGD(TAG, "Found efuse revision: %s", info->bootloader_efuse_revision);
+    } else {
+        ESP_LOGD(TAG, "Efuse revision pattern 'efuse block revision:' not found in bootlog");
     }
 
     // Parse SPI speed
     const char* spi_speed_line = strstr(bootlog, "Boot SPI Speed :");
     if (spi_speed_line) {
         sscanf(spi_speed_line, "Boot SPI Speed : %15s", info->bootloader_spi_speed);
+        ESP_LOGD(TAG, "Found SPI speed: %s", info->bootloader_spi_speed);
+    } else {
+        ESP_LOGD(TAG, "SPI speed pattern 'Boot SPI Speed :' not found in bootlog");
     }
 
     // Parse SPI mode
     const char* spi_mode_line = strstr(bootlog, "SPI Mode       :");
     if (spi_mode_line) {
         sscanf(spi_mode_line, "SPI Mode       : %7s", info->bootloader_spi_mode);
+        ESP_LOGD(TAG, "Found SPI mode: %s", info->bootloader_spi_mode);
+    } else {
+        ESP_LOGD(TAG, "SPI mode pattern 'SPI Mode       :' not found in bootlog");
     }
 
     // Parse flash size
     const char* flash_size_line_bootloader = strstr(bootlog, "SPI Flash Size :");
     if (flash_size_line_bootloader) {
         sscanf(flash_size_line_bootloader, "SPI Flash Size : %15s", info->bootloader_flash_size);
+        ESP_LOGD(TAG, "Found bootloader flash size: %s", info->bootloader_flash_size);
+    } else {
+        ESP_LOGD(TAG, "Bootloader flash size pattern 'SPI Flash Size :' not found in bootlog");
     }
 
     info->bootlog = bootlog;
