@@ -6961,12 +6961,16 @@
      */
     async function updateHardwareInfo() {
       try {
-        const response = await apiRequest('/api/system/info');
+        const response = await apiRequest('/api/hardware/info');
 
         if (response) {
           // Update chip information
           document.getElementById('hw-chip-model').textContent = response.chip_model || 'ESP32-S3';
           document.getElementById('hw-chip-revision').textContent = response.chip_revision !== undefined ? `Rev ${response.chip_revision}` : 'Unknown';
+
+          // Update CPU information
+          document.getElementById('hw-cpu-cores').textContent = response.cpu_cores || '2';
+          document.getElementById('hw-cpu-freq').textContent = response.cpu_freq_mhz ? `${response.cpu_freq_mhz} MHz` : '240 MHz';
 
           // Update flash information
           if (response.flash_size_mb) {
@@ -6991,6 +6995,15 @@
           if (minHeapElement) {
             minHeapElement.textContent = 'N/A';
           }
+
+          // Update bootloader information
+          document.getElementById('hw-bootloader-version').textContent = response.bootloader_version || 'Unknown';
+          document.getElementById('hw-bootloader-compile-time').textContent = response.bootloader_compile_time || 'Unknown';
+          document.getElementById('hw-bootloader-chip-rev').textContent = response.bootloader_chip_revision || 'Unknown';
+          document.getElementById('hw-bootloader-efuse-rev').textContent = response.bootloader_efuse_revision || 'Unknown';
+          document.getElementById('hw-bootloader-spi-speed').textContent = response.bootloader_spi_speed || 'Unknown';
+          document.getElementById('hw-bootloader-spi-mode').textContent = response.bootloader_spi_mode || 'Unknown';
+          document.getElementById('hw-bootloader-flash-size').textContent = response.bootloader_flash_size || 'Unknown';
 
           // Update partition table
           updatePartitionTable(response.partitions, response.flash_total_bytes, response.flash_used_bytes, response.flash_available_bytes);
