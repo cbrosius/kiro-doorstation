@@ -2213,135 +2213,6 @@
     <section class="content-section" id="section-hardware" hidden>
       <h2 tabindex="-1">Hardware Settings</h2>
 
-      <!-- Task 9.1: Hardware Information Display -->
-      <div class="config-form">
-        <h3 style="margin-bottom: var(--spacing-md);">Hardware Information</h3>
-        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
-          ESP32-S3 hardware specifications and static memory information. This information is collected once at startup.
-        </p>
-
-        <div id="hardware-info"
-          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">CPU Cores</div>
-            <div id="hw-cpu-cores" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">CPU Frequency</div>
-            <div id="hw-cpu-freq" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Chip Model</div>
-            <div id="hw-chip-model" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Chip Revision</div>
-            <div id="hw-chip-revision" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Flash Size</div>
-            <div id="hw-flash-size" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Flash Available</div>
-            <div id="hw-flash-free" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">PSRAM Size</div>
-            <div id="hw-psram-size" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader Version</div>
-            <div id="hw-bootloader-version" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader Compile Time</div>
-            <div id="hw-bootloader-compile-time" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader Chip Rev</div>
-            <div id="hw-bootloader-chip-rev" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader eFuse Rev</div>
-            <div id="hw-bootloader-efuse-rev" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader SPI Speed</div>
-            <div id="hw-bootloader-spi-speed" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader SPI Mode</div>
-            <div id="hw-bootloader-spi-mode" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Bootloader Flash Size</div>
-            <div id="hw-bootloader-flash-size" class="dashboard-info-value">Loading...</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Flash Partition Table -->
-      <div class="config-form">
-        <h3 style="margin-bottom: var(--spacing-md);">Flash Partition Table</h3>
-        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
-          Defined flash partitions and their sizes. Total physical flash size is detected automatically.
-        </p>
-
-        <div style="overflow-x: auto;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Label</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Type</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Subtype</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Address</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Size</th>
-              </tr>
-            </thead>
-            <tbody id="partition-table-body">
-              <tr style="border-bottom: 1px solid var(--color-border-light);">
-                <td colspan="5"
-                  style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">
-                  Loading partition information...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-md);">
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Total Flash</div>
-            <div id="partition-total-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
-            </div>
-          </div>
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Used by Partitions</div>
-            <div id="partition-used-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
-            </div>
-          </div>
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Available</div>
-            <div id="partition-available-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-success);">
-              -</div>
-          </div>
-        </div>
-      </div>
 
       <!-- Task 9.2: GPIO Pin Assignments -->
       <div class="config-form">
@@ -4032,7 +3903,6 @@
         initNetworkSettings();
       } else if (sectionId === 'hardware') {
         // Update Hardware Settings section (Task 9)
-        updateHardwareInfo();
         updateHardwareStatus();
       } else if (sectionId === 'security') {
         // Load Security Settings (Task 10.4)
@@ -6990,108 +6860,6 @@
       }
     }
 
-    // ===== Task 9: Hardware Settings Functions =====
-
-    /**
-     * Task 9.1: Fetch and display hardware information
-     */
-    async function updateHardwareInfo() {
-      try {
-        const response = await apiRequest('/api/hardware/info');
-
-        if (response) {
-          // Update CPU information
-          document.getElementById('hw-cpu-cores').textContent = response.cpu_cores || '2';
-          document.getElementById('hw-cpu-freq').textContent = response.cpu_freq_mhz ? `${response.cpu_freq_mhz} MHz` : '240 MHz';
-
-          // Update chip information
-          document.getElementById('hw-chip-model').textContent = response.chip_model || 'ESP32-S3';
-          document.getElementById('hw-chip-revision').textContent = response.chip_revision !== undefined ? `Rev ${response.chip_revision}` : 'Unknown';
-
-
-          // Update flash information
-          if (response.flash_size_mb) {
-            document.getElementById('hw-flash-size').textContent = `${response.flash_size_mb} MB`;
-          }
-          // Flash available
-          const flashFreeElement = document.getElementById('hw-flash-free');
-          if (flashFreeElement && response.flash_available_bytes !== undefined) {
-            flashFreeElement.textContent = formatBytes(response.flash_available_bytes);
-          }
-
-          // Update PSRAM information
-          if (response.psram_size_mb > 0) {
-            document.getElementById('hw-psram-size').textContent = response.psram_size_mb + ' MB';
-          } else {
-            document.getElementById('hw-psram-size').textContent = 'Not Available';
-          }
-
-
-          // Update bootloader information
-          document.getElementById('hw-bootloader-version').textContent = response.bootloader_version || 'Unknown';
-          document.getElementById('hw-bootloader-compile-time').textContent = response.bootloader_compile_time || 'Unknown';
-          document.getElementById('hw-bootloader-chip-rev').textContent = response.bootloader_chip_revision || 'Unknown';
-          document.getElementById('hw-bootloader-efuse-rev').textContent = response.bootloader_efuse_revision || 'Unknown';
-          document.getElementById('hw-bootloader-spi-speed').textContent = response.bootloader_spi_speed || 'Unknown';
-          document.getElementById('hw-bootloader-spi-mode').textContent = response.bootloader_spi_mode || 'Unknown';
-          document.getElementById('hw-bootloader-flash-size').textContent = response.bootloader_flash_size || 'Unknown';
-
-
-          // Update partition table
-          updatePartitionTable(response.partitions, response.flash_total_bytes, response.flash_used_bytes, response.flash_available_bytes);
-        }
-      } catch (error) {
-        console.error('Failed to fetch hardware info:', error);
-        // Set error state for all fields
-        const fields = ['hw-cpu-cores', 'hw-cpu-freq', 'hw-chip-model', 'hw-chip-revision', 'hw-flash-size', 'hw-flash-free',
-          'hw-psram-size', 'hw-bootloader-version', 'hw-bootloader-compile-time',
-          'hw-bootloader-chip-rev', 'hw-bootloader-efuse-rev', 'hw-bootloader-spi-speed',
-          'hw-bootloader-spi-mode', 'hw-bootloader-flash-size'];
-        fields.forEach(id => {
-          const element = document.getElementById(id);
-          if (element) element.textContent = 'Error';
-        });
-      }
-    }
-
-    /**
-     * Update partition table display
-     */
-    function updatePartitionTable(partitions, totalFlash, usedFlash, availableFlash) {
-      const tableBody = document.getElementById('partition-table-body');
-
-      if (!partitions || partitions.length === 0) {
-        tableBody.innerHTML = '<tr style="border-bottom: 1px solid var(--color-border-light);"><td colspan="5" style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">No partition information available</td></tr>';
-        return;
-      }
-
-      // Build table rows
-      let html = '';
-      partitions.forEach(partition => {
-        html += '<tr style="border-bottom: 1px solid var(--color-border-light);">';
-        html += `<td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">${partition.label || 'unnamed'}</td>`;
-        html += `<td style="padding: var(--spacing-md);">${partition.type || '-'}</td>`;
-        html += `<td style="padding: var(--spacing-md);">${partition.subtype || '-'}</td>`;
-        html += `<td style="padding: var(--spacing-md); text-align: right; font-family: monospace;">0x${partition.address.toString(16).toUpperCase().padStart(6, '0')}</td>`;
-
-        // Size column with optional used bytes
-        let sizeText = formatBytes(partition.size);
-        if (partition.used_bytes !== undefined && partition.used_bytes >= 0) {
-          const usedText = formatBytes(partition.used_bytes);
-          const percentage = Math.round((partition.used_bytes / partition.size) * 100);
-          sizeText += ` <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">(${usedText} used, ${percentage}%)</span>`;
-        }
-        html += `<td style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-medium);">${sizeText}</td>`;
-        html += '</tr>';
-      });
-
-      tableBody.innerHTML = html;
-
-      // Update summary
-      document.getElementById('partition-total-flash').textContent = formatBytes(totalFlash);
-      document.getElementById('partition-used-flash').textContent = formatBytes(usedFlash);
-      document.getElementById('partition-available-flash').textContent = formatBytes(availableFlash);
-    }
 
     /**
      * Task 9.2 & 9.4: Update GPIO states and relay information
@@ -7218,21 +6986,6 @@
       }
       // Otherwise show full date
       return date.toLocaleString();
-    }
-
-    /**
-     * Initialize Hardware Settings section
-     */
-    function initHardwareSettings() {
-      // Initial load
-      updateHardwareInfo();
-      updateHardwareStatus();
-
-      // Auto-refresh every 10 seconds (Task 9.1 requirement)
-      setInterval(() => {
-        updateHardwareInfo();
-        updateHardwareStatus();
-      }, 10000);
     }
 
     // ===== Task 10: Security Settings Functions =====
@@ -10886,9 +10639,6 @@
 
       // Initialize Network Settings section
       initNetworkSettings();
-
-      // Initialize Hardware Settings section
-      initHardwareSettings();
 
       // Initialize Hardware Testing section
       initHardwareTesting();
