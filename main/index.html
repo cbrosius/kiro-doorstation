@@ -8975,15 +8975,36 @@
       try {
         const response = await apiRequest('/api/ota/version');
 
-        document.getElementById('ota-current-version').textContent = response.version || 'Unknown';
-        document.getElementById('ota-build-date').textContent = response.build_date || 'Unknown';
-        document.getElementById('ota-chip-model').textContent = response.chip_model || 'Unknown';
+        const currentVersionElement = document.getElementById('ota-current-version');
+        const buildDateElement = document.getElementById('ota-build-date');
+        const chipModelElement = document.getElementById('ota-chip-model');
+
+        if (currentVersionElement) {
+          currentVersionElement.textContent = response.version || 'Unknown';
+        }
+        if (buildDateElement) {
+          buildDateElement.textContent = response.build_date || 'Unknown';
+        }
+        if (chipModelElement) {
+          chipModelElement.textContent = response.chip_model || 'Unknown';
+        }
 
       } catch (error) {
         console.error('Error loading firmware info:', error);
-        document.getElementById('ota-current-version').textContent = 'Error';
-        document.getElementById('ota-build-date').textContent = 'Error';
-        document.getElementById('ota-chip-model').textContent = 'Error';
+
+        const currentVersionElement = document.getElementById('ota-current-version');
+        const buildDateElement = document.getElementById('ota-build-date');
+        const chipModelElement = document.getElementById('ota-chip-model');
+
+        if (currentVersionElement) {
+          currentVersionElement.textContent = 'Error';
+        }
+        if (buildDateElement) {
+          buildDateElement.textContent = 'Error';
+        }
+        if (chipModelElement) {
+          chipModelElement.textContent = 'Error';
+        }
       }
     }
 
