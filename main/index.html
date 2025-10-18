@@ -14,12 +14,12 @@
       if (savedTheme) {
         // User has explicitly chosen a theme
         if (savedTheme === 'light') {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.dataset.theme = 'light';
         }
       } else {
         // No saved preference - check system preference
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.dataset.theme = 'light';
         }
       }
     })();
@@ -1627,15 +1627,6 @@
             style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
-              Free Heap</div>
-            <div id="system-heap"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">
-              Loading...</div>
-          </div>
-          <div
-            style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
-            <div
-              style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
               IP Address</div>
             <div id="system-ip"
               style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">
@@ -2222,111 +2213,6 @@
     <section class="content-section" id="section-hardware" hidden>
       <h2 tabindex="-1">Hardware Settings</h2>
 
-      <!-- Task 9.1: Hardware Information Display -->
-      <div class="config-form">
-        <h3 style="margin-bottom: var(--spacing-md);">Hardware Information</h3>
-        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
-          ESP32-S3 hardware specifications and memory status. Information updates every 10 seconds.
-        </p>
-
-        <div id="hardware-info"
-          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Chip Model</div>
-            <div id="hw-chip-model" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Chip Revision</div>
-            <div id="hw-chip-revision" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Flash Size</div>
-            <div id="hw-flash-size" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Flash Available</div>
-            <div id="hw-flash-free" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">PSRAM Size</div>
-            <div id="hw-psram-size" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">PSRAM Free</div>
-            <div id="hw-psram-free" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Free Heap</div>
-            <div id="hw-free-heap" class="dashboard-info-value">Loading...</div>
-          </div>
-          <div class="dashboard-info-card">
-            <div class="dashboard-info-label">Min Free Heap</div>
-            <div id="hw-min-heap" class="dashboard-info-value">Loading...</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Flash Partition Table -->
-      <div class="config-form">
-        <h3 style="margin-bottom: var(--spacing-md);">Flash Partition Table</h3>
-        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
-          Defined flash partitions and their sizes. Total physical flash size is detected automatically.
-        </p>
-
-        <div style="overflow-x: auto;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr style="background-color: var(--color-bg); border-bottom: 2px solid var(--color-border);">
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Label</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Type</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: left; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Subtype</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Address</th>
-                <th
-                  style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-bold); color: var(--color-text);">
-                  Size</th>
-              </tr>
-            </thead>
-            <tbody id="partition-table-body">
-              <tr style="border-bottom: 1px solid var(--color-border-light);">
-                <td colspan="5"
-                  style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">
-                  Loading partition information...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          style="margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-md);">
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Total Flash</div>
-            <div id="partition-total-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
-            </div>
-          </div>
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Used by Partitions</div>
-            <div id="partition-used-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">-
-            </div>
-          </div>
-          <div>
-            <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Available</div>
-            <div id="partition-available-flash"
-              style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-success);">
-              -</div>
-          </div>
-        </div>
-      </div>
 
       <!-- Task 9.2: GPIO Pin Assignments -->
       <div class="config-form">
@@ -3557,8 +3443,8 @@
             style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
-              Chip Model</div>
-            <div id="ota-chip-model"
+              ESP-IDF Version</div>
+            <div id="ota-idf-version"
               style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">
               Loading...</div>
           </div>
@@ -3643,7 +3529,7 @@
 
         <!-- Upload Button -->
         <div style="margin-top: var(--spacing-lg);">
-          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="handleOTAUpload()" disabled>
+          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="uploadFirmware()" disabled>
             <span class="btn-text">
               <span>⬆️</span>
               <span>Upload Firmware</span>
@@ -3739,6 +3625,26 @@
             <span>🔄</span>
             <span>Reload Now</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Rollback Section (Task 6) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Rollback to Previous Firmware</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          If you experience issues with the current firmware, you can rollback to the previous version.
+        </p>
+
+        <button type="button" class="btn btn-warning" id="ota-rollback-btn" onclick="handleOTARollback()" disabled>
+          <span class="btn-text">
+            <span>↩️</span>
+            <span>Rollback to Previous Version</span>
+          </span>
+          <span class="btn-spinner" hidden>⏳</span>
+        </button>
+        
+        <div id="ota-rollback-info" style="display: none; margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <span style="font-size: var(--font-size-sm); color: var(--color-text);">ℹ️ Rollback is not available. No previous firmware version found.</span>
         </div>
       </div>
 
@@ -3858,7 +3764,19 @@
           return await apiRequest('/api/system/state', { silentError: true }, 10000);
         }
         if (key === 'ntpState') {
-          return await apiRequest('/api/ntp/state', { silentError: true }, 10000);
+          try {
+            return await apiRequest('/api/ntp/state', { silentError: true }, 10000);
+          } catch (error) {
+            // Return a default NTP state if API fails
+            if (error.message.includes('Empty response')) {
+              return {
+                synced: false,
+                current_time: 'N/A',
+                last_sync_time: 'Never'
+              };
+            }
+            throw error;
+          }
         }
         if (key === 'sipLogs') {
           return await apiRequest('/api/sip/log?limit=10', { silentError: true }, 10000);
@@ -3985,7 +3903,6 @@
         initNetworkSettings();
       } else if (sectionId === 'hardware') {
         // Update Hardware Settings section (Task 9)
-        updateHardwareInfo();
         updateHardwareStatus();
       } else if (sectionId === 'security') {
         // Load Security Settings (Task 10.4)
@@ -4183,7 +4100,7 @@
       // Check localStorage first
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme) {
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.documentElement.dataset.theme = savedTheme;
         updateThemeIcon(savedTheme);
         return;
       }
@@ -4192,7 +4109,7 @@
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = prefersDark ? 'dark' : 'light';
       if (theme === 'light') {
-        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.dataset.theme = 'light';
       }
       updateThemeIcon(theme);
     }
@@ -4201,9 +4118,9 @@
      * Toggle between light and dark theme
      */
     function toggleTheme() {
-      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const currentTheme = document.documentElement.dataset.theme;
       const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', newTheme);
+      document.documentElement.dataset.theme = newTheme;
       localStorage.setItem('theme', newTheme);
       updateThemeIcon(newTheme);
     }
@@ -4306,7 +4223,6 @@
     async function updateWiFiStatus() {
       try {
         const response = await apiCache.get('wifiState');
-        console.log('WiFi status response:', response);
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4314,19 +4230,19 @@
         const status = response && response.status ? response.status.toLowerCase() : '';
 
         if (status === 'connected' || response.connected === true) {
-          card.setAttribute('data-status', 'connected');
+          card.dataset.status = 'connected';
           valueSpan.textContent = `Connected (${response.ip_address || response.ip || 'N/A'})`;
         } else if (status === 'connecting') {
-          card.setAttribute('data-status', 'connecting');
+          card.dataset.status = 'connecting';
           valueSpan.textContent = 'Connecting...';
         } else {
-          card.setAttribute('data-status', 'disconnected');
+          card.dataset.status = 'disconnected';
           valueSpan.textContent = response && response.ssid ? `Disconnected (${response.ssid})` : 'Disconnected';
         }
       } catch (error) {
         console.error('WiFi status error:', error);
         const card = document.getElementById('wifi-status');
-        card.setAttribute('data-status', 'disconnected');
+        card.dataset.status = 'disconnected';
         card.querySelector('.status-value').textContent = 'Error';
       }
     }
@@ -4344,18 +4260,18 @@
         const status = response.status ? response.status.toLowerCase() : '';
 
         if (status === 'registered') {
-          card.setAttribute('data-status', 'registered');
+          card.dataset.status = 'registered';
           valueSpan.textContent = `Registered (${response.state || 'IDLE'})`;
         } else if (status === 'connecting') {
-          card.setAttribute('data-status', 'connecting');
+          card.dataset.status = 'connecting';
           valueSpan.textContent = 'Connecting...';
         } else {
-          card.setAttribute('data-status', 'disconnected');
+          card.dataset.status = 'disconnected';
           valueSpan.textContent = response.status || 'Disconnected';
         }
       } catch (error) {
         const card = document.getElementById('sip-status');
-        card.setAttribute('data-status', 'disconnected');
+        card.dataset.status = 'disconnected';
         card.querySelector('.status-value').textContent = 'Error';
       }
     }
@@ -4370,15 +4286,15 @@
         const valueSpan = card.querySelector('.status-value');
 
         if (response.door && response.door.status === 'open') {
-          card.setAttribute('data-status', 'open');
+          card.dataset.status = 'open';
           valueSpan.textContent = 'Open';
         } else {
-          card.setAttribute('data-status', 'closed');
+          card.dataset.status = 'closed';
           valueSpan.textContent = 'Closed';
         }
       } catch (error) {
         const card = document.getElementById('door-status');
-        card.setAttribute('data-status', 'closed');
+        card.dataset.status = 'closed';
         card.querySelector('.status-value').textContent = 'Closed';
       }
     }
@@ -4393,15 +4309,15 @@
         const valueSpan = card.querySelector('.status-value');
 
         if (response.light && response.light.status === 'on') {
-          card.setAttribute('data-status', 'on');
+          card.dataset.status = 'on';
           valueSpan.textContent = 'On';
         } else {
-          card.setAttribute('data-status', 'off');
+          card.dataset.status = 'off';
           valueSpan.textContent = 'Off';
         }
       } catch (error) {
         const card = document.getElementById('light-status');
-        card.setAttribute('data-status', 'off');
+        card.dataset.status = 'off';
         card.querySelector('.status-value').textContent = 'Off';
       }
     }
@@ -4535,7 +4451,20 @@
           throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
         }
 
-        return await response.json();
+        // Handle empty responses gracefully
+        const contentLength = response.headers.get('content-length');
+        if (contentLength === '0') {
+          throw new Error('Empty response from server');
+        }
+
+        const data = await response.json();
+
+        // Handle empty JSON responses
+        if (data === null || data === undefined) {
+          throw new Error('Empty response from server');
+        }
+
+        return data;
       } catch (error) {
         console.error(`API Error [${endpoint}]:`, error);
 
@@ -4545,6 +4474,9 @@
             showToast('Request timed out. Please try again.', 'error');
           } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
             showToast('Connection error. Please check your network.', 'error');
+          } else if (error.message.includes('Empty response')) {
+            // Don't show toast for empty responses - handle gracefully in calling code
+            console.warn('Empty response from server:', endpoint);
           } else {
             showToast(error.message, 'error');
           }
@@ -5144,7 +5076,6 @@
       { label: 'Hardware Information', section: 'hardware', field: 'hardware-info', keywords: ['hardware', 'info', 'chip', 'esp32', 'model', 'specs'] },
       { label: 'Chip Model', section: 'hardware', field: 'chip-model', keywords: ['chip', 'model', 'esp32', 'processor', 'cpu'] },
       { label: 'Flash Size', section: 'hardware', field: 'flash-size', keywords: ['flash', 'storage', 'memory', 'size'] },
-      { label: 'Free Heap', section: 'hardware', field: 'free-heap', keywords: ['heap', 'memory', 'ram', 'free', 'available'] },
       { label: 'GPIO Pins', section: 'hardware', field: 'gpio-pins', keywords: ['gpio', 'pins', 'io', 'input', 'output'] },
       { label: 'Doorbell Button', section: 'hardware', field: 'doorbell-button', keywords: ['doorbell', 'button', 'bell', 'input', 'gpio'] },
       { label: 'Door Relay', section: 'hardware', field: 'door-relay', keywords: ['door', 'relay', 'opener', 'output', 'gpio'] },
@@ -5525,13 +5456,18 @@
 
       try {
         showToast('Restarting system...', 'info');
-        await apiRequest('/api/system/restart', { method: 'POST' });
-        showToast('System is restarting. Page will reload automatically.', 'info', 5000);
+        const response = await apiRequest('/api/system/restart', { method: 'POST' });
+        
+        // Check if session will be invalidated (device restart)
+        if (response && response.session_invalidated) {
+          showToast('System is restarting. You will need to log in again.', 'info', 5000);
+          sessionStorage.setItem('ota_session_invalidated', 'true');
+        } else {
+          showToast('System is restarting. Page will reload automatically.', 'info', 5000);
+        }
 
-        // Reload page after delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
+        // Show restart countdown and redirect to login
+        showRestartCountdown();
       } catch (error) {
         // Error already shown by apiRequest
       }
@@ -5575,11 +5511,6 @@
           uptimeElement.textContent = formatUptime(response.uptime_ms);
         }
 
-        // Update free heap
-        const heapElement = document.getElementById('system-heap');
-        if (heapElement && response.free_heap_bytes !== undefined) {
-          heapElement.textContent = formatBytes(response.free_heap_bytes);
-        }
 
         // Update IP address
         const ipElement = document.getElementById('system-ip');
@@ -5598,7 +5529,7 @@
       } catch (error) {
         console.error('Error updating system info:', error);
         // Set error state
-        const elements = ['system-uptime', 'system-heap', 'system-ip', 'system-version'];
+        const elements = ['system-uptime', 'system-ip', 'system-version'];
         elements.forEach(id => {
           const el = document.getElementById(id);
           if (el) el.textContent = 'Error';
@@ -5633,15 +5564,6 @@
      * @param {number} bytes - Number of bytes
      * @returns {string} Formatted bytes string
      */
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-    }
 
     /**
      * Initialize system information display with auto-refresh
@@ -5702,13 +5624,13 @@
         const timeElement = document.getElementById('ntp-current-time');
         const lastSyncElement = document.getElementById('ntp-last-sync');
 
-        if (indicatorElement) indicatorElement.textContent = '❌';
+        if (indicatorElement) indicatorElement.textContent = '⏳';
         if (textElement) {
-          textElement.textContent = 'Error';
-          textElement.style.color = 'var(--color-danger)';
+          textElement.textContent = 'NTP Service Unavailable';
+          textElement.style.color = 'var(--color-warning)';
         }
         if (timeElement) timeElement.textContent = 'N/A';
-        if (lastSyncElement) lastSyncElement.textContent = 'Error';
+        if (lastSyncElement) lastSyncElement.textContent = 'Service unavailable';
       }
     }
 
@@ -6871,10 +6793,10 @@
         const textElement = document.getElementById('ntp-status-text');
         const timeElement = document.getElementById('ntp-status-time');
 
-        if (iconElement) iconElement.textContent = '❌';
+        if (iconElement) iconElement.textContent = '⏳';
         if (textElement) {
-          textElement.textContent = 'Error';
-          textElement.style.color = 'var(--color-danger)';
+          textElement.textContent = 'NTP Service Unavailable';
+          textElement.style.color = 'var(--color-warning)';
         }
         if (timeElement) timeElement.textContent = 'N/A';
       }
@@ -6938,97 +6860,6 @@
       }
     }
 
-    // ===== Task 9: Hardware Settings Functions =====
-
-    /**
-     * Task 9.1: Fetch and display hardware information
-     */
-    async function updateHardwareInfo() {
-      try {
-        const response = await apiRequest('/api/system/info');
-
-        if (response) {
-          // Update chip information
-          document.getElementById('hw-chip-model').textContent = response.chip_model || 'ESP32-S3';
-          document.getElementById('hw-chip-revision').textContent = response.chip_revision !== undefined ? `Rev ${response.chip_revision}` : 'Unknown';
-
-          // Update flash information
-          if (response.flash_size_mb) {
-            document.getElementById('hw-flash-size').textContent = `${response.flash_size_mb} MB`;
-          }
-          // Flash available
-          const flashFreeElement = document.getElementById('hw-flash-free');
-          if (flashFreeElement && response.flash_available_bytes !== undefined) {
-            flashFreeElement.textContent = formatBytes(response.flash_available_bytes);
-          }
-
-          // Update PSRAM information - not available from API
-          document.getElementById('hw-psram-size').textContent = 'Not Available';
-          document.getElementById('hw-psram-free').textContent = 'N/A';
-
-          // Update heap information
-          if (response.free_heap_bytes !== undefined) {
-            document.getElementById('hw-free-heap').textContent = formatBytes(response.free_heap_bytes);
-          }
-          // Min free heap is not available from API
-          const minHeapElement = document.getElementById('hw-min-heap');
-          if (minHeapElement) {
-            minHeapElement.textContent = 'N/A';
-          }
-
-          // Update partition table
-          updatePartitionTable(response.partitions, response.flash_total_bytes, response.flash_used_bytes, response.flash_available_bytes);
-        }
-      } catch (error) {
-        console.error('Failed to fetch hardware info:', error);
-        // Set error state for all fields
-        const fields = ['hw-chip-model', 'hw-chip-revision', 'hw-flash-size', 'hw-flash-free',
-          'hw-psram-size', 'hw-psram-free', 'hw-free-heap', 'hw-min-heap'];
-        fields.forEach(id => {
-          const element = document.getElementById(id);
-          if (element) element.textContent = 'Error';
-        });
-      }
-    }
-
-    /**
-     * Update partition table display
-     */
-    function updatePartitionTable(partitions, totalFlash, usedFlash, availableFlash) {
-      const tableBody = document.getElementById('partition-table-body');
-
-      if (!partitions || partitions.length === 0) {
-        tableBody.innerHTML = '<tr style="border-bottom: 1px solid var(--color-border-light);"><td colspan="5" style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-secondary);">No partition information available</td></tr>';
-        return;
-      }
-
-      // Build table rows
-      let html = '';
-      partitions.forEach(partition => {
-        html += '<tr style="border-bottom: 1px solid var(--color-border-light);">';
-        html += `<td style="padding: var(--spacing-md); font-weight: var(--font-weight-medium);">${partition.label || 'unnamed'}</td>`;
-        html += `<td style="padding: var(--spacing-md);">${partition.type || '-'}</td>`;
-        html += `<td style="padding: var(--spacing-md);">${partition.subtype || '-'}</td>`;
-        html += `<td style="padding: var(--spacing-md); text-align: right; font-family: monospace;">0x${partition.address.toString(16).toUpperCase().padStart(6, '0')}</td>`;
-
-        // Size column with optional used bytes
-        let sizeText = formatBytes(partition.size);
-        if (partition.used_bytes !== undefined && partition.used_bytes >= 0) {
-          const usedText = formatBytes(partition.used_bytes);
-          const percentage = Math.round((partition.used_bytes / partition.size) * 100);
-          sizeText += ` <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">(${usedText} used, ${percentage}%)</span>`;
-        }
-        html += `<td style="padding: var(--spacing-md); text-align: right; font-weight: var(--font-weight-medium);">${sizeText}</td>`;
-        html += '</tr>';
-      });
-
-      tableBody.innerHTML = html;
-
-      // Update summary
-      document.getElementById('partition-total-flash').textContent = formatBytes(totalFlash);
-      document.getElementById('partition-used-flash').textContent = formatBytes(usedFlash);
-      document.getElementById('partition-available-flash').textContent = formatBytes(availableFlash);
-    }
 
     /**
      * Task 9.2 & 9.4: Update GPIO states and relay information
@@ -7157,21 +6988,6 @@
       return date.toLocaleString();
     }
 
-    /**
-     * Initialize Hardware Settings section
-     */
-    function initHardwareSettings() {
-      // Initial load
-      updateHardwareInfo();
-      updateHardwareStatus();
-
-      // Auto-refresh every 10 seconds (Task 9.1 requirement)
-      setInterval(() => {
-        updateHardwareInfo();
-        updateHardwareStatus();
-      }, 10000);
-    }
-
     // ===== Task 10: Security Settings Functions =====
 
     /**
@@ -7239,7 +7055,7 @@
 
         // Update status card color
         if (pinStatusCard) {
-          pinStatusCard.setAttribute('data-status', isEnabled ? 'connected' : 'disconnected');
+          pinStatusCard.dataset.status = isEnabled ? 'connected' : 'disconnected';
         }
       }
 
@@ -7449,11 +7265,6 @@
     /**
      * Helper function to escape HTML
      */
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
 
     /**
      * Task 20: Initialize login logs auto-refresh
@@ -9164,15 +8975,36 @@
       try {
         const response = await apiRequest('/api/ota/version');
 
-        document.getElementById('ota-current-version').textContent = response.version || 'Unknown';
-        document.getElementById('ota-build-date').textContent = response.build_date || 'Unknown';
-        document.getElementById('ota-chip-model').textContent = response.chip_model || 'Unknown';
+        const currentVersionElement = document.getElementById('ota-current-version');
+        const buildDateElement = document.getElementById('ota-build-date');
+        const chipModelElement = document.getElementById('ota-chip-model');
+
+        if (currentVersionElement) {
+          currentVersionElement.textContent = response.version || 'Unknown';
+        }
+        if (buildDateElement) {
+          buildDateElement.textContent = response.build_date || 'Unknown';
+        }
+        if (chipModelElement) {
+          chipModelElement.textContent = response.chip_model || 'Unknown';
+        }
 
       } catch (error) {
         console.error('Error loading firmware info:', error);
-        document.getElementById('ota-current-version').textContent = 'Error';
-        document.getElementById('ota-build-date').textContent = 'Error';
-        document.getElementById('ota-chip-model').textContent = 'Error';
+
+        const currentVersionElement = document.getElementById('ota-current-version');
+        const buildDateElement = document.getElementById('ota-build-date');
+        const chipModelElement = document.getElementById('ota-chip-model');
+
+        if (currentVersionElement) {
+          currentVersionElement.textContent = 'Error';
+        }
+        if (buildDateElement) {
+          buildDateElement.textContent = 'Error';
+        }
+        if (chipModelElement) {
+          chipModelElement.textContent = 'Error';
+        }
       }
     }
 
@@ -9338,9 +9170,10 @@
       updateOTAProgress(0, 'Preparing upload...');
 
       try {
-        // Create FormData
-        const formData = new FormData();
-        formData.append('firmware', otaSelectedFile);
+        // Read file as ArrayBuffer for raw binary upload
+        // Note: We send raw binary data, not FormData, because the ESP32
+        // backend expects the raw firmware binary without multipart encoding
+        const fileData = await otaSelectedFile.arrayBuffer();
 
         // Upload with progress tracking
         const xhr = new XMLHttpRequest();
@@ -9400,9 +9233,11 @@
           setLoadingState(uploadBtn, false);
         });
 
-        // Send request
+        // Send request with raw binary data
         xhr.open('POST', '/api/ota/upload');
-        xhr.send(formData);
+        // Set content type to application/octet-stream for binary data
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.send(fileData);
 
       } catch (error) {
         console.error('Error uploading firmware:', error);
@@ -9426,6 +9261,101 @@
 
       if (timeRemaining > 0) {
         document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(timeRemaining);
+      }
+    }
+
+    /**
+     * Task 8: Poll OTA status for real-time updates during firmware write
+     * This function polls the /api/ota/status endpoint to get real-time status updates
+     * including progress, status messages, and error details from the backend
+     */
+    let otaStatusPollInterval = null;
+
+    function startOTAStatusPolling() {
+      // Clear any existing polling interval
+      if (otaStatusPollInterval) {
+        clearInterval(otaStatusPollInterval);
+      }
+
+      // Poll every 500ms for real-time updates
+      otaStatusPollInterval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/ota/status');
+          if (!response.ok) {
+            console.error('Failed to fetch OTA status');
+            return;
+          }
+
+          const status = await response.json();
+          
+          // Update progress bar with backend progress
+          if (status.progress_percent !== undefined) {
+            document.getElementById('ota-progress-bar').style.width = status.progress_percent + '%';
+            document.getElementById('ota-progress-percent').textContent = status.progress_percent + '%';
+          }
+
+          // Update status message from backend
+          if (status.status_message) {
+            document.getElementById('ota-upload-status').textContent = status.status_message;
+          }
+
+          // Display detailed status messages based on state
+          if (status.state) {
+            let displayMessage = '';
+            switch (status.state) {
+              case 'begin':
+                displayMessage = 'Preparing to write firmware...';
+                break;
+              case 'writing':
+                displayMessage = status.status_message || 'Writing firmware to flash...';
+                // Show speed and time remaining if available
+                if (status.speed_bytes_per_second && status.speed_bytes_per_second > 0) {
+                  document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
+                }
+                if (status.time_remaining_seconds && status.time_remaining_seconds > 0) {
+                  document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
+                }
+                break;
+              case 'validating':
+                displayMessage = 'Verifying firmware integrity...';
+                break;
+              case 'complete':
+                displayMessage = 'Complete: Firmware ready to apply';
+                stopOTAStatusPolling();
+                break;
+              case 'error':
+                displayMessage = 'Failed: ' + (status.error_message || 'Unknown error');
+                stopOTAStatusPolling();
+                showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
+                break;
+              case 'aborted':
+                displayMessage = 'Update aborted';
+                stopOTAStatusPolling();
+                break;
+            }
+            
+            if (displayMessage && !status.status_message) {
+              document.getElementById('ota-upload-status').textContent = displayMessage;
+            }
+          }
+
+          // Display error messages if present
+          if (status.error_message) {
+            console.error('OTA Error:', status.error_message);
+            // Error will be shown via toast in the error state handler above
+          }
+
+        } catch (error) {
+          console.error('Error polling OTA status:', error);
+          // Don't stop polling on network errors, just log them
+        }
+      }, 500); // Poll every 500ms for responsive updates
+    }
+
+    function stopOTAStatusPolling() {
+      if (otaStatusPollInterval) {
+        clearInterval(otaStatusPollInterval);
+        otaStatusPollInterval = null;
       }
     }
 
@@ -9711,9 +9641,6 @@
     /**
      * Helper: Escape regex special characters
      */
-    function escapeRegex(string) {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
 
     /**
      * Task 15.11: Load firmware version info for documentation
@@ -9818,29 +9745,74 @@
     };
 
     /**
+     * Check if session cookie exists in browser
+     * @returns {boolean} True if session cookie exists
+     */
+    function hasSessionCookie() {
+      return document.cookie.includes('session_id=');
+    }
+    
+    /**
+     * Check if user is currently logged in (has valid session cookie)
+     * @returns {boolean} True if user appears to be logged in
+     */
+    function isLoggedIn() {
+      return hasSessionCookie();
+    }
+    
+    /**
+     * Force logout by clearing session cookie and redirecting to login
+     */
+    function forceLogout() {
+      // Clear session cookie by setting it to expire immediately
+      document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    
+      // Clear any cached session data
+      if (typeof apiCache !== 'undefined') {
+        // Clear all cached data that might contain sensitive information
+        Object.keys(apiCache).forEach(key => {
+          if (apiCache[key] && typeof apiCache[key] === 'object') {
+            apiCache[key].data = null;
+            apiCache[key].timestamp = 0;
+          }
+        });
+      }
+    
+      // Redirect to login page
+      window.location.href = '/login.html';
+    }
+    
+    /**
      * Check if user has a valid session
      * @returns {Promise<boolean>} True if session is valid
      */
     async function checkSession() {
+      // First check if session cookie exists
+      if (!hasSessionCookie()) {
+        console.log('No session cookie found during validation, redirecting to login');
+        window.location.href = '/login.html';
+        return false;
+      }
+    
       try {
         // Make a simple API call to check session validity
         const response = await fetch('/api/system/info', {
           method: 'GET',
           credentials: 'include'
         });
-
+    
         if (response.status === 401) {
           // Session invalid or expired - redirect to login
-          console.log('Session expired or invalid, redirecting to login');
+          console.log('Session expired or invalid (401 response), redirecting to login');
           window.location.href = '/login.html';
           return false;
         }
-
+    
         if (response.ok) {
           // Session is valid
           return true;
         }
-
+    
         // Other error - log but don't redirect
         console.warn('Session check returned unexpected status:', response.status);
         return true; // Assume valid to avoid false redirects
@@ -9927,22 +9899,29 @@
     function startSessionMonitoring() {
       // Check session every 2 minutes
       sessionManager.checkInterval = setInterval(async () => {
+        // First check if session cookie still exists
+        if (!hasSessionCookie()) {
+          console.log('Session cookie lost during session, redirecting to login');
+          window.location.href = '/login.html';
+          return;
+        }
+    
         const isValid = await checkSession();
-
+    
         if (isValid && sessionManager.sessionExpiresAt) {
           const timeRemaining = sessionManager.sessionExpiresAt - Date.now();
           const minutesRemaining = Math.floor(timeRemaining / 60000);
-
+    
           // Show warning 5 minutes before expiration
           if (minutesRemaining <= 5 && minutesRemaining > 0 && !sessionManager.warningShown) {
             showSessionWarning(minutesRemaining);
           }
         }
       }, 120000); // Check every 2 minutes
-
+    
       // Set initial session expiration time (30 minutes from now)
       sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
-
+    
       console.log('Session monitoring started');
     }
 
@@ -9974,22 +9953,681 @@
      */
     async function initSessionManagement() {
       console.log('Initializing session management');
-
+    
+      // Only check session on authenticated pages (not login, setup, etc.)
+      const currentPath = window.location.pathname;
+      const publicPages = ['/login.html', '/setup.html'];
+    
+      if (publicPages.includes(currentPath)) {
+        console.log('On public page, skipping session check');
+        return;
+      }
+    
+      // Allow a brief moment for cookie to be set after login redirect
+      let retries = 0;
+      const maxRetries = 5;
+      const retryDelay = 200; // 200ms
+    
+      while (retries < maxRetries) {
+        if (hasSessionCookie()) {
+          console.log('Session cookie found, proceeding with validation');
+          break;
+        }
+    
+        if (retries === maxRetries - 1) {
+          console.log('No session cookie found after retries, redirecting to login');
+          window.location.href = '/login.html';
+          return;
+        }
+    
+        console.log(`Session cookie not found, retry ${retries + 1}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        retries++;
+      }
+    
       // Check if session is valid on page load
       const isValid = await checkSession();
-
+    
       if (!isValid) {
         // Will redirect to login, no need to continue
         return;
       }
-
+    
       // Setup activity tracking for automatic session extension
       setupActivityTracking();
-
+    
       // Start monitoring session expiration
       startSessionMonitoring();
-
+    
       console.log('Session management initialized');
+    }
+
+    // ===== Task 10: OTA Update Functions =====
+
+    /**
+     * Load OTA firmware information
+     */
+    async function loadOTAInfo() {
+      try {
+        const response = await apiRequest('/api/ota/info', { silentError: true });
+
+        if (response) {
+          // Update current firmware version
+          const versionElement = document.getElementById('ota-current-version');
+          if (versionElement) {
+            versionElement.textContent = response.version || 'Unknown';
+          }
+
+          // Update build date
+          const buildDateElement = document.getElementById('ota-build-date');
+          if (buildDateElement) {
+            buildDateElement.textContent = response.build_date || 'Unknown';
+          }
+
+          // Update ESP-IDF version
+          const idfVersionElement = document.getElementById('ota-idf-version');
+          if (idfVersionElement) {
+            idfVersionElement.textContent = response.idf_version || 'Unknown';
+          }
+
+          // Update rollback button state
+          const rollbackBtn = document.getElementById('ota-rollback-btn');
+          const rollbackInfo = document.getElementById('ota-rollback-info');
+          if (rollbackBtn && rollbackInfo) {
+            if (response.can_rollback) {
+              rollbackBtn.disabled = false;
+              rollbackInfo.style.display = 'none';
+            } else {
+              rollbackBtn.disabled = true;
+              rollbackInfo.style.display = 'block';
+            }
+          }
+
+          console.log('OTA info loaded successfully');
+        }
+      } catch (error) {
+        console.error('Error loading OTA info:', error);
+      }
+    }
+
+    /**
+     * Setup OTA file input handlers
+     */
+    function setupOTAFileHandlers() {
+      const fileInput = document.getElementById('ota-file-input');
+      const dropZone = document.getElementById('ota-drop-zone');
+
+      if (!fileInput || !dropZone) return;
+
+      // File input change handler
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleOTAFileSelected(e.target.files[0]);
+        }
+      });
+
+      // Drag and drop handlers
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragging');
+      });
+
+      dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragging');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragging');
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleOTAFileSelected(e.dataTransfer.files[0]);
+        }
+      });
+
+      // Click to browse
+      dropZone.addEventListener('click', (e) => {
+        // Don't trigger if clicking the button inside
+        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SPAN') {
+          fileInput.click();
+        }
+      });
+    }
+
+    /**
+     * Handle OTA file selection
+     * @param {File} file - Selected firmware file
+     */
+    function handleOTAFileSelected(file) {
+      // Validate file extension
+      if (!file.name.endsWith('.bin')) {
+        showToast('Invalid file type. Please select a .bin file', 'error');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        showToast('File too large. Maximum size is 5MB', 'error');
+        return;
+      }
+
+      // Store file reference
+      window.otaSelectedFile = file;
+
+      // Display file info
+      const fileInfo = document.getElementById('ota-file-info');
+      const fileName = document.getElementById('ota-file-name');
+      const fileSize = document.getElementById('ota-file-size');
+      const uploadBtn = document.getElementById('ota-upload-btn');
+
+      if (fileInfo && fileName && fileSize) {
+        fileName.textContent = file.name;
+        fileSize.textContent = `Size: ${formatBytes(file.size)}`;
+        fileInfo.style.display = 'block';
+      }
+
+      // Enable upload button
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+      }
+
+      console.log('OTA file selected:', file.name, formatBytes(file.size));
+    }
+
+    /**
+     * Clear selected OTA file
+     */
+    function clearOTAFile() {
+      window.otaSelectedFile = null;
+
+      const fileInput = document.getElementById('ota-file-input');
+      const fileInfo = document.getElementById('ota-file-info');
+      const uploadBtn = document.getElementById('ota-upload-btn');
+
+      if (fileInput) {
+        fileInput.value = '';
+      }
+
+      if (fileInfo) {
+        fileInfo.style.display = 'none';
+      }
+
+      if (uploadBtn) {
+        uploadBtn.disabled = true;
+      }
+    }
+
+    /**
+     * Upload firmware with progress tracking and automatic restart
+     */
+    async function uploadFirmware() {
+      const file = window.otaSelectedFile;
+
+      if (!file) {
+        showToast('Please select a firmware file first', 'error');
+        return;
+      }
+
+      // Confirm upload
+      const confirmed = await showConfirmDialog(
+        'Upload Firmware',
+        `<strong>⚠️ Important Warnings:</strong><br><br>` +
+        `• Do not disconnect power during the update<br>` +
+        `• The device will restart automatically after upload<br>` +
+        `• You will lose connection temporarily<br>` +
+        `• The update process may take 1-2 minutes<br><br>` +
+        `<strong>File:</strong> ${file.name} (${formatBytes(file.size)})<br><br>` +
+        `Do you want to proceed with the firmware update?`,
+        'Upload and Update',
+        'Cancel',
+        'warning'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const uploadBtn = document.getElementById('ota-upload-btn');
+      const progressContainer = document.getElementById('ota-progress-container');
+      const progressBar = document.getElementById('ota-progress-bar');
+      const progressPercent = document.getElementById('ota-progress-percent');
+      const uploadSpeed = document.getElementById('ota-upload-speed');
+      const timeRemaining = document.getElementById('ota-time-remaining');
+      const uploadStatus = document.getElementById('ota-upload-status');
+
+      // Disable upload button
+      if (uploadBtn) {
+        setLoadingState(uploadBtn, true);
+        uploadBtn.disabled = true;
+      }
+
+      // Show progress container
+      if (progressContainer) {
+        progressContainer.style.display = 'block';
+      }
+
+      // Reset progress
+      if (progressBar) progressBar.style.width = '0%';
+      if (progressPercent) progressPercent.textContent = '0%';
+      if (uploadSpeed) uploadSpeed.textContent = 'Speed: --';
+      if (timeRemaining) timeRemaining.textContent = 'Time remaining: --';
+      if (uploadStatus) uploadStatus.textContent = 'Preparing upload...';
+
+      try {
+        // Read file as ArrayBuffer for raw binary upload
+        // Note: We send raw binary data, not FormData, because the ESP32
+        // backend expects the raw firmware binary without multipart encoding
+        const fileData = await file.arrayBuffer();
+
+        // Track upload progress
+        const startTime = Date.now();
+        let lastLoaded = 0;
+        let lastTime = startTime;
+
+        // Create XMLHttpRequest for progress tracking
+        const xhr = new XMLHttpRequest();
+
+        // Upload progress handler
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            const currentTime = Date.now();
+            const timeDiff = (currentTime - lastTime) / 1000; // seconds
+            const bytesDiff = e.loaded - lastLoaded;
+
+            // Update progress bar
+            if (progressBar) progressBar.style.width = percent + '%';
+            if (progressPercent) progressPercent.textContent = percent + '%';
+
+            // Calculate speed (bytes per second)
+            if (timeDiff > 0.5) { // Update speed every 0.5 seconds
+              const speed = bytesDiff / timeDiff;
+              if (uploadSpeed) {
+                uploadSpeed.textContent = `Speed: ${formatBytes(speed)}/s`;
+              }
+
+              // Calculate time remaining
+              const remaining = e.total - e.loaded;
+              const timeLeft = remaining / speed;
+              if (timeRemaining && timeLeft > 0) {
+                timeRemaining.textContent = `Time remaining: ${formatTime(timeLeft)}`;
+              }
+
+              lastLoaded = e.loaded;
+              lastTime = currentTime;
+            }
+
+            // Update status message
+            if (uploadStatus) {
+              if (percent < 100) {
+                uploadStatus.textContent = `Uploading firmware... ${percent}%`;
+              } else {
+                uploadStatus.textContent = 'Upload complete. Validating firmware...';
+              }
+            }
+          }
+        });
+
+        // Load handler (upload complete, waiting for response)
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+
+              if (response.success) {
+                // Success! Show countdown and restart message
+                if (uploadStatus) {
+                  uploadStatus.innerHTML = '<strong style="color: var(--color-success);">✅ Firmware update successful!</strong>';
+                }
+
+                showToast('Firmware uploaded successfully! Device will restart in 5 seconds...', 'success');
+
+                // Show restart countdown
+                showRestartCountdown();
+
+              } else {
+                // Upload failed
+                const errorMsg = response.error || 'Upload failed';
+                if (uploadStatus) {
+                  uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ ${errorMsg}</strong>`;
+                }
+                showToast('Firmware upload failed: ' + errorMsg, 'error');
+
+                // Re-enable upload button
+                if (uploadBtn) {
+                  setLoadingState(uploadBtn, false);
+                  uploadBtn.disabled = false;
+                }
+              }
+            } catch (error) {
+              console.error('Error parsing response:', error);
+              if (uploadStatus) {
+                uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Invalid server response</strong>';
+              }
+              showToast('Error: Invalid server response', 'error');
+
+              // Re-enable upload button
+              if (uploadBtn) {
+                setLoadingState(uploadBtn, false);
+                uploadBtn.disabled = false;
+              }
+            }
+          } else {
+            // HTTP error
+            if (uploadStatus) {
+              uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ Upload failed (HTTP ${xhr.status})</strong>`;
+            }
+            showToast(`Upload failed: HTTP ${xhr.status}`, 'error');
+
+            // Re-enable upload button
+            if (uploadBtn) {
+              setLoadingState(uploadBtn, false);
+              uploadBtn.disabled = false;
+            }
+          }
+        });
+
+        // Error handler
+        xhr.addEventListener('error', () => {
+          if (uploadStatus) {
+            uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Network error during upload</strong>';
+          }
+          showToast('Network error during upload. Please try again.', 'error');
+
+          // Re-enable upload button
+          if (uploadBtn) {
+            setLoadingState(uploadBtn, false);
+            uploadBtn.disabled = false;
+          }
+        });
+
+        // Abort handler
+        xhr.addEventListener('abort', () => {
+          if (uploadStatus) {
+            uploadStatus.innerHTML = '<strong style="color: var(--color-warning);">⚠️ Upload cancelled</strong>';
+          }
+          showToast('Upload cancelled', 'warning');
+
+          // Re-enable upload button
+          if (uploadBtn) {
+            setLoadingState(uploadBtn, false);
+            uploadBtn.disabled = false;
+          }
+        });
+
+        // Send request with raw binary data
+        xhr.open('POST', '/api/ota/upload');
+        // Set content type to application/octet-stream for binary data
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.send(fileData);
+
+      } catch (error) {
+        console.error('Error uploading firmware:', error);
+        if (uploadStatus) {
+          uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ ${error.message}</strong>`;
+        }
+        showToast('Error uploading firmware: ' + error.message, 'error');
+
+        // Re-enable upload button
+        if (uploadBtn) {
+          setLoadingState(uploadBtn, false);
+          uploadBtn.disabled = false;
+        }
+      }
+    }
+
+    /**
+     * Show restart countdown and automatic page reload
+     */
+    function showRestartCountdown() {
+      // Create countdown overlay
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      const countdownBox = document.createElement('div');
+      countdownBox.style.cssText = `
+        background-color: var(--color-surface);
+        border-radius: var(--border-radius-lg);
+        padding: var(--spacing-xl);
+        text-align: center;
+        max-width: 500px;
+        box-shadow: var(--shadow-xl);
+      `;
+
+      countdownBox.innerHTML = `
+        <div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔄</div>
+        <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
+          Firmware Update Successful!
+        </h2>
+        <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+          Device is restarting with new firmware...
+        </p>
+        <div style="font-size: 48px; font-weight: var(--font-weight-bold); color: var(--color-primary); margin-bottom: var(--spacing-md);">
+          <span id="restart-countdown">5</span>s
+        </div>
+        <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+          Page will reload automatically when device is ready
+        </p>
+      `;
+
+      overlay.appendChild(countdownBox);
+      document.body.appendChild(overlay);
+
+      // Countdown from 5 to 0
+      let countdown = 5;
+      const countdownElement = document.getElementById('restart-countdown');
+
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdownElement) {
+          countdownElement.textContent = countdown;
+        }
+
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+
+          // Change message to "waiting for device"
+          countdownBox.innerHTML = `
+            <div style="font-size: 64px; margin-bottom: var(--spacing-md); animation: spin 2s linear infinite;">⏳</div>
+            <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
+              Waiting for Device...
+            </h2>
+            <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+              Device is restarting. This may take up to 30 seconds.
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+              Attempting to reconnect...
+            </p>
+          `;
+
+          // Start polling for device availability
+          startDeviceReconnectPolling();
+        }
+      }, 1000);
+    }
+
+    /**
+     * Poll device for availability and redirect to login page when ready
+     * OTA updates invalidate all RAM-based sessions, so redirect to login
+     */
+    function startDeviceReconnectPolling() {
+      let attempts = 0;
+      const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
+      
+      // Check if session was invalidated by OTA update
+      const sessionInvalidated = sessionStorage.getItem('ota_session_invalidated') === 'true';
+      console.log('OTA reconnect polling started, session invalidated:', sessionInvalidated);
+
+      const pollInterval = setInterval(async () => {
+        attempts++;
+
+        try {
+          // Try to fetch system state
+          const response = await fetch('/api/system/state', {
+            method: 'GET',
+            cache: 'no-cache',
+            signal: AbortSignal.timeout(2000) // 2 second timeout
+          });
+
+          if (response.ok) {
+            // Device is back online!
+            clearInterval(pollInterval);
+            console.log('Device back online after OTA, redirecting to login page');
+
+            // Clear session invalidation flag
+            sessionStorage.removeItem('ota_session_invalidated');
+
+            // Show success message briefly
+            const overlay = document.querySelector('div[style*="z-index: 9999"]');
+            if (overlay) {
+              const countdownBox = overlay.querySelector('div');
+              if (countdownBox) {
+                countdownBox.innerHTML = `
+                  <div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div>
+                  <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
+                    Device Online!
+                  </h2>
+                  <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
+                    ${sessionInvalidated ? 'Redirecting to login page...' : 'Reloading page...'}
+                  </p>
+                `;
+              }
+            }
+
+            // Redirect to login page (OTA updates invalidate all sessions)
+            setTimeout(() => {
+              window.location.href = '/login.html';
+            }, 1000);
+          }
+        } catch (error) {
+          // Device not ready yet, continue polling
+          console.log(`Reconnect attempt ${attempts}/${maxAttempts}...`);
+        }
+
+        // Give up after max attempts
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          console.log('Reconnect timeout - redirecting to login page');
+
+          const overlay = document.querySelector('div[style*="z-index: 9999"]');
+          if (overlay) {
+            const countdownBox = overlay.querySelector('div');
+            if (countdownBox) {
+              countdownBox.innerHTML = `
+                <div style="font-size: 64px; margin-bottom: var(--spacing-md);">⚠️</div>
+                <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-warning); margin-bottom: var(--spacing-md);">
+                  Connection Timeout
+                </h2>
+                <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
+                  Device is taking longer than expected to restart.
+                </p>
+                <button class="btn btn-primary" onclick="window.location.href='/login.html'">
+                  <span>🔄</span>
+                  <span>Go to Login Page</span>
+                </button>
+              `;
+            }
+          }
+        }
+      }, 500); // Poll every 500ms
+    }
+
+    /**
+     * Handle OTA rollback
+     */
+    async function handleOTARollback() {
+      const confirmed = await showConfirmDialog(
+        'Rollback Firmware',
+        'This will rollback to the previous firmware version and restart the device. You will need to log in again after restart. Continue?',
+        'Rollback and Restart',
+        'Cancel',
+        'warning'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const button = document.getElementById('ota-rollback-btn');
+      if (button) setLoadingState(button, true);
+
+      try {
+        const response = await apiRequest('/api/ota/rollback', {
+          method: 'POST'
+        });
+
+        if (response && response.success) {
+          // Check if session will be invalidated (device restart)
+          if (response.session_invalidated) {
+            showToast('Rollback initiated. Device will restart. You will need to log in again.', 'success');
+            sessionStorage.setItem('ota_session_invalidated', 'true');
+          } else {
+            showToast('Rollback initiated. Device will restart...', 'success');
+          }
+
+          // Show restart countdown
+          showRestartCountdown();
+        } else {
+          showToast(response?.message || 'Rollback failed', 'error');
+          if (button) setLoadingState(button, false);
+        }
+      } catch (error) {
+        console.error('Error during rollback:', error);
+        showToast('Error during rollback: ' + error.message, 'error');
+        if (button) setLoadingState(button, false);
+      }
+    }
+
+    /**
+     * Format bytes to human-readable string
+     * @param {number} bytes - Number of bytes
+     * @returns {string} Formatted string
+     */
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    /**
+     * Format time in seconds to human-readable string
+     * @param {number} seconds - Number of seconds
+     * @returns {string} Formatted string
+     */
+    function formatTime(seconds) {
+      if (seconds < 60) {
+        return Math.round(seconds) + 's';
+      } else {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return `${minutes}m ${secs}s`;
+      }
+    }
+
+    /**
+     * Initialize OTA section
+     */
+    function initOTASection() {
+      loadOTAInfo();
+      setupOTAFileHandlers();
+      console.log('OTA section initialized');
     }
 
     /**
@@ -10022,9 +10660,6 @@
 
       // Initialize Network Settings section
       initNetworkSettings();
-
-      // Initialize Hardware Settings section
-      initHardwareSettings();
 
       // Initialize Hardware Testing section
       initHardwareTesting();

@@ -1,3 +1,4 @@
+#pragma GCC diagnostic ignored "-Waddress"
 #include "web_server.h"
 #include "web_api.h"
 #include "cert_manager.h"
@@ -54,24 +55,25 @@ static bool is_public_endpoint(const char* uri) {
 
 /**
  * @brief Authentication filter for HTTP requests
- * 
+ *
  * This filter checks for a valid session cookie on all protected endpoints.
  * If the session is missing or invalid, it returns 401 Unauthorized.
- * If the session is valid, it extends the session timeout.
- * 
+ * If the session is valid and extend_session is true, it extends the session timeout.
+ *
  * @param req HTTP request
+ * @param extend_session Whether to extend session timeout on successful authentication
  * @return ESP_OK if authentication passed, ESP_FAIL if authentication failed
  */
-esp_err_t auth_filter(httpd_req_t *req) {
+esp_err_t auth_filter(httpd_req_t *req, bool extend_session) {
     // Skip authentication for public endpoints
     if (is_public_endpoint(req->uri)) {
         return ESP_OK;
     }
-    
+
     // Check if password is set - if not, redirect to setup page
     if (!auth_is_password_set()) {
         ESP_LOGW(TAG, "No password set - redirecting to setup page");
-        
+
         // Check if this is an API request or HTML page request
         if (strncmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
@@ -87,24 +89,23 @@ esp_err_t auth_filter(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
-    // Extract session cookie
+    // Extract session cookie - optimized parsing
     char session_id[AUTH_SESSION_ID_SIZE] = {0};
     size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
-    
-    if (cookie_len > 0) {
+
+    if (cookie_len > 0 && cookie_len < 512) {  // Reasonable cookie size limit
         char* cookie_str = malloc(cookie_len + 1);
         if (cookie_str) {
             if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
-                // Parse session_id from cookie string
-                // Cookie format: "session_id=<value>; other=value"
+                // Optimized cookie parsing - look for session_id= directly
                 char* session_start = strstr(cookie_str, "session_id=");
                 if (session_start) {
-                    session_start += strlen("session_id=");
+                    session_start += 11; // Skip "session_id="
                     char* session_end = strchr(session_start, ';');
                     size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
-                    
-                    if (session_len < AUTH_SESSION_ID_SIZE) {
-                        strncpy(session_id, session_start, session_len);
+
+                    if (session_len > 0 && session_len < AUTH_SESSION_ID_SIZE) {
+                        memcpy(session_id, session_start, session_len);
                         session_id[session_len] = '\0';
                     }
                 }
@@ -116,9 +117,9 @@ esp_err_t auth_filter(httpd_req_t *req) {
     // Check if session ID was found
     if (session_id[0] == '\0') {
         ESP_LOGW(TAG, "No session cookie found for %s", req->uri);
-        
+
         // Check if this is an API request or HTML page request
-        if (strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri[0] != '\0' && memcmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -135,9 +136,9 @@ esp_err_t auth_filter(httpd_req_t *req) {
     // Validate session
     if (!auth_validate_session(session_id)) {
         ESP_LOGW(TAG, "Invalid or expired session for %s", req->uri);
-        
+
         // Check if this is an API request or HTML page request
-        if (strncmp(req->uri, "/api/", 5) == 0) {
+        if (req->uri[0] != '\0' && memcmp(req->uri, "/api/", 5) == 0) {
             // API request - return JSON error
             httpd_resp_set_status(req, "401 Unauthorized");
             httpd_resp_set_type(req, "application/json");
@@ -151,8 +152,10 @@ esp_err_t auth_filter(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
-    // Session is valid - extend timeout on activity
-    auth_extend_session(session_id);
+    // Session is valid - extend timeout on user activity
+    if (extend_session) {
+        auth_extend_session(session_id);
+    }
     
     return ESP_OK;
 }
@@ -167,8 +170,8 @@ static esp_err_t index_handler(httpd_req_t *req)
         return ESP_OK;
     }
     
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user activity)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -180,8 +183,8 @@ static esp_err_t index_handler(httpd_req_t *req)
 
 static esp_err_t documentation_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user activity)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -225,6 +228,7 @@ static esp_err_t setup_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+
 // URI handlers for HTML pages
 static const httpd_uri_t root_uri = {
     .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL
@@ -241,6 +245,7 @@ static const httpd_uri_t login_uri = {
 static const httpd_uri_t setup_uri = {
     .uri = "/setup.html", .method = HTTP_GET, .handler = setup_handler, .user_ctx = NULL
 };
+
 
 // HTTP to HTTPS redirect handler (used as error handler for 404)
 static esp_err_t http_redirect_handler(httpd_req_t *req, httpd_err_code_t err __attribute__((unused)))
@@ -375,9 +380,15 @@ void web_server_start(void)
     
     // Configure HTTPS server
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-    config.httpd.max_uri_handlers = 50;  // Increased for auth and certificate endpoints
+    config.httpd.max_uri_handlers = 60;  // Increased for auth, certificate, and JS file endpoints
     config.httpd.server_port = 443;
     config.httpd.ctrl_port = 32768;
+
+    // Enable HTTP keep-alive for better performance on consecutive requests
+    config.httpd.keep_alive_enable = true;
+    config.httpd.keep_alive_idle = 10;      // 10 seconds idle timeout
+    config.httpd.keep_alive_interval = 5;   // 5 seconds between keep-alive packets
+    config.httpd.keep_alive_count = 5;      // Send 5 keep-alive packets before closing
     
     // Set certificate and key
     config.servercert = (const uint8_t*)cert_pem;
@@ -399,6 +410,7 @@ void web_server_start(void)
         httpd_register_uri_handler(server, &login_uri);
         httpd_register_uri_handler(server, &setup_uri);
         
+        
         // Register all API handlers via the API module
         web_api_register_handlers(server);
         
@@ -409,6 +421,12 @@ void web_server_start(void)
         redirect_config.server_port = 80;
         redirect_config.ctrl_port = 32769;  // Different control port
         redirect_config.max_uri_handlers = 1;  // Need at least 1 for error handler
+
+        // Enable HTTP keep-alive for better performance on consecutive requests
+        redirect_config.keep_alive_enable = true;
+        redirect_config.keep_alive_idle = 10;      // 10 seconds idle timeout
+        redirect_config.keep_alive_interval = 5;   // 5 seconds between keep-alive packets
+        redirect_config.keep_alive_count = 5;      // Send 5 keep-alive packets before closing
         
         esp_err_t redirect_err = httpd_start(&redirect_server, &redirect_config);
         if (redirect_err == ESP_OK) {

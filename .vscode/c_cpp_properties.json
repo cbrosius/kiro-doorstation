@@ -8,12 +8,13 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/opt/esp/idf/components/**",
-                "C:\\ESP-IDF\\v5.5.1\\esp-idf\\components"
+                "C:\\ESP-IDF\\v5.5.1\\esp-idf\\components\\**"
             ],
             "browse": {
                 "path": [
                     "${workspaceFolder}",
-                    "/opt/esp/idf/components"
+                    "/opt/esp/idf/components",
+                    "C:\\ESP-IDF\\v5.5.1\\esp-idf\\components"
                 ],
                 "limitSymbolsToIncludedHeaders": false
             }

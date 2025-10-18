@@ -209,7 +209,7 @@ esp_err_t cert_get_info(cert_info_t* info) {
         info->common_name[0] = '\0';
     } else {
         // Try to extract just the CN= part if present
-        char *cn_start = strstr(info->common_name, "CN=");
+        char *cn_start = (char*)strstr(info->common_name, "CN=");
         if (cn_start) {
             cn_start += 3; // Skip "CN="
             char *cn_end = strchr(cn_start, ',');
@@ -233,7 +233,7 @@ esp_err_t cert_get_info(cert_info_t* info) {
         info->issuer[0] = '\0';
     } else {
         // Try to extract just the CN= part if present
-        char *cn_start = strstr(info->issuer, "CN=");
+        char *cn_start = (char*)strstr(info->issuer, "CN=");
         if (cn_start) {
             cn_start += 3; // Skip "CN="
             char *cn_end = strchr(cn_start, ',');

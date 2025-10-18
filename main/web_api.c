@@ -6,6 +6,7 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_partition.h"
+#include "esp_timer.h"
 #include "cJSON.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -17,12 +18,14 @@
 #include "hardware_test.h"
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
+#include "ota_handler.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "esp_heap_caps.h"
 
 static const char *TAG = "web_api";
 
@@ -130,7 +133,11 @@ static const httpd_uri_t network_ip_get_uri;
 static const httpd_uri_t network_ip_post_uri;
 static const httpd_uri_t email_config_get_uri;
 static const httpd_uri_t email_config_post_uri;
+static const httpd_uri_t ota_info_uri;
 static const httpd_uri_t ota_version_uri;
+static const httpd_uri_t ota_upload_uri;
+static const httpd_uri_t ota_rollback_uri;
+static const httpd_uri_t ota_status_uri;
 static const httpd_uri_t system_state_uri;
 static const httpd_uri_t system_restart_uri;
 static const httpd_uri_t system_info_uri;
@@ -194,8 +201,15 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &email_config_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &email_config_post_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register OTA API handlers (1 endpoint)
+    // Register OTA API handlers (5 endpoints)
+    if (httpd_register_uri_handler(server, &ota_info_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &ota_version_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_upload_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_rollback_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &ota_status_uri) == ESP_OK) registered_count++; else failed_count++;
+
+    // Log OTA endpoints for debugging
+    ESP_LOGI(TAG, "Registered OTA endpoints: info, version, upload, rollback, status");
     
     // Register System API handlers (3 endpoints)
     if (httpd_register_uri_handler(server, &system_state_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -213,7 +227,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &dtmf_security_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &dtmf_logs_uri) == ESP_OK) registered_count++; else failed_count++;
     
-    // Register Hardware Test API handlers (5 endpoints)
+    // Register Hardware Test API handlers (6 endpoints)
     if (httpd_register_uri_handler(server, &hardware_test_doorbell_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_door_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &hardware_test_light_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -241,7 +255,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 42 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 47 API handlers registered successfully");
     }
 }
 
@@ -251,8 +265,8 @@ void web_api_register_handlers(httpd_handle_t server) {
 
 static esp_err_t get_sip_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -268,8 +282,8 @@ static esp_err_t get_sip_state_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -298,8 +312,8 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - SIP config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -363,8 +377,8 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - SIP test)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -388,8 +402,8 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -450,8 +464,8 @@ static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_log_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for log retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -526,8 +540,8 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -550,8 +564,8 @@ static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -576,8 +590,8 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 
 static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -599,8 +613,8 @@ static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -654,8 +668,8 @@ static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t get_wifi_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -685,8 +699,8 @@ static esp_err_t get_wifi_state_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi scan)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -743,8 +757,8 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi connect)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -805,8 +819,8 @@ static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 
 static esp_err_t get_network_ip_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -882,8 +896,8 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
 
 static esp_err_t post_network_ip_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - network config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -903,8 +917,8 @@ static esp_err_t post_network_ip_handler(httpd_req_t *req)
 
 static esp_err_t get_email_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -930,8 +944,8 @@ static esp_err_t get_email_config_handler(httpd_req_t *req)
 
 static esp_err_t post_email_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - email config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1054,27 +1068,326 @@ static esp_err_t post_email_config_handler(httpd_req_t *req)
 // OTA API Handlers
 // ============================================================================
 
-static esp_err_t get_ota_version_handler(httpd_req_t *req)
+static esp_err_t get_ota_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
-    // Firmware version (hardcoded for now)
-    cJSON_AddStringToObject(root, "version", "v1.0.0");
-    cJSON_AddStringToObject(root, "project_name", "sip_doorbell");
-    cJSON_AddStringToObject(root, "build_date", __DATE__);
-    cJSON_AddStringToObject(root, "build_time", __TIME__);
-    cJSON_AddStringToObject(root, "idf_version", IDF_VER);
+    // Get firmware information from OTA handler
+    ota_info_t info;
+    ota_get_info(&info);
 
-    // OTA partition info (placeholder values)
-    cJSON_AddNumberToObject(root, "ota_partition_size", 1572864);
-    cJSON_AddNumberToObject(root, "ota_available_space", 1048576);
+    cJSON_AddStringToObject(root, "version", info.version);
+    cJSON_AddStringToObject(root, "build_date", info.build_date);
+    cJSON_AddStringToObject(root, "idf_version", info.idf_version);
+    cJSON_AddStringToObject(root, "partition_label", info.partition_label);
+    cJSON_AddNumberToObject(root, "app_size", info.app_size);
+    cJSON_AddBoolToObject(root, "can_rollback", info.can_rollback);
 
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t post_ota_upload_handler(httpd_req_t *req)
+{
+    // Check authentication (extend session for user action - OTA upload)
+    if (auth_filter(req, true) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "OTA upload started, content length: %d", req->content_len);
+    
+    // Validate content length
+    if (req->content_len <= 0) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Empty firmware file\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Check maximum size (2MB)
+    if (req->content_len > 2 * 1024 * 1024) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Firmware file too large (max 2MB)\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    // Begin OTA update
+    esp_err_t err = ota_begin_update(req->content_len);
+    if (err != ESP_OK) {
+        const ota_context_t* ctx = ota_get_context();
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Failed to begin OTA update");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Receive and write firmware data in chunks
+    char *buffer = malloc(4096);
+    if (!buffer) {
+        ota_abort_update();
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Out of memory\"}", -1);
+        return ESP_FAIL;
+    }
+    
+    int remaining = req->content_len;
+    bool upload_success = true;
+    
+    while (remaining > 0) {
+        int recv_len = httpd_req_recv(req, buffer, remaining < 4096 ? remaining : 4096);
+        
+        if (recv_len <= 0) {
+            if (recv_len == HTTPD_SOCK_ERR_TIMEOUT) {
+                ESP_LOGW(TAG, "Socket timeout during OTA upload");
+            } else {
+                ESP_LOGE(TAG, "Socket error during OTA upload: %d", recv_len);
+            }
+            upload_success = false;
+            break;
+        }
+        
+        // Write chunk to flash
+        err = ota_write_chunk((const uint8_t*)buffer, recv_len);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write OTA chunk: %s", esp_err_to_name(err));
+            upload_success = false;
+            break;
+        }
+        
+        remaining -= recv_len;
+    }
+    
+    free(buffer);
+    
+    // Check if upload was successful
+    if (!upload_success) {
+        ota_abort_update();
+        const ota_context_t* ctx = ota_get_context();
+        
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Upload failed");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Finalize OTA update
+    err = ota_end_update();
+    if (err != ESP_OK) {
+        ota_abort_update();
+        const ota_context_t* ctx = ota_get_context();
+        
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "error", ctx->error_message[0] ? ctx->error_message : "Validation failed");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        return ESP_FAIL;
+    }
+    
+    // Success - send response
+    ESP_LOGI(TAG, "OTA update completed successfully");
+    ESP_LOGI(TAG, "Sending success response to client, device will restart in 5 seconds");
+    
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Firmware update successful. Device will restart in 5 seconds.");
+    cJSON_AddBoolToObject(response, "session_invalidated", true);
+    cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+    
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+    
+    // Schedule restart after 5 seconds to allow response to be sent
+    ESP_LOGI(TAG, "Restarting device NOW - all RAM sessions will be invalidated");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    esp_restart();
+    
+    return ESP_OK;
+}
+
+static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
+{
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "OTA rollback requested");
+    
+    // Attempt rollback
+    esp_err_t err = ota_rollback();
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    if (err == ESP_OK) {
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Rollback prepared. Device will restart in 5 seconds.");
+        cJSON_AddBoolToObject(response, "session_invalidated", true);
+        cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+        
+        ESP_LOGI(TAG, "OTA rollback - device will restart, all sessions will be invalidated");
+        // Schedule restart after 5 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+    } else {
+        httpd_resp_set_status(req, "400 Bad Request");
+        
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", false);
+        
+        if (err == ESP_ERR_NOT_FOUND) {
+            cJSON_AddStringToObject(response, "error", "No previous firmware available for rollback");
+        } else {
+            cJSON_AddStringToObject(response, "error", "Rollback failed");
+        }
+        
+        char *json_string = cJSON_Print(response);
+        httpd_resp_send(req, json_string, strlen(json_string));
+        free(json_string);
+        cJSON_Delete(response);
+    }
+    
+    return ESP_OK;
+}
+
+// New OTA version handler
+static esp_err_t get_ota_version_handler(httpd_req_t *req)
+{
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    // Get firmware information from OTA handler
+    ota_info_t info;
+    ota_get_info(&info);
+
+    // Return just the version information
+    cJSON_AddStringToObject(root, "version", info.version);
+    cJSON_AddStringToObject(root, "build_date", info.build_date);
+
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t get_ota_status_handler(httpd_req_t *req)
+{
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+    
+    // Get current OTA context
+    const ota_context_t* ctx = ota_get_context();
+    
+    // Map state to string
+    const char* state_str = "idle";
+    switch (ctx->state) {
+        case OTA_STATE_IDLE:
+            state_str = "idle";
+            break;
+        case OTA_STATE_BEGIN:
+            state_str = "begin";
+            break;
+        case OTA_STATE_WRITING:
+            state_str = "writing";
+            break;
+        case OTA_STATE_VALIDATING:
+            state_str = "validating";
+            break;
+        case OTA_STATE_COMPLETE:
+            state_str = "complete";
+            break;
+        case OTA_STATE_ABORT:
+            state_str = "aborted";
+            break;
+        case OTA_STATE_ERROR:
+            state_str = "error";
+            break;
+    }
+    
+    cJSON_AddStringToObject(root, "state", state_str);
+    cJSON_AddNumberToObject(root, "progress_percent", ctx->progress_percent);
+    cJSON_AddNumberToObject(root, "written_size", ctx->written_size);
+    cJSON_AddNumberToObject(root, "total_size", ctx->total_size);
+    
+    // Add status message
+    if (ctx->status_message[0] != '\0') {
+        cJSON_AddStringToObject(root, "status_message", ctx->status_message);
+    }
+    
+    // Add error message if present
+    if (ctx->error_message[0] != '\0') {
+        cJSON_AddStringToObject(root, "error_message", ctx->error_message);
+    }
+    
+    // Calculate estimated time remaining if writing
+    if (ctx->state == OTA_STATE_WRITING && ctx->written_size > 0 && ctx->total_size > 0) {
+        uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000000);
+        uint32_t elapsed = current_time - ctx->start_time;
+        if (elapsed > 0) {
+            float speed = (float)ctx->written_size / elapsed; // bytes per second
+            size_t remaining_bytes = ctx->total_size - ctx->written_size;
+            uint32_t time_remaining = (uint32_t)(remaining_bytes / speed); // seconds
+            cJSON_AddNumberToObject(root, "time_remaining_seconds", time_remaining);
+            cJSON_AddNumberToObject(root, "speed_bytes_per_second", (uint32_t)speed);
+        }
+    }
+    
     char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
@@ -1088,8 +1401,8 @@ static esp_err_t get_ota_version_handler(httpd_req_t *req)
 
 static esp_err_t get_system_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1133,16 +1446,24 @@ static esp_err_t get_system_state_handler(httpd_req_t *req)
 
 static esp_err_t post_system_restart_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
-    ESP_LOGI(TAG, "System restart requested");
+    ESP_LOGI(TAG, "System restart requested - all sessions will be invalidated");
     
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"System restart initiated\"}", 
-                    strlen("{\"status\":\"success\",\"message\":\"System restart initiated\"}"));
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddStringToObject(response, "message", "System restart initiated");
+    cJSON_AddBoolToObject(response, "session_invalidated", true);
+    cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+    
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
 
     // Restart after a short delay to allow response to be sent
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -1153,19 +1474,15 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
 
 static esp_err_t get_system_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
 
-    // Chip model (hardcoded for ESP32-S3)
-    cJSON_AddStringToObject(root, "chip_model", "ESP32-S3");
-    cJSON_AddNumberToObject(root, "chip_revision", 0);
-    cJSON_AddNumberToObject(root, "cpu_cores", 2);
-    cJSON_AddNumberToObject(root, "cpu_freq_mhz", 240);
+    // Get actual flash size - will be calculated from partitions
     
     // Get actual flash size - will be calculated from partitions
     uint32_t flash_size = 0;
@@ -1317,12 +1634,15 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
     // System info
     uint32_t free_heap = esp_get_free_heap_size();
     cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
-    
+
     uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
     cJSON_AddNumberToObject(root, "uptime_seconds", uptime_ms / 1000);
-    
+
     // Firmware version
     cJSON_AddStringToObject(root, "firmware_version", "v1.0.0");
+
+    // PSRAM information (not available in ESP32-S3)
+    cJSON_AddStringToObject(root, "psram_size", "Not Available");
 
     char *json_string = cJSON_Print(root);
     httpd_resp_send(req, json_string, strlen(json_string));
@@ -1337,8 +1657,8 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
 
 static esp_err_t get_ntp_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1383,8 +1703,8 @@ static esp_err_t get_ntp_state_handler(httpd_req_t *req)
 
 static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1403,8 +1723,8 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - NTP config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1459,8 +1779,8 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1480,8 +1800,8 @@ static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 
 static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1506,8 +1826,8 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1601,8 +1921,8 @@ static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1721,8 +2041,8 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1786,8 +2106,8 @@ static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1857,8 +2177,8 @@ static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1886,8 +2206,8 @@ static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 
 static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1912,8 +2232,8 @@ static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1944,11 +2264,12 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 
 static esp_err_t get_cert_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
-    
+
+    ESP_LOGI(TAG, "Certificate info handler - authentication passed");
     httpd_resp_set_type(req, "application/json");
     
     // Check if certificate exists
@@ -1990,8 +2311,8 @@ static esp_err_t get_cert_info_handler(httpd_req_t *req)
 
 static esp_err_t post_cert_upload_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate upload)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2094,8 +2415,8 @@ static esp_err_t post_cert_upload_handler(httpd_req_t *req)
 
 static esp_err_t post_cert_generate_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate generation)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2183,8 +2504,8 @@ static esp_err_t post_cert_generate_handler(httpd_req_t *req)
 
 static esp_err_t get_cert_download_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2224,8 +2545,8 @@ static esp_err_t get_cert_download_handler(httpd_req_t *req)
 
 static esp_err_t delete_cert_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate deletion)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2367,10 +2688,10 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
 
     if (result.authenticated) {
-        // Set session cookie with security flags
+        // Set session cookie with security flags (removed HttpOnly to allow frontend detection)
         char cookie[256];
         snprintf(cookie, sizeof(cookie),
-                 "session_id=%s; HttpOnly; Secure; SameSite=Strict; Max-Age=%d; Path=/",
+                 "session_id=%s; Secure; SameSite=Strict; Max-Age=%d; Path=/",
                  result.session_id,
                  AUTH_SESSION_TIMEOUT_SECONDS);
         httpd_resp_set_hdr(req, "Set-Cookie", cookie);
@@ -2421,10 +2742,10 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req)
             if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_str, cookie_len + 1) == ESP_OK) {
                 // Parse session_id from cookie string
                 // Cookie format: "session_id=<value>; other=value"
-                char* session_start = strstr(cookie_str, "session_id=");
+                const char* session_start = strstr(cookie_str, "session_id=");
                 if (session_start) {
                     session_start += strlen("session_id=");
-                    char* session_end = strchr(session_start, ';');
+                    const char* session_end = strchr(session_start, ';');
                     size_t session_len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
                     
                     if (session_len < AUTH_SESSION_ID_SIZE) {
@@ -2446,7 +2767,7 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req)
     // Clear session cookie by setting Max-Age=0
     char cookie[128];
     snprintf(cookie, sizeof(cookie),
-             "session_id=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/");
+             "session_id=; Secure; SameSite=Strict; Max-Age=0; Path=/");
     httpd_resp_set_hdr(req, "Set-Cookie", cookie);
     
     // Send success response
@@ -2576,8 +2897,8 @@ static esp_err_t post_auth_set_password_handler(httpd_req_t *req)
 
 static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
 {
-    // Check authentication - user must be logged in to change password
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication - user must be logged in to change password (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -2672,9 +2993,9 @@ static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
 static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "GET /api/auth/logs - Handler called");
-    
-    // Check authentication - user must be logged in to view logs
-    if (auth_filter(req) != ESP_OK) {
+
+    // Check authentication - user must be logged in to view logs (don't extend session for log retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         ESP_LOGW(TAG, "Authentication failed for /api/auth/logs");
         return ESP_FAIL;
     }
@@ -2761,6 +3082,7 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 
     return ESP_OK;
 }
+
 
 
 // ============================================================================
@@ -2864,8 +3186,24 @@ static const httpd_uri_t email_config_post_uri = {
 };
 
 // OTA API URI handlers
+static const httpd_uri_t ota_info_uri = {
+    .uri = "/api/ota/info", .method = HTTP_GET, .handler = get_ota_info_handler, .user_ctx = NULL
+};
+
 static const httpd_uri_t ota_version_uri = {
     .uri = "/api/ota/version", .method = HTTP_GET, .handler = get_ota_version_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_upload_uri = {
+    .uri = "/api/ota/upload", .method = HTTP_POST, .handler = post_ota_upload_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_rollback_uri = {
+    .uri = "/api/ota/rollback", .method = HTTP_POST, .handler = post_ota_rollback_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t ota_status_uri = {
+    .uri = "/api/ota/status", .method = HTTP_GET, .handler = get_ota_status_handler, .user_ctx = NULL
 };
 
 // System API URI handlers
@@ -2931,6 +3269,7 @@ static const httpd_uri_t hardware_state_uri = {
 static const httpd_uri_t hardware_test_stop_uri = {
     .uri = "/api/hardware/test/stop", .method = HTTP_POST, .handler = post_hardware_test_stop_handler, .user_ctx = NULL
 };
+
 
 // Certificate Management API URI handlers
 static const httpd_uri_t cert_info_uri = {

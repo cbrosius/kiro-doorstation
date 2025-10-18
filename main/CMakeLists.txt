@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS 
+    SRCS
         "main.c"
         "sip_client.c"
         "audio_handler.c"
@@ -13,6 +13,7 @@ idf_component_register(
         "hardware_test.c"
         "auth_manager.c"
         "cert_manager.c"
+        "ota_handler.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -25,6 +26,7 @@ idf_component_register(
         esp_adc
         json
         mbedtls
+        app_update
 )
 
 target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)
