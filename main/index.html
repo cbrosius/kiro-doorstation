@@ -4366,7 +4366,6 @@
     async function updateWiFiStatus() {
       try {
         const response = await apiCache.get('wifiState');
-        console.log('WiFi status response:', response);
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
 
