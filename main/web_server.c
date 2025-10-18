@@ -55,15 +55,16 @@ static bool is_public_endpoint(const char* uri) {
 
 /**
  * @brief Authentication filter for HTTP requests
- * 
+ *
  * This filter checks for a valid session cookie on all protected endpoints.
  * If the session is missing or invalid, it returns 401 Unauthorized.
- * If the session is valid, it extends the session timeout.
- * 
+ * If the session is valid and extend_session is true, it extends the session timeout.
+ *
  * @param req HTTP request
+ * @param extend_session Whether to extend session timeout on successful authentication
  * @return ESP_OK if authentication passed, ESP_FAIL if authentication failed
  */
-esp_err_t auth_filter(httpd_req_t *req) {
+esp_err_t auth_filter(httpd_req_t *req, bool extend_session) {
     // Skip authentication for public endpoints
     if (is_public_endpoint(req->uri)) {
         return ESP_OK;
@@ -151,8 +152,10 @@ esp_err_t auth_filter(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
-    // Session is valid - extend timeout on activity
-    auth_extend_session(session_id);
+    // Session is valid - extend timeout on user activity
+    if (extend_session) {
+        auth_extend_session(session_id);
+    }
     
     return ESP_OK;
 }
@@ -167,8 +170,8 @@ static esp_err_t index_handler(httpd_req_t *req)
         return ESP_OK;
     }
     
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user activity)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -180,8 +183,8 @@ static esp_err_t index_handler(httpd_req_t *req)
 
 static esp_err_t documentation_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user activity)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     

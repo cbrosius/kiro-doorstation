@@ -19,8 +19,22 @@
 #include "cert_manager.h"
 #include "bootlog.h"
 #include "hardware_info.h"
+#include "auth_manager.h"
 
 static const char *TAG = "MAIN";
+
+/**
+ * @brief Session cleanup task - runs periodically to clean up expired sessions
+ */
+static void session_cleanup_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Session cleanup task started");
+
+    while (1) {
+        // Clean up expired sessions every 60 seconds
+        vTaskDelay(pdMS_TO_TICKS(60000));
+        auth_cleanup_expired_sessions();
+    }
+}
 
 void app_main(void)
 {
@@ -75,9 +89,12 @@ void app_main(void)
     
     // Start Web Server
     web_server_start();
-    
+
     // Initialize SIP Client
     sip_client_init();
+
+    // Initialize authentication manager (for session cleanup)
+    auth_manager_init();
     
     ESP_LOGI(TAG, "All components initialized");
 
@@ -94,6 +111,9 @@ void app_main(void)
 
     // Initialize hardware info cache (one-time parsing of bootlog)
     hardware_info_init_cache();
+
+    // Start session cleanup task
+    xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);
 
     // Main loop
     while (1) {

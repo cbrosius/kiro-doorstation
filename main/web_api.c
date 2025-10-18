@@ -269,8 +269,8 @@ void web_api_register_handlers(httpd_handle_t server) {
 
 static esp_err_t get_sip_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -286,8 +286,8 @@ static esp_err_t get_sip_state_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -316,8 +316,8 @@ static esp_err_t get_sip_config_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - SIP config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -381,8 +381,8 @@ static esp_err_t post_sip_config_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - SIP test)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -406,8 +406,8 @@ static esp_err_t post_sip_test_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -468,8 +468,8 @@ static esp_err_t post_sip_test_call_handler(httpd_req_t *req)
 
 static esp_err_t get_sip_log_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for log retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -544,8 +544,8 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -568,8 +568,8 @@ static esp_err_t post_sip_connect_handler(httpd_req_t *req)
 
 static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -594,8 +594,8 @@ static esp_err_t post_sip_disconnect_handler(httpd_req_t *req)
 
 static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -617,8 +617,8 @@ static esp_err_t get_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -672,8 +672,8 @@ static esp_err_t post_wifi_config_handler(httpd_req_t *req)
 
 static esp_err_t get_wifi_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -703,8 +703,8 @@ static esp_err_t get_wifi_state_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi scan)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -761,8 +761,8 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req)
 
 static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - WiFi connect)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -823,8 +823,8 @@ static esp_err_t post_wifi_connect_handler(httpd_req_t *req)
 
 static esp_err_t get_network_ip_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -900,8 +900,8 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req)
 
 static esp_err_t post_network_ip_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - network config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -921,8 +921,8 @@ static esp_err_t post_network_ip_handler(httpd_req_t *req)
 
 static esp_err_t get_email_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for config retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -948,8 +948,8 @@ static esp_err_t get_email_config_handler(httpd_req_t *req)
 
 static esp_err_t post_email_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - email config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1074,8 +1074,8 @@ static esp_err_t post_email_config_handler(httpd_req_t *req)
 
 static esp_err_t get_ota_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1102,8 +1102,8 @@ static esp_err_t get_ota_info_handler(httpd_req_t *req)
 
 static esp_err_t post_ota_upload_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - OTA upload)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1250,8 +1250,8 @@ static esp_err_t post_ota_upload_handler(httpd_req_t *req)
 
 static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1302,8 +1302,8 @@ static esp_err_t post_ota_rollback_handler(httpd_req_t *req)
 // New OTA version handler
 static esp_err_t get_ota_version_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -1327,8 +1327,8 @@ static esp_err_t get_ota_version_handler(httpd_req_t *req)
 
 static esp_err_t get_ota_status_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -1405,8 +1405,8 @@ static esp_err_t get_ota_status_handler(httpd_req_t *req)
 
 static esp_err_t get_system_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1450,8 +1450,8 @@ static esp_err_t get_system_state_handler(httpd_req_t *req)
 
 static esp_err_t post_system_restart_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1478,8 +1478,8 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
 
 static esp_err_t get_system_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1661,8 +1661,8 @@ static esp_err_t get_system_info_handler(httpd_req_t *req)
 
 static esp_err_t get_ntp_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1707,8 +1707,8 @@ static esp_err_t get_ntp_state_handler(httpd_req_t *req)
 
 static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1727,8 +1727,8 @@ static esp_err_t get_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - NTP config change)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1783,8 +1783,8 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req)
 
 static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1804,8 +1804,8 @@ static esp_err_t post_ntp_sync_handler(httpd_req_t *req)
 
 static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1830,8 +1830,8 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -1925,8 +1925,8 @@ static esp_err_t post_dtmf_security_handler(httpd_req_t *req)
 
 static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2045,8 +2045,8 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2110,8 +2110,8 @@ static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2181,8 +2181,8 @@ static esp_err_t post_hardware_test_door_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2210,8 +2210,8 @@ static esp_err_t post_hardware_test_light_handler(httpd_req_t *req)
 
 static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2236,8 +2236,8 @@ static esp_err_t get_hardware_state_handler(httpd_req_t *req)
 
 static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2268,11 +2268,12 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req)
 
 static esp_err_t get_cert_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
-    
+
+    ESP_LOGI(TAG, "Certificate info handler - authentication passed");
     httpd_resp_set_type(req, "application/json");
     
     // Check if certificate exists
@@ -2314,8 +2315,8 @@ static esp_err_t get_cert_info_handler(httpd_req_t *req)
 
 static esp_err_t post_cert_upload_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate upload)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2418,8 +2419,8 @@ static esp_err_t post_cert_upload_handler(httpd_req_t *req)
 
 static esp_err_t post_cert_generate_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate generation)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2507,8 +2508,8 @@ static esp_err_t post_cert_generate_handler(httpd_req_t *req)
 
 static esp_err_t get_cert_download_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2548,8 +2549,8 @@ static esp_err_t get_cert_download_handler(httpd_req_t *req)
 
 static esp_err_t delete_cert_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (extend session for user action - certificate deletion)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
     
@@ -2900,8 +2901,8 @@ static esp_err_t post_auth_set_password_handler(httpd_req_t *req)
 
 static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
 {
-    // Check authentication - user must be logged in to change password
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication - user must be logged in to change password (extend session for user action)
+    if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -2996,9 +2997,9 @@ static esp_err_t post_auth_change_password_handler(httpd_req_t *req)
 static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "GET /api/auth/logs - Handler called");
-    
-    // Check authentication - user must be logged in to view logs
-    if (auth_filter(req) != ESP_OK) {
+
+    // Check authentication - user must be logged in to view logs (don't extend session for log retrieval)
+    if (auth_filter(req, false) != ESP_OK) {
         ESP_LOGW(TAG, "Authentication failed for /api/auth/logs");
         return ESP_FAIL;
     }
@@ -3092,8 +3093,8 @@ static esp_err_t get_auth_logs_handler(httpd_req_t *req)
 
 static esp_err_t get_hardware_info_handler(httpd_req_t *req)
 {
-    // Check authentication
-    if (auth_filter(req) != ESP_OK) {
+    // Check authentication (don't extend session for status polling)
+    if (auth_filter(req, false) != ESP_OK) {
         return ESP_FAIL;
     }
 

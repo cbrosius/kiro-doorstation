@@ -17,7 +17,7 @@ extern "C" {
 // Session constants
 #define AUTH_SESSION_ID_SIZE 33  // 32 hex chars + null terminator
 #define AUTH_MAX_SESSIONS 10     // Increased from 5 to 10 for better concurrency
-#define AUTH_SESSION_TIMEOUT_SECONDS 1800  // 30 minutes
+#define AUTH_SESSION_TIMEOUT_SECONDS 300   // 5 minutes
 #define AUTH_USERNAME_MAX_LEN 32
 #define AUTH_IP_ADDRESS_MAX_LEN 16
 #define AUTH_ERROR_MESSAGE_MAX_LEN 128
