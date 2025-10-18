@@ -3132,6 +3132,33 @@ static esp_err_t get_hardware_info_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "idf_version", info.idf_version);
     cJSON_AddStringToObject(root, "build_date", info.build_date);
 
+    // Add bootloader information
+    cJSON_AddStringToObject(root, "bootloader_version", info.bootloader_version);
+    cJSON_AddStringToObject(root, "bootloader_compile_time", info.bootloader_compile_time);
+    cJSON_AddStringToObject(root, "bootloader_chip_revision", info.bootloader_chip_revision);
+    cJSON_AddStringToObject(root, "bootloader_efuse_revision", info.bootloader_efuse_revision);
+    cJSON_AddStringToObject(root, "bootloader_spi_speed", info.bootloader_spi_speed);
+    cJSON_AddStringToObject(root, "bootloader_spi_mode", info.bootloader_spi_mode);
+    cJSON_AddStringToObject(root, "bootloader_flash_size", info.bootloader_flash_size);
+
+    // Add partition information
+    cJSON *partitions_array = cJSON_CreateArray();
+    if (partitions_array) {
+        for (uint32_t i = 0; i < info.partition_count; i++) {
+            cJSON *partition = cJSON_CreateObject();
+            if (partition) {
+                cJSON_AddStringToObject(partition, "label", info.partitions[i].label);
+                cJSON_AddStringToObject(partition, "type", info.partitions[i].type);
+                cJSON_AddStringToObject(partition, "subtype", info.partitions[i].subtype);
+                cJSON_AddNumberToObject(partition, "address", info.partitions[i].address);
+                cJSON_AddNumberToObject(partition, "size", info.partitions[i].size);
+                cJSON_AddNumberToObject(partition, "used_bytes", info.partitions[i].used_bytes);
+                cJSON_AddItemToArray(partitions_array, partition);
+            }
+        }
+        cJSON_AddItemToObject(root, "partitions", partitions_array);
+    }
+
     // Add bootlog if available
     if (info.bootlog && strlen(info.bootlog) > 0) {
         cJSON_AddStringToObject(root, "bootlog", info.bootlog);
