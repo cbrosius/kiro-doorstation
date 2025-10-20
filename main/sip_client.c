@@ -58,6 +58,15 @@ typedef struct {
 
 static sip_auth_challenge_t last_auth_challenge = {0};
 
+// Track authentication state to prevent infinite loops
+static int auth_attempt_count = 0;
+static const int MAX_AUTH_ATTEMPTS = 3;
+
+// Store Call-ID and From tag from initial REGISTER for reuse in authenticated REGISTER
+static char initial_call_id[128] = {0};
+static char initial_from_tag[32] = {0};
+static bool has_initial_transaction_ids = false;
+
 // Forward declaration
 static bool sip_client_register_auth(sip_auth_challenge_t* challenge);
 
@@ -460,6 +469,8 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 if (strstr(buffer, "SIP/2.0 200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
+                        auth_attempt_count = 0;  // Reset counter on success
+                        has_initial_transaction_ids = false;  // Clear stored IDs
                         sip_add_log_entry("info", "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         // Call accepted - send ACK and start audio
@@ -581,7 +592,21 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     }
                 } else if (strstr(buffer, "SIP/2.0 401 Unauthorized")) {
                     if (current_state == SIP_STATE_REGISTERING) {
-                        sip_add_log_entry("info", "Authentication required, parsing challenge");
+                        auth_attempt_count++;
+                        
+                        char log_msg[128];
+                        snprintf(log_msg, sizeof(log_msg), "Authentication required (attempt %d/%d), parsing challenge",
+                                 auth_attempt_count, MAX_AUTH_ATTEMPTS);
+                        sip_add_log_entry("info", log_msg);
+                        
+                        // Check if we've exceeded max attempts (prevent infinite loop)
+                        if (auth_attempt_count > MAX_AUTH_ATTEMPTS) {
+                            sip_add_log_entry("error", "Max authentication attempts exceeded - authentication failed");
+                            current_state = SIP_STATE_AUTH_FAILED;
+                            auth_attempt_count = 0;
+                            has_initial_transaction_ids = false;
+                            return;
+                        }
                         
                         // Parse authentication challenge
                         last_auth_challenge = parse_www_authenticate(buffer);
@@ -592,6 +617,8 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         } else {
                             sip_add_log_entry("error", "Failed to parse auth challenge");
                             current_state = SIP_STATE_AUTH_FAILED;
+                            auth_attempt_count = 0;
+                            has_initial_transaction_ids = false;
                             sip_add_log_entry("error", "State changed to AUTH_FAILED");
                         }
                     }
@@ -1025,6 +1052,9 @@ bool sip_client_register(void)
 
     sip_add_log_entry("info", "Starting SIP registration");
     current_state = SIP_STATE_REGISTERING;
+    
+    // Reset auth attempt counter for new registration
+    auth_attempt_count = 0;
 
     struct sockaddr_in server_addr;
 
@@ -1052,13 +1082,23 @@ bool sip_client_register(void)
     int from_tag = rand();
     int call_id = rand();
     
+    // Store Call-ID and From tag for reuse in authenticated REGISTER
+    snprintf(initial_call_id, sizeof(initial_call_id), "%d@%s", call_id, local_ip);
+    snprintf(initial_from_tag, sizeof(initial_from_tag), "%d", from_tag);
+    has_initial_transaction_ids = true;
+    
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "Initial REGISTER: Call-ID=%s, From-tag=%s",
+             initial_call_id, initial_from_tag);
+    sip_add_log_entry("info", log_msg);
+    
     snprintf(register_msg, sizeof(register_msg),
              "REGISTER sip:%s SIP/2.0\r\n"
              "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
              "Max-Forwards: 70\r\n"
-             "From: <sip:%s@%s>;tag=%d\r\n"
+             "From: <sip:%s@%s>;tag=%s\r\n"
              "To: <sip:%s@%s>\r\n"
-             "Call-ID: %d@%s\r\n"
+             "Call-ID: %s\r\n"
              "CSeq: 1 REGISTER\r\n"
              "Contact: <sip:%s@%s:5060>\r\n"
              "Expires: 3600\r\n"
@@ -1066,9 +1106,9 @@ bool sip_client_register(void)
              "User-Agent: ESP32-Doorbell/1.0\r\n"
              "Content-Length: 0\r\n\r\n",
              sip_config.server, local_ip, branch_id,
-             sip_config.username, sip_config.server, from_tag,
+             sip_config.username, sip_config.server, initial_from_tag,
              sip_config.username, sip_config.server,
-             call_id, local_ip,
+             initial_call_id,
              sip_config.username, local_ip);
 
     int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
@@ -1094,7 +1134,17 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    sip_add_log_entry("info", "Sending authenticated REGISTER");
+    // Check if we have stored transaction IDs from initial REGISTER
+    if (!has_initial_transaction_ids) {
+        sip_add_log_entry("error", "No initial transaction IDs stored - cannot authenticate");
+        current_state = SIP_STATE_ERROR;
+        return false;
+    }
+
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "Sending authenticated REGISTER (reusing Call-ID=%s, From-tag=%s)",
+             initial_call_id, initial_from_tag);
+    sip_add_log_entry("info", log_msg);
 
     struct sockaddr_in server_addr;
 
@@ -1128,47 +1178,51 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         cnonce,
         response
     );
+    
+    // Log digest calculation for debugging
+    snprintf(log_msg, sizeof(log_msg), "Digest calculated: response=%s", response);
+    sip_add_log_entry("info", log_msg);
 
     // Build authenticated REGISTER message (use static to avoid stack allocation)
-    static char register_msg[1536];  // Reduced from 2048 to 1536
-    int call_id = rand();
-    int tag = rand();
-    int branch = rand();
+    static char register_msg[1536];
+    int branch = rand();  // New branch for new transaction
     
+    // CRITICAL FIX: Build Authorization header WITHOUT spaces after commas
+    // This matches the softphone format exactly
     int len = snprintf(register_msg, sizeof(register_msg),
         "REGISTER sip:%s SIP/2.0\r\n"
         "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
         "Max-Forwards: 70\r\n"
-        "From: <sip:%s@%s>;tag=%d\r\n"
+        "From: <sip:%s@%s>;tag=%s\r\n"
         "To: <sip:%s@%s>\r\n"
-        "Call-ID: %d@%s\r\n"
+        "Call-ID: %s\r\n"
         "CSeq: 2 REGISTER\r\n"
         "Contact: <sip:%s@%s:5060>\r\n"
-        "Authorization: Digest username=\"%s\", realm=\"%s\", nonce=\"%s\", uri=\"sip:%s\", response=\"%s\"",
+        "Authorization: Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"sip:%s\",response=\"%s\"",
         sip_config.server, local_ip, branch,
-        sip_config.username, sip_config.server, tag,
+        sip_config.username, sip_config.server, initial_from_tag,  // REUSE stored tag
         sip_config.username, sip_config.server,
-        call_id, local_ip,
+        initial_call_id,  // REUSE stored Call-ID
         sip_config.username, local_ip,
         sip_config.username, challenge->realm, challenge->nonce, sip_config.server, response
     );
 
-    // Add qop parameters if present
+    // Add qop parameters if present (NO spaces after commas)
     if (strlen(challenge->qop) > 0) {
         len += snprintf(register_msg + len, sizeof(register_msg) - len,
-            ", qop=%s, nc=%s, cnonce=\"%s\"", challenge->qop, nc, cnonce);
+            ",qop=%s,nc=%s,cnonce=\"%s\"", challenge->qop, nc, cnonce);
     }
 
-    // Add opaque if present
+    // Add opaque if present (NO space after comma)
     if (strlen(challenge->opaque) > 0) {
         len += snprintf(register_msg + len, sizeof(register_msg) - len,
-            ", opaque=\"%s\"", challenge->opaque);
+            ",opaque=\"%s\"", challenge->opaque);
     }
 
-    // Add algorithm if not MD5
+    // Add algorithm if not MD5 (NO space after comma)
     if (strlen(challenge->algorithm) > 0 && strcmp(challenge->algorithm, "MD5") != 0) {
         len += snprintf(register_msg + len, sizeof(register_msg) - len,
-            ", algorithm=%s", challenge->algorithm);
+            ",algorithm=%s", challenge->algorithm);
     }
 
     // Complete the message
@@ -1190,7 +1244,8 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    sip_add_log_entry("info", "Authenticated REGISTER sent successfully");
+    snprintf(log_msg, sizeof(log_msg), "Authenticated REGISTER sent (%d bytes)", sent);
+    sip_add_log_entry("info", log_msg);
     return true;
 }
 
