@@ -955,13 +955,17 @@ static void sip_task(void *pvParameters __attribute__((unused)))
 
                 sip_add_log_entry("received", "SIP message received");
 
-                // Log received message (truncated for display)
+                // Log received message (full for debugging)
                 char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
-                snprintf(log_msg, sizeof(log_msg), "%.200s%s", buffer, len > 200 ? "..." : "");
+                snprintf(log_msg, sizeof(log_msg), "Full received: %s", buffer);
                 sip_add_log_entry("received", log_msg);
                 
                 // Enhanced SIP message processing with better error handling
                 // Check response codes first (more specific than method names)
+                char state_log[128];
+                snprintf(state_log, sizeof(state_log), "Processing message in state: %s", state_names[current_state]);
+                sip_add_log_entry("info", state_log);
+
                 if (strstr(buffer, "SIP/2.0 200 OK")) {
                     if (current_state == SIP_STATE_REGISTERING) {
                         current_state = SIP_STATE_REGISTERED;
@@ -1238,13 +1242,108 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         }
                     } else {
                         // Received 401 but not in REGISTERING or CALLING state
-                        // This is likely a retransmitted 401 from server - ignore it
-                        char ignore_msg[128];
-                        snprintf(ignore_msg, sizeof(ignore_msg),
-                                 "Ignoring 401 in state %s (likely retransmission)",
-                                 (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
-                                 state_names[current_state] : "UNKNOWN");
-                        sip_add_log_entry("info", ignore_msg);
+                        // Check if this is a retransmission of the initial INVITE 401
+                        const char* via_ptr = strstr(buffer, "Via:");
+
+                        if (via_ptr && initial_invite_branch != 0) {
+                            const char* branch_param = strstr(via_ptr, "branch=z9hG4bK");
+                            if (branch_param) {
+                                branch_param += 14; // Skip "branch=z9hG4bK"
+                                int received_branch = atoi(branch_param);
+
+                                char branch_log[256];
+                                snprintf(branch_log, sizeof(branch_log),
+                                         "401 in CONNECTED: received branch=%d, initial=%d, auth=%d",
+                                         received_branch, initial_invite_branch, auth_invite_branch);
+                                sip_add_log_entry("info", branch_log);
+
+                                // If this 401 is for the initial INVITE (before auth), it's a retransmission
+                                if (received_branch == initial_invite_branch && received_branch != auth_invite_branch) {
+                                    sip_add_log_entry("info", "401 in CONNECTED is retransmission of initial challenge - ignoring");
+                                } else {
+                                    // Not a retransmission - log details for further investigation
+                                    char ignore_msg[128];
+                                    snprintf(ignore_msg, sizeof(ignore_msg),
+                                             "Ignoring unexpected 401 in state %s (not retransmission)",
+                                             (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                             state_names[current_state] : "UNKNOWN");
+                                    sip_add_log_entry("info", ignore_msg);
+
+                                    // Enhanced logging for debugging
+                                    sip_request_headers_t headers = extract_request_headers(buffer);
+                                    if (headers.valid) {
+                                        char debug_log[512];
+                                        snprintf(debug_log, sizeof(debug_log),
+                                                 "Unexpected 401 in CONNECTED: Call-ID=%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
+                                                 headers.call_id, headers.via_header, headers.cseq_num, headers.cseq_method,
+                                                 headers.from_header, headers.to_header);
+                                        sip_add_log_entry("info", debug_log);
+
+                                        // Compare with stored INVITE transaction IDs
+                                        snprintf(debug_log, sizeof(debug_log),
+                                                 "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, CSeq=%d",
+                                                 initial_invite_call_id, initial_invite_branch, initial_invite_cseq);
+                                        sip_add_log_entry("info", debug_log);
+                                    } else {
+                                        sip_add_log_entry("error", "Failed to extract headers from unexpected 401 in CONNECTED state");
+                                    }
+                                }
+                            } else {
+                                // Not a retransmission - log details for further investigation
+                                char ignore_msg[128];
+                                snprintf(ignore_msg, sizeof(ignore_msg),
+                                         "Ignoring unexpected 401 in state %s (not retransmission)",
+                                         (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                         state_names[current_state] : "UNKNOWN");
+                                sip_add_log_entry("info", ignore_msg);
+
+                                // Enhanced logging for debugging
+                                sip_request_headers_t headers = extract_request_headers(buffer);
+                                if (headers.valid) {
+                                    char debug_log[512];
+                                    snprintf(debug_log, sizeof(debug_log),
+                                             "Unexpected 401 in CONNECTED: Call-ID=%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
+                                             headers.call_id, headers.via_header, headers.cseq_num, headers.cseq_method,
+                                             headers.from_header, headers.to_header);
+                                    sip_add_log_entry("info", debug_log);
+
+                                    // Compare with stored INVITE transaction IDs
+                                    snprintf(debug_log, sizeof(debug_log),
+                                             "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, CSeq=%d",
+                                             initial_invite_call_id, initial_invite_branch, initial_invite_cseq);
+                                    sip_add_log_entry("info", debug_log);
+                                } else {
+                                    sip_add_log_entry("error", "Failed to extract headers from unexpected 401 in CONNECTED state");
+                                }
+                            }
+                        } else {
+                            // Not a retransmission - log details for further investigation
+                            char ignore_msg[128];
+                            snprintf(ignore_msg, sizeof(ignore_msg),
+                                     "Ignoring unexpected 401 in state %s (not retransmission)",
+                                     (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                     state_names[current_state] : "UNKNOWN");
+                            sip_add_log_entry("info", ignore_msg);
+
+                            // Enhanced logging for debugging
+                            sip_request_headers_t headers = extract_request_headers(buffer);
+                            if (headers.valid) {
+                                char debug_log[512];
+                                snprintf(debug_log, sizeof(debug_log),
+                                         "Unexpected 401 in CONNECTED: Call-ID=%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
+                                         headers.call_id, headers.via_header, headers.cseq_num, headers.cseq_method,
+                                         headers.from_header, headers.to_header);
+                                sip_add_log_entry("info", debug_log);
+
+                                // Compare with stored INVITE transaction IDs
+                                snprintf(debug_log, sizeof(debug_log),
+                                         "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, CSeq=%d",
+                                         initial_invite_call_id, initial_invite_branch, initial_invite_cseq);
+                                sip_add_log_entry("info", debug_log);
+                            } else {
+                                sip_add_log_entry("error", "Failed to extract headers from unexpected 401 in CONNECTED state");
+                            }
+                        }
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
                     // Provisional response, just log it
@@ -1472,7 +1571,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                        bool is_retransmission = false;
+                        bool is_retransmission;
                         
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
@@ -1783,7 +1882,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     }
                 } else if (strncmp(buffer, "BYE sip:", 8) == 0 || strncmp(buffer, "BYE ", 4) == 0) {
                     // Check for BYE request (not response)
-                    sip_add_log_entry("info", "Call ended by remote party");
+                    sip_add_log_entry("info", "BYE message detected - processing call termination");
                     
                     // Send 200 OK response to BYE
                     static char bye_response[768];  // Increased buffer size
@@ -1842,14 +1941,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     
                     current_state = SIP_STATE_REGISTERED;
                     call_start_timestamp = 0; // Clear timeout
-                    
+
                     // Reset DTMF decoder state when call ends
                     dtmf_reset_call_state();
-                    
+
                     audio_stop_recording();
                     audio_stop_playback();
                     rtp_stop_session();
-                    sip_add_log_entry("info", "RTP session stopped");
+                    sip_add_log_entry("info", "RTP session stopped - State changed to REGISTERED");
                 }
             }
         }
