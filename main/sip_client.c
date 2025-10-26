@@ -1168,7 +1168,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     if (current_state == SIP_STATE_REGISTERING) {
                         auth_attempt_count++;
 
-ESP_LOGI(TAG, "log_msg at line 1171: %p", (void*)&log_msg);
+                        ESP_LOGI(TAG, "log_msg at line 1171: %p", (void*)&log_msg);
                         char auth_log_msg[128];
                         snprintf(auth_log_msg, sizeof(auth_log_msg), "Authentication required (attempt %d/%d), parsing challenge",
                                  auth_attempt_count, MAX_AUTH_ATTEMPTS);
@@ -2269,6 +2269,9 @@ bool sip_client_register(void)
              initial_call_id, initial_from_tag);
     sip_add_log_entry("info", log_msg);
     
+    // Use public IP for Contact header if available (critical for inbound calls)
+    const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
     snprintf(register_msg, sizeof(register_msg),
              "REGISTER sip:%s SIP/2.0\r\n"
              "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -2286,7 +2289,7 @@ bool sip_client_register(void)
              sip_config.username, sip_config.server, initial_from_tag,
              sip_config.username, sip_config.server,
              initial_call_id,
-             sip_config.username, local_ip);
+             sip_config.username, contact_ip);
 
     int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -2409,7 +2412,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         sip_config.username, sip_config.server, initial_from_tag,  // REUSE stored tag
         sip_config.username, sip_config.server,
         initial_call_id,  // REUSE stored Call-ID
-        sip_config.username, contact_ip,
+        sip_config.username, contact_ip,  // Use public IP for Contact header
         sip_config.username, challenge->realm, challenge->nonce, sip_config.server, response
     );
 
