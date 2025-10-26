@@ -75,18 +75,25 @@ void app_main(void)
     
     // Start WiFi Manager
     wifi_manager_init();
-    
-    // NTP time synchronization (after WiFi)
+
+    // Wait for IP address before initializing network-dependent services
+    ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
+    while (!wifi_is_connected()) {
+        vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
+    }
+    ESP_LOGI(TAG, "IP address obtained, proceeding with NTP and SIP initialization");
+
+    // NTP time synchronization (after WiFi and IP)
     ntp_sync_init();
-    
+
     // Ensure certificate exists (generate if needed, after all system init)
     // This is done before web server to ensure HTTPS has a certificate
     cert_ensure_exists();
-    
+
     // Start Web Server
     web_server_start();
 
-    // Initialize SIP Client
+    // Initialize SIP Client (after IP is available)
     sip_client_init();
 
     // Initialize authentication manager (for session cleanup)

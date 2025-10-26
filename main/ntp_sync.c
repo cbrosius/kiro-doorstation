@@ -1,6 +1,7 @@
 #include "ntp_sync.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
+#include "wifi_manager.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <string.h>
@@ -149,12 +150,15 @@ void ntp_sync_init(void)
     tzset();
     ESP_LOGI(TAG, "Timezone set to: %s (POSIX: %s)", current_config.timezone, posix_tz);
     
+    // Check IP status before initializing SNTP
+    ESP_LOGI(TAG, "NTP init: WiFi connected: %s", wifi_is_connected() ? "yes" : "no");
+
     // Initialize SNTP
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, current_config.server);
     esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_init();
-    
+
     ESP_LOGI(TAG, "NTP sync started with server: %s", current_config.server);
 }
 

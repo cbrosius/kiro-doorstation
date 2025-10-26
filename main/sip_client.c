@@ -755,12 +755,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             sip_add_log_entry("error", "State changed to AUTH_FAILED");
                         }
                     } else if (current_state == SIP_STATE_CALLING) {
-                        // Store authentication challenge for INVITE
-                        invite_auth_challenge = parse_www_authenticate(buffer);
-                        if (invite_auth_challenge.valid) {
+                        // Parse the new authentication challenge
+                        sip_auth_challenge_t new_challenge = parse_www_authenticate(buffer);
+                        if (new_challenge.valid) {
+                            // Always update the stored challenge with the latest one from server
+                            invite_auth_challenge = new_challenge;
                             has_invite_auth_challenge = true;
                             invite_auth_attempt_count = 0; // Reset counter for new challenge
-                            sip_add_log_entry("info", "INVITE authentication challenge stored - will retry with auth");
+                            sip_add_log_entry("info", "INVITE authentication challenge updated - will retry with auth");
 
                             // Extract the target URI from the To header in the 401 response
                             static char retry_uri[128] = {0};
@@ -822,6 +824,59 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     sip_add_log_entry("info", "SIP request terminated");
                     call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
+                } else if (strstr(buffer, "SIP/2.0 500 Internal Server Error")) {
+                    // Handle 500 Internal Server Error from SIP server
+                    sip_add_log_entry("error", "SIP 500 Internal Server Error received");
+                    
+                    char debug_msg[256];
+                    snprintf(debug_msg, sizeof(debug_msg),
+                             "500 Error - Current state: %s, Socket: %d, Auth attempts: %d",
+                             (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                             state_names[current_state] : "UNKNOWN",
+                             sip_socket, auth_attempt_count);
+                    sip_add_log_entry("error", debug_msg);
+                    
+                    // Clear any pending states and authentication
+                    if (current_state == SIP_STATE_REGISTERING) {
+                        sip_add_log_entry("error", "500 during REGISTER - clearing auth state");
+                        auth_attempt_count = 0;
+                        has_initial_transaction_ids = false;
+                        current_state = SIP_STATE_DISCONNECTED;
+                    } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        sip_add_log_entry("error", "500 during call setup - returning to registered");
+                        call_start_timestamp = 0;
+                        has_invite_auth_challenge = false;
+                        invite_auth_attempt_count = 0;
+                        current_state = SIP_STATE_REGISTERED;
+                        audio_stop_recording();
+                        audio_stop_playback();
+                        rtp_stop_session();
+                    } else {
+                        sip_add_log_entry("error", "500 in other state - entering error state");
+                        current_state = SIP_STATE_ERROR;
+                    }
+                    
+                    // Schedule connection retry
+                    last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                    sip_add_log_entry("info", "Connection retry scheduled in 10 seconds after 500 error");
+                } else if (strstr(buffer, "SIP/2.0 503 Service Unavailable")) {
+                    // Handle 503 Service Unavailable (server overloaded/down)
+                    sip_add_log_entry("error", "SIP 503 Service Unavailable");
+                    
+                    if (current_state == SIP_STATE_REGISTERING) {
+                        auth_attempt_count = 0;
+                        has_initial_transaction_ids = false;
+                        current_state = SIP_STATE_DISCONNECTED;
+                    } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        call_start_timestamp = 0;
+                        current_state = SIP_STATE_REGISTERED;
+                        audio_stop_recording();
+                        audio_stop_playback();
+                        rtp_stop_session();
+                    }
+                    
+                    last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                    sip_add_log_entry("info", "Connection retry scheduled in 10 seconds after 503 error");
                 } else if (strstr(buffer, "SIP/2.0 603 Decline")) {
                     sip_add_log_entry("info", "Call declined by remote party");
                     call_start_timestamp = 0; // Clear timeout
@@ -1126,9 +1181,17 @@ void sip_client_init(void)
 
     if (sip_config.configured) {
         char log_msg[128];
-        snprintf(log_msg, sizeof(log_msg), "SIP configuration loaded: %s@%s", 
-                 sip_config.username, sip_config.server);
+        snprintf(log_msg, sizeof(log_msg), "SIP configuration loaded: %s@%s",
+                  sip_config.username, sip_config.server);
         sip_add_log_entry("info", log_msg);
+
+        // Check IP status before creating socket
+        char local_ip[16];
+        if (get_local_ip(local_ip, sizeof(local_ip))) {
+            ESP_LOGI(TAG, "SIP init: IP available: %s", local_ip);
+        } else {
+            ESP_LOGI(TAG, "SIP init: No IP available yet");
+        }
 
         // Create socket
         sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -1327,8 +1390,19 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
 
     // Generate cnonce and nc
     char cnonce[17];
-    const char* nc = "00000001";
+    char nc_str[12];
+    // Increment nonce count for each authentication attempt
+    int nc_value = auth_attempt_count + 1;
+    if (nc_value > 99999999) nc_value = 1; // Prevent overflow
+    sprintf(nc_str, "%08d", nc_value);
+    nc_str[8] = '\0'; // Ensure null termination (8 digits + null = 9 chars)
     generate_cnonce(cnonce, sizeof(cnonce));
+
+    // Add debug logging for REGISTER authentication parameters
+    char debug_msg[256];
+    snprintf(debug_msg, sizeof(debug_msg), "REGISTER Auth attempt %d: nonce='%s', nc='%s', cnonce='%s'",
+             auth_attempt_count + 1, challenge->nonce, nc_str, cnonce);
+    sip_add_log_entry("info", debug_msg);
 
     // Calculate digest response
     char response[33];
@@ -1343,10 +1417,15 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         "REGISTER",
         register_uri,
         challenge->qop,
-        nc,
+        nc_str,
         cnonce,
         response
     );
+
+    // Log the calculated response for debugging
+    char response_debug[128];
+    snprintf(response_debug, sizeof(response_debug), "REGISTER digest response: %s", response);
+    sip_add_log_entry("info", response_debug);
     
     // Log digest calculation for debugging
     snprintf(log_msg, sizeof(log_msg), "Digest calculated: response=%s", response);
@@ -1379,7 +1458,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
     // Add qop parameters if present (NO spaces after commas)
     if (strlen(challenge->qop) > 0) {
         len += snprintf(register_msg + len, sizeof(register_msg) - len,
-            ",qop=%s,nc=%s,cnonce=\"%s\"", challenge->qop, nc, cnonce);
+            ",qop=%s,nc=%s,cnonce=\"%s\"", challenge->qop, nc_str, cnonce);
     }
 
     // Add opaque if present (NO space after comma)
@@ -1495,21 +1574,26 @@ void sip_client_make_call(const char* uri)
         sip_add_log_entry("info", "Using stored INVITE authentication challenge for retry");
         // Generate cnonce and nc for INVITE authentication
         char cnonce[17];
-        const char* nc = "00000001";
+        char nc_str[12];
+        // Increment nonce count for each authentication attempt
+        int nc_value = invite_auth_attempt_count + 1;
+        if (nc_value > 99999999) nc_value = 1; // Prevent overflow
+        sprintf(nc_str, "%08d", nc_value);
+        nc_str[8] = '\0'; // Ensure null termination (8 digits + null = 9 chars)
         generate_cnonce(cnonce, sizeof(cnonce));
+
+        // Add debug logging for authentication parameters
+        char debug_msg[256];
+        snprintf(debug_msg, sizeof(debug_msg), "INVITE Auth attempt %d: nonce='%s', nc='%s', cnonce='%s'",
+                 invite_auth_attempt_count + 1, invite_auth_challenge.nonce, nc_str, cnonce);
+        sip_add_log_entry("info", debug_msg);
 
         // Calculate digest response for INVITE
         char response[33];
         char invite_uri[256];
-        // For INVITE, the URI in the Authorization header should match the Request-URI
-        // Format: sip:user@domain
-        if (strstr(uri, "sip:")) {
-            // URI already has sip: prefix
-            strncpy(invite_uri, uri, sizeof(invite_uri) - 1);
-        } else {
-            // Add sip: prefix
-            snprintf(invite_uri, sizeof(invite_uri), "sip:%s", uri);
-        }
+        // For INVITE, use the full user@domain URI (sip:user@domain)
+        // Fritz!Box requires this format for INVITE authentication
+        snprintf(invite_uri, sizeof(invite_uri), "sip:%s@%s", sip_config.username, sip_config.server);
 
         calculate_digest_response(
             sip_config.username,
@@ -1519,10 +1603,15 @@ void sip_client_make_call(const char* uri)
             "INVITE",
             invite_uri,
             invite_auth_challenge.qop,
-            nc,
+            nc_str,
             cnonce,
             response
         );
+
+        // Log the calculated response for debugging
+        char response_debug[128];
+        snprintf(response_debug, sizeof(response_debug), "INVITE digest response: %s", response);
+        sip_add_log_entry("info", response_debug);
 
         // Build INVITE message with Authorization header
         int len = snprintf(invite_msg, sizeof(invite_msg),
@@ -1546,7 +1635,7 @@ void sip_client_make_call(const char* uri)
         // Add qop parameters if present (NO spaces after commas)
         if (strlen(invite_auth_challenge.qop) > 0) {
             len += snprintf(invite_msg + len, sizeof(invite_msg) - len,
-                ",qop=%s,nc=%s,cnonce=\"%s\"", invite_auth_challenge.qop, nc, cnonce);
+                ",qop=%s,nc=%s,cnonce=\"%s\"", invite_auth_challenge.qop, nc_str, cnonce);
         }
 
         // Add opaque if present (NO space after comma)
