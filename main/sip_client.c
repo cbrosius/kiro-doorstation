@@ -91,8 +91,14 @@ static char initial_call_id[128] = {0};
 static char initial_from_tag[32] = {0};
 static bool has_initial_transaction_ids = false;
 
-// Forward declaration
+// Forward declarations
 static bool sip_client_register_auth(sip_auth_challenge_t* challenge);
+static void send_ack_for_error_response(const char* response_buffer);
+
+// Track last error response to detect retransmissions
+static char last_error_call_id[128] = {0};
+static char last_error_via_branch[64] = {0};
+static uint32_t last_error_timestamp = 0;
 
 // SIP INVITE template removed - built inline in sip_client_make_call()
 
@@ -559,6 +565,117 @@ static void send_sip_response(int code, const char* reason,
     }
 }
 
+
+// Send ACK for error responses to INVITE (RFC 3261 §17.1.1.3)
+// UAC must send ACK for ALL final responses to INVITE, including errors
+// This stops the server from retransmitting the error response
+// CRITICAL: ACK must use same Call-ID, From tag, and CSeq as the INVITE
+static void send_ack_for_error_response(const char* response_buffer) {
+    if (!response_buffer) {
+        sip_add_log_entry("error", "Cannot send ACK: no response buffer");
+        return;
+    }
+    
+    // Extract headers from the error response using helper function
+    sip_request_headers_t headers = extract_request_headers(response_buffer);
+    if (!headers.valid) {
+        sip_add_log_entry("error", "Cannot send ACK: failed to extract headers from error response");
+        return;
+    }
+    
+    // Extract To tag from the response (if present)
+    char to_tag[32] = {0};
+    const char* to_hdr = strstr(response_buffer, "To:");
+    if (to_hdr) {
+        const char* tag_ptr = strstr(to_hdr, "tag=");
+        if (tag_ptr) {
+            tag_ptr += 4;
+            const char* tag_term = strpbrk(tag_ptr, ";\r\n ");
+            if (tag_term) {
+                size_t tag_length = tag_term - tag_ptr;
+                if (tag_length < sizeof(to_tag)) {
+                    strncpy(to_tag, tag_ptr, tag_length);
+                    to_tag[tag_length] = '\0';
+                }
+            }
+        }
+    }
+    
+    char local_ip[16];
+    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+        strcpy(local_ip, "192.168.1.100");
+    }
+    
+    // Build ACK using extracted transaction identifiers
+    // RFC 3261: ACK for error response uses same Call-ID, From tag, CSeq number
+    // but needs a NEW Via branch (for this ACK transaction)
+    static char ack_msg[1024];
+    int new_branch = rand();  // New branch for ACK transaction
+    
+    // Extract Request-URI from To header
+    char request_uri[128] = {0};
+    const char* uri_start = strstr(headers.to_header, "<sip:");
+    if (uri_start) {
+        uri_start += 1;  // Skip '<'
+        const char* uri_end = strchr(uri_start, '>');
+        if (uri_end) {
+            size_t uri_len = uri_end - uri_start;
+            if (uri_len < sizeof(request_uri)) {
+                strncpy(request_uri, uri_start, uri_len);
+                request_uri[uri_len] = '\0';
+            }
+        }
+    }
+    
+    if (strlen(request_uri) == 0) {
+        // Fallback: construct from username and server
+        snprintf(request_uri, sizeof(request_uri), "sip:%s@%s",
+                 sip_config.username, sip_config.server);
+    }
+    
+    // Build the To header with tag if present
+    char to_header_with_tag[300];
+    if (strlen(to_tag) > 0) {
+        // To header already has tag - use as-is
+        snprintf(to_header_with_tag, sizeof(to_header_with_tag), "%s", headers.to_header);
+    } else {
+        // No tag in response - use without tag
+        snprintf(to_header_with_tag, sizeof(to_header_with_tag), "%s", headers.to_header);
+    }
+    
+    snprintf(ack_msg, sizeof(ack_msg),
+            "ACK %s SIP/2.0\r\n"
+            "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+            "Max-Forwards: 70\r\n"
+            "From: %s\r\n"
+            "To: %s\r\n"
+            "Call-ID: %s\r\n"
+            "CSeq: %d ACK\r\n"
+            "User-Agent: ESP32-Doorbell/1.0\r\n"
+            "Content-Length: 0\r\n\r\n",
+            request_uri,
+            local_ip, new_branch,
+            headers.from_header,
+            to_header_with_tag,
+            headers.call_id,
+            headers.cseq_num);  // Same CSeq number as INVITE, but method is ACK
+    
+    struct sockaddr_in server_addr;
+    if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
+        int sent = sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
+                         (struct sockaddr*)&server_addr, sizeof(server_addr));
+        
+        if (sent > 0) {
+            char log_msg[256];
+            snprintf(log_msg, sizeof(log_msg),
+                     "ACK sent for Call-ID=%s (CSeq=%d)",
+                     headers.call_id, headers.cseq_num);
+            sip_add_log_entry("sent", log_msg);
+        } else {
+            sip_add_log_entry("error", "Failed to send ACK for error response");
+        }
+    }
+}
 
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
 static void sip_task(void *pvParameters __attribute__((unused)))
@@ -1135,6 +1252,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
                     sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        // Send ACK to stop retransmissions
+                        send_ack_for_error_response(buffer);
+                        
+                        // Clear INVITE authentication state
+                        has_invite_auth_challenge = false;
+                        memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                        invite_auth_attempt_count = 0;
+                        
                         call_start_timestamp = 0; // Clear timeout
                         current_state = SIP_STATE_REGISTERED; // Return to registered state
                     } else {
@@ -1143,6 +1268,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
                     sip_add_log_entry("error", "SIP target not found");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        // Send ACK to stop retransmissions
+                        send_ack_for_error_response(buffer);
+                        
+                        // Clear INVITE authentication state
+                        has_invite_auth_challenge = false;
+                        memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                        invite_auth_attempt_count = 0;
+                        
                         call_start_timestamp = 0; // Clear timeout
                         current_state = SIP_STATE_REGISTERED; // Return to registered state
                     } else {
@@ -1151,6 +1284,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
                     sip_add_log_entry("error", "SIP request timeout");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        // Send ACK to stop retransmissions
+                        send_ack_for_error_response(buffer);
+                        
+                        // Clear INVITE authentication state
+                        has_invite_auth_challenge = false;
+                        memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                        invite_auth_attempt_count = 0;
+                        
                         call_start_timestamp = 0; // Clear timeout
                         current_state = SIP_STATE_REGISTERED; // Return to registered state
                     } else {
@@ -1158,54 +1299,29 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     }
                 } else if (strstr(buffer, "SIP/2.0 486 Busy Here")) {
                     sip_add_log_entry("info", "SIP target busy");
+                    
+                    // Send ACK to stop retransmissions
+                    send_ack_for_error_response(buffer);
+                    
+                    // Clear INVITE authentication state
+                    has_invite_auth_challenge = false;
+                    memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                    invite_auth_attempt_count = 0;
+                    
                     call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
                     sip_add_log_entry("info", "SIP request terminated");
-                    call_start_timestamp = 0; // Clear timeout
                     
-                    // Check for Require header - reject if it requires unsupported extensions
-                    // RFC 3261 §20.32: If we don't support a required extension, send 420 Bad Extension
-                    const char* require_hdr = strstr(buffer, "Require:");
-                    if (require_hdr) {
-                        // Extract required extensions
-                        require_hdr += 8;  // Skip "Require:"
-                        while (*require_hdr == ' ') require_hdr++;  // Skip whitespace
-                        const char* require_end = strstr(require_hdr, "\r\n");
-                        
-                        if (require_end) {
-                            char required_ext[256];
-                            size_t len = require_end - require_hdr;
-                            if (len < sizeof(required_ext)) {
-                                strncpy(required_ext, require_hdr, len);
-                                required_ext[len] = '\0';
-                                
-                                char log_msg[256];
-                                snprintf(log_msg, sizeof(log_msg),
-                                         "INVITE requires unsupported extension: %s - rejecting with 420", required_ext);
-                                sip_add_log_entry("error", log_msg);
-                                
-                                // Extract headers for response
-                                sip_request_headers_t headers = extract_request_headers(buffer);
-                                
-                                if (headers.valid) {
-                                    // Build Unsupported header
-                                    char unsupported_hdr[512];
-                                    snprintf(unsupported_hdr, sizeof(unsupported_hdr),
-                                             "Unsupported: %s\r\n", required_ext);
-                                    
-                                    // Send 420 Bad Extension
-                                    send_sip_response(420, "Bad Extension", &headers, unsupported_hdr, NULL);
-                                    
-                                    sip_add_log_entry("info", "420 Bad Extension sent - INVITE rejected");
-                                } else {
-                                    sip_add_log_entry("error", "Failed to parse headers for 420 response");
-                                }
-                                
-                                continue;  // Don't process this INVITE further
-                            }
-                        }
-                    }
+                    // Send ACK to stop retransmissions
+                    send_ack_for_error_response(buffer);
+                    
+                    // Clear INVITE authentication state
+                    has_invite_auth_challenge = false;
+                    memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                    invite_auth_attempt_count = 0;
+                    
+                    call_start_timestamp = 0; // Clear timeout
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 500 Internal Server Error")) {
                     // Handle 500 Internal Server Error from SIP server
@@ -1335,9 +1451,62 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                     sip_add_log_entry("info", "Connection retry scheduled in 10 seconds after 503 error");
                 } else if (strstr(buffer, "SIP/2.0 603 Decline")) {
-                    sip_add_log_entry("info", "Call declined by remote party");
-                    call_start_timestamp = 0; // Clear timeout
-                    current_state = SIP_STATE_REGISTERED;
+                    // Check if this is a retransmission of a 603 we've already handled
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+                    
+                    if (headers.valid) {
+                        // Extract Via branch for retransmission detection
+                        char via_branch[64] = {0};
+                        const char* branch_ptr = strstr(headers.via_header, "branch=");
+                        if (branch_ptr) {
+                            branch_ptr += 7;  // Skip "branch="
+                            const char* branch_end = strpbrk(branch_ptr, ";\r\n ");
+                            if (branch_end) {
+                                size_t branch_len = branch_end - branch_ptr;
+                                if (branch_len < sizeof(via_branch)) {
+                                    strncpy(via_branch, branch_ptr, branch_len);
+                                    via_branch[branch_len] = '\0';
+                                }
+                            }
+                        }
+                        
+                        // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
+                        uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                        bool is_retransmission = false;
+                        
+                        if (strlen(last_error_call_id) > 0 &&
+                            strcmp(last_error_call_id, headers.call_id) == 0 &&
+                            strcmp(last_error_via_branch, via_branch) == 0 &&
+                            (current_time - last_error_timestamp) < 10000) {
+                            is_retransmission = true;
+                            sip_add_log_entry("info", "603 Decline is a retransmission - ignoring to prevent loop");
+                        } else {
+                            // This is a new error response - process it
+                            sip_add_log_entry("info", "Call declined by remote party");
+                            
+                            // Store this error response info for retransmission detection
+                            strncpy(last_error_call_id, headers.call_id, sizeof(last_error_call_id) - 1);
+                            strncpy(last_error_via_branch, via_branch, sizeof(last_error_via_branch) - 1);
+                            last_error_timestamp = current_time;
+                            
+                            // Send ACK to stop retransmissions (RFC 3261 requirement)
+                            send_ack_for_error_response(buffer);
+                            
+                            // Clear INVITE authentication state to prevent retransmission loops
+                            has_invite_auth_challenge = false;
+                            memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                            invite_auth_attempt_count = 0;
+                            
+                            call_start_timestamp = 0; // Clear timeout
+                            current_state = SIP_STATE_REGISTERED;
+                            
+                            sip_add_log_entry("info", "INVITE authentication state cleared - ready for new call");
+                        }
+                    } else {
+                        // Failed to parse headers - send ACK anyway to be safe
+                        sip_add_log_entry("error", "Failed to parse 603 headers - sending ACK anyway");
+                        send_ack_for_error_response(buffer);
+                    }
                 } else if (strncmp(buffer, "INVITE ", 7) == 0) {
                     // Check for INVITE request (not response)
                     sip_add_log_entry("info", "Incoming INVITE detected");
@@ -1355,6 +1524,49 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     
                     sip_add_log_entry("info", "Processing incoming call");
                     
+                    
+                    // Check for Require header early - reject if it requires unsupported extensions
+                    // RFC 3261 §20.32: If we don't support a required extension, send 420 Bad Extension
+                    const char* require_hdr = strstr(buffer, "Require:");
+                    if (require_hdr) {
+                        // Extract required extensions
+                        require_hdr += 8;  // Skip "Require:"
+                        while (*require_hdr == ' ') require_hdr++;  // Skip whitespace
+                        const char* require_end = strstr(require_hdr, "\r\n");
+                        
+                        if (require_end) {
+                            char required_ext[256];
+                            size_t len = require_end - require_hdr;
+                            if (len < sizeof(required_ext)) {
+                                strncpy(required_ext, require_hdr, len);
+                                required_ext[len] = '\0';
+                                
+                                char log_msg[256];
+                                snprintf(log_msg, sizeof(log_msg),
+                                         "INVITE requires unsupported extension: %s - rejecting with 420", required_ext);
+                                sip_add_log_entry("error", log_msg);
+                                
+                                // Extract headers for response
+                                sip_request_headers_t headers = extract_request_headers(buffer);
+                                
+                                if (headers.valid) {
+                                    // Build Unsupported header
+                                    char unsupported_hdr[512];
+                                    snprintf(unsupported_hdr, sizeof(unsupported_hdr),
+                                             "Unsupported: %s\r\n", required_ext);
+                                    
+                                    // Send 420 Bad Extension
+                                    send_sip_response(420, "Bad Extension", &headers, unsupported_hdr, NULL);
+                                    
+                                    sip_add_log_entry("info", "420 Bad Extension sent - INVITE rejected");
+                                } else {
+                                    sip_add_log_entry("error", "Failed to parse headers for 420 response");
+                                }
+                                
+                                continue;  // Don't process this INVITE further
+                            }
+                        }
+                    }
                     // Extract headers for response
                     static char call_id[128] = {0};
                     static char from_header[256] = {0};
@@ -2078,13 +2290,8 @@ void sip_client_make_call(const char* uri)
     // Create INVITE message (large buffer for authenticated INVITE with long URIs)
     static char invite_msg[3072];
     
-    // CRITICAL: Store initial INVITE transaction IDs for authentication retry
-    // Fritz!Box and other strict SIP servers require consistency
-    static int initial_invite_call_id = 0;
-    static int initial_invite_from_tag = 0;
-    static int initial_invite_branch = 0;
-    static int auth_invite_branch = 0;  // Separate branch for authenticated INVITE
-    static int initial_invite_cseq = 1;
+    // NOTE: INVITE transaction IDs are defined at file scope (lines 79-83)
+    // Don't redeclare them here - use the file-scope variables
     
     // CRITICAL FIX: Only generate NEW IDs if this is a FRESH call (no auth challenge exists)
     // If we have an auth challenge, we're retrying and must REUSE the stored IDs
