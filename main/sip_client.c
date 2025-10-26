@@ -81,6 +81,8 @@ static int initial_invite_from_tag = 0;
 static int initial_invite_branch = 0;
 static int auth_invite_branch = 0;
 static int initial_invite_cseq = 1;
+static char invite_call_id_str[128] = {0};
+static char invite_local_ip[16] = {0};
 
 // Track authentication state to prevent infinite loops
 static int auth_attempt_count = 0;
@@ -601,16 +603,10 @@ static void send_ack_for_error_response(const char* response_buffer) {
         }
     }
     
-    char local_ip[16];
-    if (!get_local_ip(local_ip, sizeof(local_ip))) {
-        strcpy(local_ip, "192.168.1.100");
-    }
-    
     // Build ACK using extracted transaction identifiers
-    // RFC 3261: ACK for error response uses same Call-ID, From tag, CSeq number
-    // but needs a NEW Via branch (for this ACK transaction)
+    // RFC 3261: ACK for non-2xx response to INVITE uses the same top Via header as the INVITE.
+    // The server echoes this header in the response, so we can reuse it directly.
     static char ack_msg[1024];
-    int new_branch = rand();  // New branch for ACK transaction
     
     // Extract Request-URI from To header
     char request_uri[128] = {0};
@@ -645,7 +641,7 @@ static void send_ack_for_error_response(const char* response_buffer) {
     
     snprintf(ack_msg, sizeof(ack_msg),
             "ACK %s SIP/2.0\r\n"
-            "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+            "Via: %s\r\n"
             "Max-Forwards: 70\r\n"
             "From: %s\r\n"
             "To: %s\r\n"
@@ -654,7 +650,7 @@ static void send_ack_for_error_response(const char* response_buffer) {
             "User-Agent: ESP32-Doorbell/1.0\r\n"
             "Content-Length: 0\r\n\r\n",
             request_uri,
-            local_ip, new_branch,
+            headers.via_header,
             headers.from_header,
             to_header_with_tag,
             headers.call_id,
@@ -1135,6 +1131,10 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             sip_add_log_entry("error", "State changed to AUTH_FAILED");
                         }
                     } else if (current_state == SIP_STATE_CALLING) {
+                        // Per RFC 3261, a UAC must send an ACK for all final responses to an INVITE, including a 401.
+                        // This stops the server from retransmitting the 401 challenge.
+                        send_ack_for_error_response(buffer);
+
                         // CRITICAL: Check if this 401 is for our authenticated INVITE or a retransmission
                         // initial_invite_branch = first INVITE without auth
                         // auth_invite_branch = authenticated INVITE (only set when retry happens)
@@ -1168,7 +1168,19 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         if (is_retransmission) {
                             continue;
                         }
-                        
+
+                        // Extract headers to check Call-ID for debugging
+                        sip_request_headers_t headers = extract_request_headers(buffer);
+                        char debug_log[256];
+                        snprintf(debug_log, sizeof(debug_log), "401 Call-ID: %s, Expected: %s", headers.call_id, invite_call_id_str);
+                        sip_add_log_entry("info", debug_log);
+
+                        // Check if Call-ID matches
+                        if (strcmp(headers.call_id, invite_call_id_str) != 0) {
+                            sip_add_log_entry("info", "Call-ID mismatch in 401 - ignoring");
+                            continue;
+                        }
+
                         // Check if we've exceeded max attempts
                         if (invite_auth_attempt_count >= MAX_INVITE_AUTH_ATTEMPTS) {
                             char err_msg[256];
@@ -1259,6 +1271,11 @@ static void sip_task(void *pvParameters __attribute__((unused)))
 
                                 // If this 401 is for the initial INVITE (before auth), it's a retransmission
                                 if (received_branch == initial_invite_branch && received_branch != auth_invite_branch) {
+                                    // Extract headers for debugging
+                                    sip_request_headers_t headers = extract_request_headers(buffer);
+                                    char debug_log[256];
+                                    snprintf(debug_log, sizeof(debug_log), "401 retransmission Call-ID: %s, Expected: %s", headers.call_id, invite_call_id_str);
+                                    sip_add_log_entry("info", debug_log);
                                     sip_add_log_entry("info", "401 in CONNECTED is retransmission of initial challenge - ignoring");
                                 } else {
                                     // Not a retransmission - log details for further investigation
@@ -1330,8 +1347,8 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             if (headers.valid) {
                                 char debug_log[512];
                                 snprintf(debug_log, sizeof(debug_log),
-                                         "Unexpected 401 in CONNECTED: Call-ID=%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
-                                         headers.call_id, headers.via_header, headers.cseq_num, headers.cseq_method,
+                                         "Unexpected 401 in CONNECTED: Call-ID=%s, Expected: %s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
+                                         headers.call_id, invite_call_id_str, headers.via_header, headers.cseq_num, headers.cseq_method,
                                          headers.from_header, headers.to_header);
                                 sip_add_log_entry("info", debug_log);
 
@@ -2418,6 +2435,9 @@ void sip_client_make_call(const char* uri)
                  initial_invite_call_id, initial_invite_from_tag, initial_invite_cseq, auth_invite_branch);
         sip_add_log_entry("info", reuse_log);
     }
+
+    // Store the Call-ID string for debugging
+    snprintf(invite_call_id_str, sizeof(invite_call_id_str), "%d@%s", initial_invite_call_id, local_ip);
     
     int call_id = initial_invite_call_id;
     int tag = initial_invite_from_tag;
