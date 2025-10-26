@@ -1033,14 +1033,15 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                                 "From: <sip:%s@%s>;tag=%d\r\n"
                                 "To: <sip:%s@%s>;tag=%s\r\n"
                                 "Call-ID: %s\r\n"
-                                "CSeq: 1 ACK\r\n"
+                                "CSeq: %d ACK\r\n"
                                 "Max-Forwards: 70\r\n"
                                 "Content-Length: 0\r\n\r\n",
                                 sip_config.username, sip_config.server,
                                 local_ip, rand(),
-                                sip_config.username, sip_config.server, rand(),
+                                sip_config.username, sip_config.server, initial_invite_from_tag,
                                 sip_config.username, sip_config.server, to_tag,
-                                call_id);
+                                call_id,
+                                initial_invite_cseq);
                         
                         // Send ACK
                         struct sockaddr_in server_addr;
