@@ -2512,6 +2512,8 @@ void sip_client_make_call(const char* uri)
     }
 
     // Create SDP session description
+    // Use public IP for NAT traversal if available, otherwise local IP
+    const char* sdp_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
     static char sdp[256];
     snprintf(sdp, sizeof(sdp),
              "v=0\r\n"
@@ -2525,7 +2527,7 @@ void sip_client_make_call(const char* uri)
              "a=rtpmap:101 telephone-event/8000\r\n"
              "a=fmtp:101 0-15\r\n"
              "a=sendrecv\r\n",
-             rand(), local_ip, local_ip);
+             rand(), sdp_ip, sdp_ip);
 
     // Create INVITE message (large buffer for authenticated INVITE with long URIs)
     static char invite_msg[3072];
@@ -2638,6 +2640,9 @@ void sip_client_make_call(const char* uri)
         strncpy(safe_uri, uri, sizeof(safe_uri) - 1);
         safe_uri[sizeof(safe_uri) - 1] = '\0';
 
+        // Use public IP for Contact header if available (for NAT traversal)
+        const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
         len = snprintf(invite_msg, sizeof(invite_msg),
             "INVITE %s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -2653,7 +2658,7 @@ void sip_client_make_call(const char* uri)
             safe_uri,
             call_id, local_ip,
             initial_invite_cseq,  // CRITICAL FIX: Use SAME CSeq as initial INVITE, not incremented
-            sip_config.username, local_ip,
+            sip_config.username, contact_ip,
             sip_config.username, invite_auth_challenge.realm, invite_auth_challenge.nonce, invite_uri_for_digest, response
         );
 
@@ -2694,6 +2699,9 @@ void sip_client_make_call(const char* uri)
 
     } else {
         // Build INVITE message without authentication (first attempt)
+        // Use public IP for Contact header if available (for NAT traversal)
+        const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
         len = snprintf(invite_msg, sizeof(invite_msg),
             "INVITE %s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -2712,7 +2720,7 @@ void sip_client_make_call(const char* uri)
             uri,
             call_id, local_ip,
             initial_invite_cseq,  // Use stored CSeq value
-            sip_config.username, local_ip,
+            sip_config.username, contact_ip,
             strlen(sdp), sdp);
     }
 
@@ -2769,26 +2777,31 @@ void sip_client_hangup(void)
             if (!get_local_ip(local_ip, sizeof(local_ip))) {
                 strcpy(local_ip, "192.168.1.100");
             }
-            
+
+            // Use public IP for Contact header if available (for NAT traversal)
+            const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
             int call_id = rand();
             int tag = rand();
             int branch = rand();
-            
+
             snprintf(bye_msg, sizeof(bye_msg),
                     "BYE sip:%s@%s SIP/2.0\r\n"
-                    "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+                    "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
                     "Max-Forwards: 70\r\n"
                     "From: <sip:%s@%s>;tag=%d\r\n"
                     "To: <sip:%s@%s>\r\n"
                     "Call-ID: %d@%s\r\n"
                     "CSeq: 2 BYE\r\n"
+                    "Contact: <sip:%s@%s:5060>\r\n"
                     "User-Agent: ESP32-Doorbell/1.0\r\n"
                     "Content-Length: 0\r\n\r\n",
                     sip_config.username, sip_config.server,
-                    local_ip, branch,
+                    contact_ip, branch,
                     sip_config.username, sip_config.server, tag,
                     sip_config.username, sip_config.server,
-                    call_id, local_ip);
+                    call_id, local_ip,
+                    sip_config.username, contact_ip);
             
             // Send BYE
             struct sockaddr_in server_addr;
