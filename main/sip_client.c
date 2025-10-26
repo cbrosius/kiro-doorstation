@@ -343,6 +343,222 @@ static bool get_local_ip(char* ip_str, size_t max_len)
     ESP_LOGW(TAG, "Failed to get IP address");
     return false;
 }
+// SIP request headers structure for parsing
+typedef struct {
+    char call_id[128];
+    char via_header[256];
+    char from_header[256];
+    char to_header[256];
+    char contact[128];
+    int cseq_num;
+    char cseq_method[32];
+    bool valid;
+} sip_request_headers_t;
+
+// Extract common SIP headers from a request message
+// This helper function reduces code duplication across request handlers
+static sip_request_headers_t extract_request_headers(const char* buffer) {
+    sip_request_headers_t headers = {0};
+    
+    if (!buffer) {
+        return headers;
+    }
+    
+    // Extract Call-ID
+    const char* cid_ptr = strstr(buffer, "Call-ID:");
+    if (cid_ptr) {
+        cid_ptr += 8;  // Skip "Call-ID:"
+        while (*cid_ptr == ' ') cid_ptr++;  // Skip whitespace
+        const char* cid_term = strstr(cid_ptr, "\r\n");
+        if (cid_term) {
+            size_t len = cid_term - cid_ptr;
+            if (len < sizeof(headers.call_id) - 1) {
+                strncpy(headers.call_id, cid_ptr, len);
+                headers.call_id[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract Via (first Via header only)
+    const char* via_ptr = strstr(buffer, "Via:");
+    if (via_ptr) {
+        via_ptr += 4;  // Skip "Via:"
+        while (*via_ptr == ' ') via_ptr++;  // Skip whitespace
+        const char* via_term = strstr(via_ptr, "\r\n");
+        if (via_term) {
+            size_t len = via_term - via_ptr;
+            if (len < sizeof(headers.via_header) - 1) {
+                strncpy(headers.via_header, via_ptr, len);
+                headers.via_header[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract From
+    const char* from_ptr = strstr(buffer, "From:");
+    if (from_ptr) {
+        from_ptr += 5;  // Skip "From:"
+        while (*from_ptr == ' ') from_ptr++;  // Skip whitespace
+        const char* from_term = strstr(from_ptr, "\r\n");
+        if (from_term) {
+            size_t len = from_term - from_ptr;
+            if (len < sizeof(headers.from_header) - 1) {
+                strncpy(headers.from_header, from_ptr, len);
+                headers.from_header[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract To
+    const char* to_ptr = strstr(buffer, "To:");
+    if (to_ptr) {
+        to_ptr += 3;  // Skip "To:"
+        while (*to_ptr == ' ') to_ptr++;  // Skip whitespace
+        const char* to_term = strstr(to_ptr, "\r\n");
+        if (to_term) {
+            size_t len = to_term - to_ptr;
+            if (len < sizeof(headers.to_header) - 1) {
+                strncpy(headers.to_header, to_ptr, len);
+                headers.to_header[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract Contact (optional)
+    const char* contact_ptr = strstr(buffer, "Contact:");
+    if (contact_ptr) {
+        contact_ptr += 8;  // Skip "Contact:"
+        while (*contact_ptr == ' ') contact_ptr++;  // Skip whitespace
+        const char* contact_term = strstr(contact_ptr, "\r\n");
+        if (contact_term) {
+            size_t len = contact_term - contact_ptr;
+            if (len < sizeof(headers.contact) - 1) {
+                strncpy(headers.contact, contact_ptr, len);
+                headers.contact[len] = '\0';
+            }
+        }
+    }
+    
+    // Extract CSeq number and method
+    const char* cseq_ptr = strstr(buffer, "CSeq:");
+    if (cseq_ptr) {
+        cseq_ptr += 5;  // Skip "CSeq:"
+        while (*cseq_ptr == ' ') cseq_ptr++;  // Skip whitespace
+        headers.cseq_num = atoi(cseq_ptr);
+        
+        // Extract method from CSeq line
+        const char* method_ptr = cseq_ptr;
+        while (*method_ptr && *method_ptr != ' ') method_ptr++;  // Skip number
+        if (*method_ptr == ' ') {
+            method_ptr++;  // Skip space
+            const char* method_end = strstr(method_ptr, "\r\n");
+            if (method_end) {
+                size_t len = method_end - method_ptr;
+                if (len < sizeof(headers.cseq_method) - 1) {
+                    strncpy(headers.cseq_method, method_ptr, len);
+                    headers.cseq_method[len] = '\0';
+                }
+            }
+        }
+    }
+    
+    // Mark as valid if we have at least the core headers
+    headers.valid = (strlen(headers.call_id) > 0 && 
+                     strlen(headers.via_header) > 0 &&
+                     strlen(headers.from_header) > 0 &&
+                     strlen(headers.to_header) > 0 &&
+                     headers.cseq_num > 0);
+    
+    return headers;
+}
+
+// Generic SIP response builder and sender
+// Constructs and sends SIP responses with proper headers
+// Reduces code duplication across response handlers
+static void send_sip_response(int code, const char* reason, 
+                              const sip_request_headers_t* req_headers,
+                              const char* extra_headers,
+                              const char* body) {
+    if (!req_headers || !req_headers->valid || !reason) {
+        ESP_LOGE(TAG, "Invalid parameters for send_sip_response");
+        return;
+    }
+    
+    if (sip_socket < 0) {
+        ESP_LOGW(TAG, "Cannot send response: socket not available");
+        return;
+    }
+    
+    // Allocate response buffer on stack (static to avoid stack overflow)
+    static char response[2048];
+    int len = 0;
+    
+    // Status line
+    len += snprintf(response + len, sizeof(response) - len,
+                   "SIP/2.0 %d %s\r\n", code, reason);
+    
+    // Mandatory headers (Via, From, To, Call-ID, CSeq)
+    len += snprintf(response + len, sizeof(response) - len,
+                   "Via: %s\r\n"
+                   "From: %s\r\n"
+                   "To: %s\r\n"
+                   "Call-ID: %s\r\n"
+                   "CSeq: %d %s\r\n",
+                   req_headers->via_header,
+                   req_headers->from_header,
+                   req_headers->to_header,
+                   req_headers->call_id,
+                   req_headers->cseq_num,
+                   req_headers->cseq_method);
+    
+    // Extra headers (if provided)
+    if (extra_headers && strlen(extra_headers) > 0) {
+        len += snprintf(response + len, sizeof(response) - len,
+                       "%s", extra_headers);
+    }
+    
+    // User-Agent header
+    len += snprintf(response + len, sizeof(response) - len,
+                   "User-Agent: ESP32-Doorbell/1.0\r\n");
+    
+    // Content (if body provided)
+    if (body && strlen(body) > 0) {
+        len += snprintf(response + len, sizeof(response) - len,
+                       "Content-Length: %d\r\n\r\n%s",
+                       strlen(body), body);
+    } else {
+        len += snprintf(response + len, sizeof(response) - len,
+                       "Content-Length: 0\r\n\r\n");
+    }
+    
+    // Check for buffer overflow
+    if (len >= sizeof(response)) {
+        ESP_LOGE(TAG, "Response buffer overflow (%d bytes)", len);
+        sip_add_log_entry("error", "Response too large - buffer overflow");
+        return;
+    }
+    
+    // Send response
+    struct sockaddr_in server_addr;
+    if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
+        int sent = sendto(sip_socket, response, len, 0,
+                         (struct sockaddr*)&server_addr, sizeof(server_addr));
+        
+        if (sent > 0) {
+            char log_msg[128];
+            snprintf(log_msg, sizeof(log_msg), "%d %s sent (%d bytes)", code, reason, sent);
+            sip_add_log_entry("sent", log_msg);
+        } else {
+            char err_msg[128];
+            snprintf(err_msg, sizeof(err_msg), "Failed to send %d %s: error %d", code, reason, sent);
+            sip_add_log_entry("error", err_msg);
+        }
+    } else {
+        ESP_LOGE(TAG, "DNS lookup failed when sending response");
+        sip_add_log_entry("error", "DNS lookup failed for response");
+    }
+}
+
 
 // SIP task runs on Core 1 (APP CPU) to avoid interfering with WiFi on Core 0
 static void sip_task(void *pvParameters __attribute__((unused)))
@@ -947,6 +1163,49 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
                     sip_add_log_entry("info", "SIP request terminated");
                     call_start_timestamp = 0; // Clear timeout
+                    
+                    // Check for Require header - reject if it requires unsupported extensions
+                    // RFC 3261 §20.32: If we don't support a required extension, send 420 Bad Extension
+                    const char* require_hdr = strstr(buffer, "Require:");
+                    if (require_hdr) {
+                        // Extract required extensions
+                        require_hdr += 8;  // Skip "Require:"
+                        while (*require_hdr == ' ') require_hdr++;  // Skip whitespace
+                        const char* require_end = strstr(require_hdr, "\r\n");
+                        
+                        if (require_end) {
+                            char required_ext[256];
+                            size_t len = require_end - require_hdr;
+                            if (len < sizeof(required_ext)) {
+                                strncpy(required_ext, require_hdr, len);
+                                required_ext[len] = '\0';
+                                
+                                char log_msg[256];
+                                snprintf(log_msg, sizeof(log_msg),
+                                         "INVITE requires unsupported extension: %s - rejecting with 420", required_ext);
+                                sip_add_log_entry("error", log_msg);
+                                
+                                // Extract headers for response
+                                sip_request_headers_t headers = extract_request_headers(buffer);
+                                
+                                if (headers.valid) {
+                                    // Build Unsupported header
+                                    char unsupported_hdr[512];
+                                    snprintf(unsupported_hdr, sizeof(unsupported_hdr),
+                                             "Unsupported: %s\r\n", required_ext);
+                                    
+                                    // Send 420 Bad Extension
+                                    send_sip_response(420, "Bad Extension", &headers, unsupported_hdr, NULL);
+                                    
+                                    sip_add_log_entry("info", "420 Bad Extension sent - INVITE rejected");
+                                } else {
+                                    sip_add_log_entry("error", "Failed to parse headers for 420 response");
+                                }
+                                
+                                continue;  // Don't process this INVITE further
+                            }
+                        }
+                    }
                     current_state = SIP_STATE_REGISTERED;
                 } else if (strstr(buffer, "SIP/2.0 500 Internal Server Error")) {
                     // Handle 500 Internal Server Error from SIP server
@@ -967,6 +1226,66 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         has_initial_transaction_ids = false;
                         current_state = SIP_STATE_DISCONNECTED;
                     } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                } else if (strncmp(buffer, "OPTIONS ", 8) == 0) {
+                    // Handle OPTIONS request (capability query / keepalive)
+                    sip_add_log_entry("received", "OPTIONS request received");
+                    
+                    // Extract headers using helper function
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+                    
+                    if (!headers.valid) {
+                        sip_add_log_entry("error", "Failed to parse OPTIONS headers");
+                        continue;
+                    }
+                    
+                    // Build Allow header with supported methods
+                    char extra_headers[256];
+                    snprintf(extra_headers, sizeof(extra_headers),
+                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS\r\n"
+                            "Accept: application/sdp\r\n"
+                            "Accept-Encoding: identity\r\n"
+                            "Accept-Language: en\r\n"
+                            "Supported: \r\n");
+                    
+                    // Send 200 OK response using helper function
+                    send_sip_response(200, "OK", &headers, extra_headers, NULL);
+                    
+                    sip_add_log_entry("info", "OPTIONS response sent - capabilities advertised");
+                } else if (strncmp(buffer, "CANCEL ", 7) == 0) {
+                    // Handle CANCEL request (call cancellation before answer)
+                    sip_add_log_entry("received", "CANCEL request received");
+                    
+                    // Extract headers using helper function
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+                    
+                    if (!headers.valid) {
+                        sip_add_log_entry("error", "Failed to parse CANCEL headers");
+                        continue;
+                    }
+                    
+                    // CANCEL is only valid if we have an ongoing INVITE transaction
+                    if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
+                        // Send 200 OK to CANCEL
+                        send_sip_response(200, "OK", &headers, NULL, NULL);
+                        
+                        // TODO: Also send 487 Request Terminated to original INVITE
+                        // (Would require storing INVITE transaction details)
+                        
+                        // Clear call state
+                        current_state = SIP_STATE_REGISTERED;
+                        call_start_timestamp = 0;
+                        
+                        // Stop any audio/RTP that might have started
+                        audio_stop_recording();
+                        audio_stop_playback();
+                        rtp_stop_session();
+                        
+                        sip_add_log_entry("info", "Call cancelled by remote party - returned to REGISTERED");
+                    } else {
+                        // No matching transaction - send 481 Call/Transaction Does Not Exist
+                        sip_add_log_entry("info", "CANCEL for unknown transaction - sending 481");
+                        send_sip_response(481, "Call/Transaction Does Not Exist", &headers, NULL, NULL);
+                    }
                         sip_add_log_entry("error", "500 during call setup - returning to registered");
                         call_start_timestamp = 0;
                         has_invite_auth_challenge = false;
@@ -1067,6 +1386,50 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         while (*from_ptr == ' ') {
                             from_ptr++;
                         }
+                } else if (strncmp(buffer, "INFO ", 5) == 0 ||
+                           strncmp(buffer, "UPDATE ", 7) == 0 ||
+                           strncmp(buffer, "PRACK ", 6) == 0 ||
+                           strncmp(buffer, "SUBSCRIBE ", 10) == 0 ||
+                           strncmp(buffer, "NOTIFY ", 7) == 0 ||
+                           strncmp(buffer, "MESSAGE ", 8) == 0 ||
+                           strncmp(buffer, "REFER ", 6) == 0) {
+                    // Handle unsupported SIP methods with proper error response
+                    
+                    // Extract method name from request line
+                    char method[32] = {0};
+                    const char* space = strchr(buffer, ' ');
+                    if (space) {
+                        size_t len = space - buffer;
+                        if (len < sizeof(method)) {
+                            strncpy(method, buffer, len);
+                            method[len] = '\0';
+                        }
+                    }
+                    
+                    char log_msg[128];
+                    snprintf(log_msg, sizeof(log_msg), "%s method not implemented - sending 501", method);
+                    sip_add_log_entry("info", log_msg);
+                    
+                    // Extract headers using helper function
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+                    
+                    if (!headers.valid) {
+                        char err_msg[128];
+                        snprintf(err_msg, sizeof(err_msg), "Failed to parse %s headers", method);
+                        sip_add_log_entry("error", err_msg);
+                        continue;
+                    }
+                    
+                    // Build Allow header showing what we DO support
+                    char allow_header[128];
+                    snprintf(allow_header, sizeof(allow_header),
+                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS\r\n");
+                    
+                    // Send 501 Not Implemented response
+                    send_sip_response(501, "Not Implemented", &headers, allow_header, NULL);
+                    
+                    snprintf(log_msg, sizeof(log_msg), "%s not implemented - 501 sent with supported methods", method);
+                    sip_add_log_entry("info", log_msg);
                         const char* from_term = strstr(from_ptr, "\r\n");
                         if (from_term) {
                             size_t from_length = from_term - from_ptr;
