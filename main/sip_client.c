@@ -36,6 +36,8 @@ static uint32_t last_message_timestamp = 0; // Track when we last sent a SIP mes
 static uint32_t sip_response_timeout_ms = 3000; // 3 second timeout for SIP responses
 static uint32_t connection_retry_delay_ms = 10000; // 10 seconds before retrying connection
 static uint32_t last_connection_retry_timestamp = 0;
+static uint32_t last_rtp_received_timestamp = 0;
+static const uint32_t rtp_timeout_ms = 5000; // 5 seconds
 
 // State names for logging (global to avoid stack issues)
 static const char* state_names[] = {
@@ -770,6 +772,16 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             }
         }
 
+        // Check for RTP timeout
+        if (current_state == SIP_STATE_CONNECTED && last_rtp_received_timestamp > 0) {
+            uint32_t elapsed_rtp = xTaskGetTickCount() * portTICK_PERIOD_MS - last_rtp_received_timestamp;
+            if (elapsed_rtp >= rtp_timeout_ms) {
+                sip_add_log_entry("error", "RTP timeout - no audio received for 5 seconds. Hanging up.");
+                sip_client_hangup();
+                last_rtp_received_timestamp = 0; // Reset timestamp
+            }
+        }
+
         // Check for SIP response timeout (no response to any sent message)
         if (last_message_timestamp > 0 && sip_socket >= 0) {
             uint32_t elapsed = xTaskGetTickCount() * portTICK_PERIOD_MS - last_message_timestamp;
@@ -1081,6 +1093,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         // Start audio
                         current_state = SIP_STATE_CONNECTED;
                         call_start_timestamp = 0; // Clear timeout
+                        last_rtp_received_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                         sip_add_log_entry("info", "Call connected - State: CONNECTED");
                         
                         // Reset DTMF decoder state for new call
@@ -1985,6 +1998,11 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             int16_t rx_buffer[160];
             int samples_received = rtp_receive_audio(rx_buffer, 160);
             if (samples_received > 0) {
+                // Update RTP timestamp on packet receive for timeout tracking
+                last_rtp_received_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                char rtp_log[128];
+                snprintf(rtp_log, sizeof(rtp_log), "RTP audio packet received: %d samples, timestamp updated", samples_received);
+                sip_add_log_entry("info", rtp_log);
                 // Play received audio
                 audio_write(rx_buffer, samples_received);
             }
@@ -2630,6 +2648,9 @@ void sip_client_hangup(void)
         audio_stop_recording();
         audio_stop_playback();
         rtp_stop_session();
+        // Reset RTP timestamp on call termination
+        last_rtp_received_timestamp = 0;
+        sip_add_log_entry("info", "RTP timestamp reset on call hangup");
         
         // Send BYE message if we have an active call
         if (current_state == SIP_STATE_CONNECTED && sip_socket >= 0) {
