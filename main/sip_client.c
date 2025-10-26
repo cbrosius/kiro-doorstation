@@ -73,6 +73,9 @@ static sip_auth_challenge_t last_auth_challenge = {0};
 static sip_auth_challenge_t invite_auth_challenge = {0};
 static bool has_invite_auth_challenge = false;
 
+// Store public IP from 401 response for NAT traversal
+static char public_ip[16] = {0};
+
 // Track INVITE authentication attempts to prevent infinite loops
 static int invite_auth_attempt_count = 0;
 static const int MAX_INVITE_AUTH_ATTEMPTS = 1; // Only retry once for INVITE
@@ -84,7 +87,6 @@ static int initial_invite_branch = 0;
 static int auth_invite_branch = 0;
 static int initial_invite_cseq = 1;
 static char invite_call_id_str[128] = {0};
-static char invite_local_ip[16] = {0};
 
 // Track authentication state to prevent infinite loops
 static int auth_attempt_count = 0;
@@ -193,6 +195,26 @@ static bool extract_quoted_value(const char* header, const char* key, char* dest
         len = dest_size - 1;
     }
     strncpy(dest, start, len);
+    dest[len] = '\0';
+    return true;
+}
+
+// Helper to extract received IP from Via header
+static bool extract_received_ip(const char* via_header, char* dest, size_t dest_size) {
+    const char* received_start = strstr(via_header, "received=");
+    if (!received_start) {
+        return false;
+    }
+    received_start += 9; // Skip "received="
+    const char* received_end = strpbrk(received_start, ";\r\n ");
+    if (!received_end) {
+        return false;
+    }
+    size_t len = received_end - received_start;
+    if (len >= dest_size) {
+        len = dest_size - 1;
+    }
+    strncpy(dest, received_start, len);
     dest[len] = '\0';
     return true;
 }
@@ -380,9 +402,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         cid_ptr += 8;  // Skip "Call-ID:"
         while (*cid_ptr == ' ') cid_ptr++;  // Skip whitespace
         const char* cid_term = strstr(cid_ptr, "\r\n");
-        if (cid_term) {
+        if (cid_term && cid_ptr) {
             size_t len = cid_term - cid_ptr;
-            if (len < sizeof(headers.call_id) - 1) {
+            if (len > 0 && len < sizeof(headers.call_id)) {
                 strncpy(headers.call_id, cid_ptr, len);
                 headers.call_id[len] = '\0';
             }
@@ -395,9 +417,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         via_ptr += 4;  // Skip "Via:"
         while (*via_ptr == ' ') via_ptr++;  // Skip whitespace
         const char* via_term = strstr(via_ptr, "\r\n");
-        if (via_term) {
+        if (via_term && via_ptr) {
             size_t len = via_term - via_ptr;
-            if (len < sizeof(headers.via_header) - 1) {
+            if (len > 0 && len < sizeof(headers.via_header)) {
                 strncpy(headers.via_header, via_ptr, len);
                 headers.via_header[len] = '\0';
             }
@@ -410,9 +432,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         from_ptr += 5;  // Skip "From:"
         while (*from_ptr == ' ') from_ptr++;  // Skip whitespace
         const char* from_term = strstr(from_ptr, "\r\n");
-        if (from_term) {
+        if (from_term && from_ptr) {
             size_t len = from_term - from_ptr;
-            if (len < sizeof(headers.from_header) - 1) {
+            if (len > 0 && len < sizeof(headers.from_header)) {
                 strncpy(headers.from_header, from_ptr, len);
                 headers.from_header[len] = '\0';
             }
@@ -425,9 +447,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         to_ptr += 3;  // Skip "To:"
         while (*to_ptr == ' ') to_ptr++;  // Skip whitespace
         const char* to_term = strstr(to_ptr, "\r\n");
-        if (to_term) {
+        if (to_term && to_ptr) {
             size_t len = to_term - to_ptr;
-            if (len < sizeof(headers.to_header) - 1) {
+            if (len > 0 && len < sizeof(headers.to_header)) {
                 strncpy(headers.to_header, to_ptr, len);
                 headers.to_header[len] = '\0';
             }
@@ -440,9 +462,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         contact_ptr += 8;  // Skip "Contact:"
         while (*contact_ptr == ' ') contact_ptr++;  // Skip whitespace
         const char* contact_term = strstr(contact_ptr, "\r\n");
-        if (contact_term) {
+        if (contact_term && contact_ptr) {
             size_t len = contact_term - contact_ptr;
-            if (len < sizeof(headers.contact) - 1) {
+            if (len > 0 && len < sizeof(headers.contact)) {
                 strncpy(headers.contact, contact_ptr, len);
                 headers.contact[len] = '\0';
             }
@@ -462,9 +484,9 @@ static sip_request_headers_t extract_request_headers(const char* buffer) {
         if (*method_ptr == ' ') {
             method_ptr++;  // Skip space
             const char* method_end = strstr(method_ptr, "\r\n");
-            if (method_end) {
+            if (method_end && method_ptr) {
                 size_t len = method_end - method_ptr;
-                if (len < sizeof(headers.cseq_method) - 1) {
+                if (len > 0 && len < sizeof(headers.cseq_method)) {
                     strncpy(headers.cseq_method, method_ptr, len);
                     headers.cseq_method[len] = '\0';
                 }
@@ -687,6 +709,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
         return;
     }
     int len;
+
+    // Declare local_ip at the top for scope
+    char local_ip[16];
     
     sip_add_log_entry("info", "SIP task started on Core 1");
     
@@ -903,9 +928,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
         if (registration_requested && current_state != SIP_STATE_REGISTERED) {
             char reg_debug[256];
             snprintf(reg_debug, sizeof(reg_debug),
-                     "Processing registration: state=%s, socket=%d",
+                     "Processing registration: state=%s, socket=%d, configured=%d",
                      (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
-                     state_names[current_state] : "UNKNOWN", sip_socket);
+                     state_names[current_state] : "UNKNOWN", sip_socket, sip_config.configured ? 1 : 0);
             sip_add_log_entry("info", reg_debug);
             
             registration_requested = false;
@@ -965,6 +990,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
 
                 // Log received message (full for debugging)
                 char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
+ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                 snprintf(log_msg, sizeof(log_msg), "Full received: %s", buffer);
                 sip_add_log_entry("received", log_msg);
                 
@@ -1015,7 +1041,6 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         
                         // Send ACK to complete call setup
                         static char ack_msg[768];  // Increased buffer size
-                        char local_ip[16];
                         if (!get_local_ip(local_ip, sizeof(local_ip))) {
                             strcpy(local_ip, "192.168.1.100");
                         }
@@ -1029,9 +1054,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                                 cid_start++;
                             }
                             const char* cid_end = strstr(cid_start, "\r\n");
-                            if (cid_end) {
+                            if (cid_end && cid_start && *cid_start != '\0') {
                                 size_t cid_len = cid_end - cid_start;
-                                if (cid_len < sizeof(call_id) - 1) {
+                                if (cid_len > 0 && cid_len < sizeof(call_id)) {
                                     strncpy(call_id, cid_start, cid_len);
                                     call_id[cid_len] = '\0';
                                 }
@@ -1068,6 +1093,15 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         uint16_t remote_rtp_port = 5004;
                         const char* sdp_start = strstr(buffer, "\r\n\r\n");
                         if (sdp_start) {
+                            // Log the SDP for debugging
+                            const char* sdp_end = strstr(sdp_start, "\r\n\r\n");
+                            if (sdp_end) {
+                                size_t sdp_len = sdp_end - sdp_start;
+                                char sdp_log[512];
+                                snprintf(sdp_log, sizeof(sdp_log), "Remote SDP: %.*s", (int)sdp_len, sdp_start);
+                                sip_add_log_entry("info", sdp_log);
+                            }
+
                             const char* m_line = strstr(sdp_start, "m=audio ");
                             if (m_line) {
                                 m_line += 8;
@@ -1078,10 +1112,29 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             }
                         }
                         
-                        // Get remote IP from SIP server (use first 15 chars to fit in buffer)
-                        char remote_ip[64];  // Increased buffer size to match server field
-                        strncpy(remote_ip, sip_config.server, sizeof(remote_ip) - 1);
-                        remote_ip[sizeof(remote_ip) - 1] = '\0';
+                        // Parse remote IP from SDP c= line
+                        char remote_ip[64] = {0};
+                        const char* c_line = strstr(sdp_start, "c=IN IP4 ");
+                        if (c_line) {
+                            c_line += 9;  // Skip "c=IN IP4 "
+                            const char* ip_end = strstr(c_line, "\r\n");
+                            if (ip_end) {
+                                size_t ip_len = ip_end - c_line;
+                                if (ip_len < sizeof(remote_ip)) {
+                                    strncpy(remote_ip, c_line, ip_len);
+                                    remote_ip[ip_len] = '\0';
+                                }
+                            }
+                        }
+                        if (strlen(remote_ip) == 0) {
+                            // Fallback to SIP server IP
+                            strncpy(remote_ip, sip_config.server, sizeof(remote_ip) - 1);
+                            remote_ip[sizeof(remote_ip) - 1] = '\0';
+                        }
+
+                        char ip_log[128];
+                        snprintf(ip_log, sizeof(ip_log), "RTP remote IP parsed from SDP: %s (port: %d)", remote_ip, remote_rtp_port);
+                        sip_add_log_entry("info", ip_log);
                         
                         // Start RTP session
                         if (rtp_start_session(remote_ip, remote_rtp_port, 5004)) {
@@ -1115,10 +1168,11 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     if (current_state == SIP_STATE_REGISTERING) {
                         auth_attempt_count++;
 
-                        char log_msg[128];
-                        snprintf(log_msg, sizeof(log_msg), "Authentication required (attempt %d/%d), parsing challenge",
+                        ESP_LOGI(TAG, "log_msg at line 1171: %p", (void*)&log_msg);
+                        char auth_log_msg[128];
+                        snprintf(auth_log_msg, sizeof(auth_log_msg), "Authentication required (attempt %d/%d), parsing challenge",
                                  auth_attempt_count, MAX_AUTH_ATTEMPTS);
-                        sip_add_log_entry("info", log_msg);
+                        sip_add_log_entry("info", auth_log_msg);
 
                         // Check if we've exceeded max attempts (prevent infinite loop)
                         if (auth_attempt_count > MAX_AUTH_ATTEMPTS) {
@@ -1133,6 +1187,18 @@ static void sip_task(void *pvParameters __attribute__((unused)))
 
                         // Parse authentication challenge
                         last_auth_challenge = parse_www_authenticate(buffer);
+
+                        // Extract public IP from Via header for NAT traversal
+                        const char* via_header = strstr(buffer, "Via:");
+                        if (via_header) {
+                            if (extract_received_ip(via_header, public_ip, sizeof(public_ip))) {
+                                char log_msg[128];
+                                snprintf(log_msg, sizeof(log_msg), "Public IP extracted from 401: %s", public_ip);
+                                sip_add_log_entry("info", log_msg);
+                            } else {
+                                sip_add_log_entry("info", "No received IP in 401 response");
+                            }
+                        }
 
                         if (last_auth_challenge.valid) {
                             // Send authenticated REGISTER
@@ -1602,7 +1668,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                        bool is_retransmission;
+                        bool is_retransmission = false;
                         
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
@@ -1640,11 +1706,16 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 } else if (strncmp(buffer, "INVITE ", 7) == 0) {
                     // Check for INVITE request (not response)
                     sip_add_log_entry("info", "Incoming INVITE detected");
-                    
+
+                    // Log current state for debugging
+                    const char* current_state_name = (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                                    state_names[current_state] : "UNKNOWN";
+                    char state_log[128];
+                    snprintf(state_log, sizeof(state_log), "Processing INVITE in state: %s", current_state_name);
+                    sip_add_log_entry("info", state_log);
+
                     // Only accept if we're in IDLE or REGISTERED state
                     if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED) {
-                        const char* current_state_name = (current_state < sizeof(state_names)/sizeof(state_names[0])) ? 
-                                                state_names[current_state] : "UNKNOWN";
                         char busy_msg[128];
                         snprintf(busy_msg, sizeof(busy_msg), "Busy - cannot accept call (state: %s)", current_state_name);
                         sip_add_log_entry("error", busy_msg);
@@ -1712,9 +1783,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             cid_ptr++;
                         }
                         const char* cid_term = strstr(cid_ptr, "\r\n");
-                        if (cid_term) {
+                        if (cid_term && cid_ptr && *cid_ptr != '\0') {
                             size_t cid_length = cid_term - cid_ptr;
-                            if (cid_length < sizeof(call_id) - 1) {
+                            if (cid_length > 0 && cid_length < sizeof(call_id)) {
                                 strncpy(call_id, cid_ptr, cid_length);
                                 call_id[cid_length] = '\0';
                             }
@@ -1773,12 +1844,12 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     snprintf(log_msg, sizeof(log_msg), "%s not implemented - 501 sent with supported methods", method);
                     sip_add_log_entry("info", log_msg);
                         const char* from_term = strstr(from_ptr, "\r\n");
-                        if (from_term) {
+                        if (from_term && from_ptr && *from_ptr != '\0') {
                             size_t from_length = from_term - from_ptr;
-                            if (from_length < sizeof(from_header) - 1) {
+                            if (from_length > 0 && from_length < sizeof(from_header)) {
                                 strncpy(from_header, from_ptr, from_length);
                                 from_header[from_length] = '\0';
-                            }
+                            }       
                         }
                     }
                     
@@ -1790,9 +1861,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             to_ptr++;
                         }
                         const char* to_term = strstr(to_ptr, "\r\n");
-                        if (to_term) {
+                        if (to_term && to_ptr && *to_ptr != '\0') {
                             size_t to_length = to_term - to_ptr;
-                            if (to_length < sizeof(to_header) - 1) {
+                            if (to_length > 0 && to_length < sizeof(to_header)) {
                                 strncpy(to_header, to_ptr, to_length);
                                 to_header[to_length] = '\0';
                             }
@@ -1807,9 +1878,9 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             via_ptr++;
                         }
                         const char* via_term = strstr(via_ptr, "\r\n");
-                        if (via_term) {
+                        if (via_term && via_ptr && *via_ptr != '\0') {
                             size_t via_length = via_term - via_ptr;
-                            if (via_length < sizeof(via_header) - 1) {
+                            if (via_length > 0 && via_length < sizeof(via_header)) {
                                 strncpy(via_header, via_ptr, via_length);
                                 via_header[via_length] = '\0';
                             }
@@ -1826,11 +1897,6 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         cseq_num = atoi(cseq_ptr);
                     }
                     
-                    // Get local IP
-                    char local_ip[16];
-                    if (!get_local_ip(local_ip, sizeof(local_ip))) {
-                        strcpy(local_ip, "192.168.1.100");
-                    }
                     
                     // Create SDP for response
                     static char sdp[256];
@@ -1879,30 +1945,36 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     
                     // Send 200 OK
                     struct sockaddr_in server_addr;
-                    
+
                     if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
                         int sent = sendto(sip_socket, response, strlen(response), 0,
-                                         (struct sockaddr*)&server_addr, sizeof(server_addr));
+                                          (struct sockaddr*)&server_addr, sizeof(server_addr));
                         if (sent > 0) {
                             sip_add_log_entry("sent", "200 OK response to INVITE");
-                            
+
                             // Start RTP session
                             char remote_ip[64];
                             strncpy(remote_ip, sip_config.server, sizeof(remote_ip) - 1);
                             remote_ip[sizeof(remote_ip) - 1] = '\0';
-                            
+
+                            char rtp_log[128];
+                            snprintf(rtp_log, sizeof(rtp_log), "Starting RTP session to %s:5004", remote_ip);
+                            sip_add_log_entry("info", rtp_log);
+
                             if (rtp_start_session(remote_ip, 5004, 5004)) {
                                 sip_add_log_entry("info", "RTP session started");
+                            } else {
+                                sip_add_log_entry("error", "Failed to start RTP session");
                             }
-                            
+
                             // Update state
                             current_state = SIP_STATE_CONNECTED;
                             call_start_timestamp = 0;
                             sip_add_log_entry("info", "Incoming call answered - State: CONNECTED");
-                            
+
                             // Reset DTMF decoder state for new call
                             dtmf_reset_call_state();
-                            
+
                             audio_start_recording();
                             audio_start_playback();
                         } else {
@@ -1991,7 +2063,20 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             size_t samples_read = audio_read(tx_buffer, 160);
             if (samples_read > 0) {
                 // Send audio via RTP
-                rtp_send_audio(tx_buffer, samples_read);
+                int sent = rtp_send_audio(tx_buffer, samples_read);
+                if (sent > 0) {
+                    char rtp_log[128];
+                    snprintf(rtp_log, sizeof(rtp_log), "RTP audio sent: %d samples (%d bytes)", samples_read, sent);
+                    sip_add_log_entry("info", rtp_log);
+                } else {
+                    char rtp_log[128];
+                    snprintf(rtp_log, sizeof(rtp_log), "RTP send failed: %d", sent);
+                    sip_add_log_entry("error", rtp_log);
+                }
+            } else {
+                char rtp_log[128];
+                snprintf(rtp_log, sizeof(rtp_log), "Audio read returned 0 samples");
+                sip_add_log_entry("info", rtp_log);
             }
             
             // Receive audio
@@ -2005,6 +2090,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                 sip_add_log_entry("info", rtp_log);
                 // Play received audio
                 audio_write(rx_buffer, samples_received);
+            } else if (samples_received == 0) {
+                char rtp_log[128];
+                snprintf(rtp_log, sizeof(rtp_log), "RTP receive: No packets received (samples_received=0)");
+                sip_add_log_entry("info", rtp_log);
+            } else {
+                char rtp_log[128];
+                snprintf(rtp_log, sizeof(rtp_log), "RTP receive: Error (samples_received=%d)", samples_received);
+                sip_add_log_entry("error", rtp_log);
             }
         }
     }
@@ -2132,6 +2225,9 @@ bool sip_client_register(void)
     // Reset auth attempt counter for new registration
     auth_attempt_count = 0;
 
+    // Clear public IP for new registration
+    memset(public_ip, 0, sizeof(public_ip));
+
     struct sockaddr_in server_addr;
 
     // DNS lookup (no watchdog needed - SIP task not monitored)
@@ -2173,6 +2269,9 @@ bool sip_client_register(void)
              initial_call_id, initial_from_tag);
     sip_add_log_entry("info", log_msg);
     
+    // Use public IP for Contact header if available (critical for inbound calls)
+    const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
     snprintf(register_msg, sizeof(register_msg),
              "REGISTER sip:%s SIP/2.0\r\n"
              "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -2190,7 +2289,7 @@ bool sip_client_register(void)
              sip_config.username, sip_config.server, initial_from_tag,
              sip_config.username, sip_config.server,
              initial_call_id,
-             sip_config.username, local_ip);
+             sip_config.username, contact_ip);
 
     int sent = sendto(sip_socket, register_msg, strlen(register_msg), 0,
                        (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -2216,6 +2315,10 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
+    // Declare variables at the beginning
+    char local_ip[16] = {0};
+    char log_msg[256] = {0};
+
     // Check if we have stored transaction IDs from initial REGISTER
     if (!has_initial_transaction_ids) {
         sip_add_log_entry("error", "No initial transaction IDs stored - cannot authenticate");
@@ -2223,10 +2326,6 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    char log_msg[256];
-    snprintf(log_msg, sizeof(log_msg), "Sending authenticated REGISTER (reusing Call-ID=%s, From-tag=%s)",
-             initial_call_id, initial_from_tag);
-    sip_add_log_entry("info", log_msg);
 
     struct sockaddr_in server_addr;
 
@@ -2235,11 +2334,6 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         return false;
     }
 
-    // Get local IP
-    char local_ip[16];
-    if (!get_local_ip(local_ip, sizeof(local_ip))) {
-        strcpy(local_ip, "192.168.1.100");
-    }
 
     // Generate cnonce and nc
     char cnonce[17];
@@ -2284,10 +2378,24 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
     snprintf(log_msg, sizeof(log_msg), "Digest calculated: response=%s", response);
     sip_add_log_entry("info", log_msg);
 
+    // Get local IP address
+    if (!get_local_ip(local_ip, sizeof(local_ip))) {
+        strcpy(local_ip, "192.168.1.100"); // Fallback
+    }
+
     // Build authenticated REGISTER message (use static to avoid stack allocation)
     static char register_msg[1536];
     int branch = rand();  // New branch for new transaction
-    
+
+
+    // Use public IP if available (for NAT traversal), else local IP
+    const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
+    char ip_log[128];
+    snprintf(ip_log, sizeof(ip_log), "Using contact IP: %s (public: %s, local: %s)",
+              contact_ip, public_ip, local_ip);
+    sip_add_log_entry("info", ip_log);
+
     // CRITICAL FIX: Build Authorization header WITHOUT spaces after commas
     // This matches the softphone format exactly
     int len = snprintf(register_msg, sizeof(register_msg),
@@ -2300,11 +2408,11 @@ static bool sip_client_register_auth(sip_auth_challenge_t* challenge)
         "CSeq: 2 REGISTER\r\n"
         "Contact: <sip:%s@%s:5060>\r\n"
         "Authorization: Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"sip:%s\",response=\"%s\"",
-        sip_config.server, local_ip, branch,
+        sip_config.server, contact_ip, branch,
         sip_config.username, sip_config.server, initial_from_tag,  // REUSE stored tag
         sip_config.username, sip_config.server,
         initial_call_id,  // REUSE stored Call-ID
-        sip_config.username, local_ip,
+        sip_config.username, contact_ip,  // Use public IP for Contact header
         sip_config.username, challenge->realm, challenge->nonce, sip_config.server, response
     );
 
@@ -2407,6 +2515,8 @@ void sip_client_make_call(const char* uri)
     }
 
     // Create SDP session description
+    // Use public IP for NAT traversal if available, otherwise local IP
+    const char* sdp_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
     static char sdp[256];
     snprintf(sdp, sizeof(sdp),
              "v=0\r\n"
@@ -2420,14 +2530,15 @@ void sip_client_make_call(const char* uri)
              "a=rtpmap:101 telephone-event/8000\r\n"
              "a=fmtp:101 0-15\r\n"
              "a=sendrecv\r\n",
-             rand(), local_ip, local_ip);
+             rand(), sdp_ip, sdp_ip);
 
     // Create INVITE message (large buffer for authenticated INVITE with long URIs)
     static char invite_msg[3072];
-    
+    int len = 0;  // Declare len at function scope
+
     // NOTE: INVITE transaction IDs are defined at file scope (lines 79-83)
     // Don't redeclare them here - use the file-scope variables
-    
+
     // CRITICAL FIX: Only generate NEW IDs if this is a FRESH call (no auth challenge exists)
     // If we have an auth challenge, we're retrying and must REUSE the stored IDs
     if (!has_invite_auth_challenge) {
@@ -2437,7 +2548,7 @@ void sip_client_make_call(const char* uri)
         initial_invite_branch = rand();
         auth_invite_branch = 0;  // Will be set when auth retry happens
         initial_invite_cseq = 1;  // First INVITE always uses CSeq 1
-        
+
         char init_log[256];
         snprintf(init_log, sizeof(init_log),
                  "INVITE fresh call: generating NEW Call-ID=%d, From-tag=%d, Branch=%d, CSeq=%d",
@@ -2447,7 +2558,7 @@ void sip_client_make_call(const char* uri)
         // This is an auth retry - REUSE stored transaction IDs
         // Generate NEW branch for authenticated INVITE (per RFC 3261)
         auth_invite_branch = rand();
-        
+
         char reuse_log[256];
         snprintf(reuse_log, sizeof(reuse_log),
                  "INVITE auth retry: REUSING Call-ID=%d, From-tag=%d (CSeq=%d), NEW Branch=%d",
@@ -2457,7 +2568,7 @@ void sip_client_make_call(const char* uri)
 
     // Store the Call-ID string for debugging
     snprintf(invite_call_id_str, sizeof(invite_call_id_str), "%d@%s", initial_invite_call_id, local_ip);
-    
+
     int call_id = initial_invite_call_id;
     int tag = initial_invite_from_tag;
     int branch = has_invite_auth_challenge ? auth_invite_branch : initial_invite_branch;
@@ -2491,7 +2602,7 @@ void sip_client_make_call(const char* uri)
         char invite_uri_for_digest[64];
         strncpy(invite_uri_for_digest, uri, sizeof(invite_uri_for_digest) - 1);
         invite_uri_for_digest[sizeof(invite_uri_for_digest) - 1] = '\0';
-        
+
         // Log complete digest calculation inputs for debugging
         char digest_inputs[512];
         snprintf(digest_inputs, sizeof(digest_inputs),
@@ -2517,7 +2628,7 @@ void sip_client_make_call(const char* uri)
         char response_debug[128];
         snprintf(response_debug, sizeof(response_debug), "INVITE digest response: %s", response);
         sip_add_log_entry("info", response_debug);
-        
+
         // CRITICAL: Log CSeq value being used for debugging
         // RFC 3261 Section 8.1.3.5: CSeq should remain SAME for auth retry
         char cseq_log[128];
@@ -2531,8 +2642,10 @@ void sip_client_make_call(const char* uri)
         char safe_uri[64];
         strncpy(safe_uri, uri, sizeof(safe_uri) - 1);
         safe_uri[sizeof(safe_uri) - 1] = '\0';
-        
-        int len = 0;
+
+        // Use public IP for Contact header if available (for NAT traversal)
+        const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
         len = snprintf(invite_msg, sizeof(invite_msg),
             "INVITE %s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -2548,7 +2661,7 @@ void sip_client_make_call(const char* uri)
             safe_uri,
             call_id, local_ip,
             initial_invite_cseq,  // CRITICAL FIX: Use SAME CSeq as initial INVITE, not incremented
-            sip_config.username, local_ip,
+            sip_config.username, contact_ip,
             sip_config.username, invite_auth_challenge.realm, invite_auth_challenge.nonce, invite_uri_for_digest, response
         );
 
@@ -2579,12 +2692,20 @@ void sip_client_make_call(const char* uri)
             "Content-Length: %d\r\n\r\n%s",
             strlen(sdp), sdp);
 
+        {
+            char invite_log_msg[128];
+            snprintf(invite_log_msg, sizeof(invite_log_msg), "INVITE len=%d, strlen=%zu", len, strlen(invite_msg));
+            sip_add_log_entry("info", invite_log_msg);
+        }
         invite_auth_attempt_count++;
         sip_add_log_entry("info", "Sending authenticated INVITE");
-        
+
     } else {
         // Build INVITE message without authentication (first attempt)
-        snprintf(invite_msg, sizeof(invite_msg),
+        // Use public IP for Contact header if available (for NAT traversal)
+        const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
+        len = snprintf(invite_msg, sizeof(invite_msg),
             "INVITE %s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
             "Max-Forwards: 70\r\n"
@@ -2602,7 +2723,7 @@ void sip_client_make_call(const char* uri)
             uri,
             call_id, local_ip,
             initial_invite_cseq,  // Use stored CSeq value
-            sip_config.username, local_ip,
+            sip_config.username, contact_ip,
             strlen(sdp), sdp);
     }
 
@@ -2616,7 +2737,7 @@ void sip_client_make_call(const char* uri)
     }
 
     // Send INVITE message
-    int sent = sendto(sip_socket, invite_msg, strlen(invite_msg), 0,
+    int sent = sendto(sip_socket, invite_msg, len, 0,
                       (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent < 0) {
@@ -2659,26 +2780,31 @@ void sip_client_hangup(void)
             if (!get_local_ip(local_ip, sizeof(local_ip))) {
                 strcpy(local_ip, "192.168.1.100");
             }
-            
+
+            // Use public IP for Contact header if available (for NAT traversal)
+            const char* contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+
             int call_id = rand();
             int tag = rand();
             int branch = rand();
-            
+
             snprintf(bye_msg, sizeof(bye_msg),
                     "BYE sip:%s@%s SIP/2.0\r\n"
-                    "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+                    "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
                     "Max-Forwards: 70\r\n"
                     "From: <sip:%s@%s>;tag=%d\r\n"
                     "To: <sip:%s@%s>\r\n"
                     "Call-ID: %d@%s\r\n"
                     "CSeq: 2 BYE\r\n"
+                    "Contact: <sip:%s@%s:5060>\r\n"
                     "User-Agent: ESP32-Doorbell/1.0\r\n"
                     "Content-Length: 0\r\n\r\n",
                     sip_config.username, sip_config.server,
-                    local_ip, branch,
+                    contact_ip, branch,
                     sip_config.username, sip_config.server, tag,
                     sip_config.username, sip_config.server,
-                    call_id, local_ip);
+                    call_id, local_ip,
+                    sip_config.username, contact_ip);
             
             // Send BYE
             struct sockaddr_in server_addr;

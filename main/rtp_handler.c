@@ -213,19 +213,27 @@ int rtp_send_audio(const int16_t* samples, size_t sample_count)
 int rtp_receive_audio(int16_t* samples, size_t max_samples)
 {
     if (!session_active || rtp_socket < 0) {
+        ESP_LOGD(TAG, "RTP receive: Session not active or socket invalid");
         return -1;
     }
-    
+
     uint8_t buffer[1500]; // MTU size
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
-    
+
     int received = recvfrom(rtp_socket, buffer, sizeof(buffer), MSG_DONTWAIT,
-                           (struct sockaddr*)&from_addr, &from_len);
-    
+                             (struct sockaddr*)&from_addr, &from_len);
+
     if (received <= 0) {
+        ESP_LOGD(TAG, "RTP receive: No data available (recvfrom returned %d)", received);
         return 0; // No data available
     }
+
+    // Log packet reception for debugging
+    char log_msg[128];
+    snprintf(log_msg, sizeof(log_msg), "RTP packet received: %d bytes from %s:%d", received,
+             inet_ntoa(from_addr.sin_addr), ntohs(from_addr.sin_port));
+    ESP_LOGI(TAG, "%s", log_msg);
     
     if (received < sizeof(rtp_header_t)) {
         ESP_LOGW(TAG, "Received packet too small");
@@ -239,6 +247,10 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     
     // Extract payload type from RTP header
     uint8_t payload_type = header->payload_type;
+    
+    char rtp_log[128];
+    snprintf(rtp_log, sizeof(rtp_log), "RTP packet received: payload_type=%d, payload_size=%zu", payload_type, payload_size);
+    ESP_LOGI(TAG, "%s", rtp_log);
     
     // Route by payload type
     if (payload_type == 101) {
@@ -254,10 +266,19 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
         }
         return sample_count;
     } else {
-        // Unknown payload type
-        ESP_LOGW(TAG, "Unknown RTP payload type: %d", payload_type);
-        return 0;
+        // Unknown payload type - treat as PCMU for compatibility
+        char unknown_log[128];
+        snprintf(unknown_log, sizeof(unknown_log), "Unknown RTP payload type: %d - treating as PCMU", payload_type);
+        ESP_LOGW(TAG, "%s", unknown_log);
+        // Fall through to PCMU handling
     }
+
+    // Handle as PCMU (G.711 μ-law)
+    size_t sample_count = (payload_size < max_samples) ? payload_size : max_samples;
+    for (size_t i = 0; i < sample_count; i++) {
+        samples[i] = mulaw_decode_table[payload[i]];
+    }
+    return sample_count;
 }
 
 bool rtp_is_active(void)
