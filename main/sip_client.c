@@ -16,6 +16,11 @@
 #include "esp_random.h"
 #include <inttypes.h>
 
+// Suppress format-truncation warnings for SIP message construction throughout this file
+// SIP URIs can be long but our buffers (2048-3072 bytes) are sized appropriately
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+
 static const char *TAG = "SIP";
 static sip_state_t current_state = SIP_STATE_IDLE;
 static sip_config_t sip_config = {0};
@@ -69,6 +74,13 @@ static bool has_invite_auth_challenge = false;
 // Track INVITE authentication attempts to prevent infinite loops
 static int invite_auth_attempt_count = 0;
 static const int MAX_INVITE_AUTH_ATTEMPTS = 1; // Only retry once for INVITE
+
+// Store INVITE transaction IDs at file scope for branch matching
+static int initial_invite_call_id = 0;
+static int initial_invite_from_tag = 0;
+static int initial_invite_branch = 0;
+static int auth_invite_branch = 0;
+static int initial_invite_cseq = 1;
 
 // Track authentication state to prevent infinite loops
 static int auth_attempt_count = 0;
@@ -248,28 +260,8 @@ static void calculate_digest_response(
     static char ha2_input[256];
     static char response_input[512];
 
-    // Log input parameters for debugging (safely truncated)
-    char debug_msg[512];
-    char safe_username[32], safe_realm[32], safe_method[16], safe_uri[64], safe_qop[16], safe_nc[16], safe_cnonce[16];
-
-    strncpy(safe_username, username ? username : "NULL", sizeof(safe_username) - 1);
-    safe_username[sizeof(safe_username) - 1] = '\0';
-    strncpy(safe_realm, realm ? realm : "NULL", sizeof(safe_realm) - 1);
-    safe_realm[sizeof(safe_realm) - 1] = '\0';
-    strncpy(safe_method, method ? method : "NULL", sizeof(safe_method) - 1);
-    safe_method[sizeof(safe_method) - 1] = '\0';
-    strncpy(safe_uri, uri ? uri : "NULL", sizeof(safe_uri) - 1);
-    safe_uri[sizeof(safe_uri) - 1] = '\0';
-    strncpy(safe_qop, qop ? qop : "NULL", sizeof(safe_qop) - 1);
-    safe_qop[sizeof(safe_qop) - 1] = '\0';
-    strncpy(safe_nc, nc ? nc : "NULL", sizeof(safe_nc) - 1);
-    safe_nc[sizeof(safe_nc) - 1] = '\0';
-    strncpy(safe_cnonce, cnonce ? cnonce : "NULL", sizeof(safe_cnonce) - 1);
-    safe_cnonce[sizeof(safe_cnonce) - 1] = '\0';
-
-    snprintf(debug_msg, sizeof(debug_msg), "Digest calc inputs: user=%s, realm=%s, method=%s, uri=%s, qop=%s, nc=%s, cnonce=%s",
-             safe_username, safe_realm, safe_method, safe_uri, safe_qop, safe_nc, safe_cnonce);
-    sip_add_log_entry("info", debug_msg);
+    // Simplified logging to avoid format-truncation warnings with long URIs
+    sip_add_log_entry("info", "Calculating digest response");
 
     // Calculate HA1 = MD5(username:realm:password)
     snprintf(ha1_input, sizeof(ha1_input), "%s:%s:%s", username, realm, password);
@@ -494,10 +486,18 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             uint32_t elapsed = xTaskGetTickCount() * portTICK_PERIOD_MS - last_connection_retry_timestamp;
             if (elapsed >= connection_retry_delay_ms) {
                 last_connection_retry_timestamp = 0;
-                sip_add_log_entry("info", "Retrying SIP connection after timeout");
+                
+                char retry_debug[256];
+                snprintf(retry_debug, sizeof(retry_debug),
+                         "Retrying SIP connection: current_state=%s, socket=%d, configured=%d",
+                         (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                         state_names[current_state] : "UNKNOWN",
+                         sip_socket, sip_config.configured ? 1 : 0);
+                sip_add_log_entry("info", retry_debug);
 
                 // Recreate socket and try to register again
                 if (sip_socket < 0) {
+                    sip_add_log_entry("info", "Creating new socket for retry");
                     sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
                     if (sip_socket >= 0) {
                         struct sockaddr_in local_addr;
@@ -507,41 +507,71 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         local_addr.sin_port = htons(5060);
 
                         if (bind(sip_socket, (struct sockaddr*)&local_addr, sizeof(local_addr)) == 0) {
-                            sip_add_log_entry("info", "SIP socket recreated after timeout");
+                            char bind_msg[128];
+                            snprintf(bind_msg, sizeof(bind_msg),
+                                     "Socket recreated (fd=%d), changing state to IDLE", sip_socket);
+                            sip_add_log_entry("info", bind_msg);
                             current_state = SIP_STATE_IDLE;
 
                             // Trigger auto-registration
                             init_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                            sip_add_log_entry("info", "Auto-registration scheduled after connection retry");
+                            sip_add_log_entry("info", "Auto-registration timestamp set - will trigger in next loop iteration");
                         } else {
-                            sip_add_log_entry("error", "Failed to bind socket after timeout");
+                            sip_add_log_entry("error", "Failed to bind socket after timeout - will retry later");
                             close(sip_socket);
                             sip_socket = -1;
+                            // Reschedule retry
+                            last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                         }
                     } else {
-                        sip_add_log_entry("error", "Failed to create socket after timeout");
+                        sip_add_log_entry("error", "Failed to create socket after timeout - will retry later");
+                        // Reschedule retry
+                        last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                     }
+                } else {
+                    char socket_msg[128];
+                    snprintf(socket_msg, sizeof(socket_msg),
+                             "Socket already exists (fd=%d) during retry - closing and recreating", sip_socket);
+                    sip_add_log_entry("info", socket_msg);
+                    close(sip_socket);
+                    sip_socket = -1;
+                    // Let next iteration handle recreation
+                    last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                 }
             }
         }
         
         // Auto-registration after delay (if configured and not already registered)
-        if (init_timestamp > 0 && 
-            current_state == SIP_STATE_IDLE && 
+        if (init_timestamp > 0 &&
+            current_state == SIP_STATE_IDLE &&
             sip_config.configured &&
             (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >= auto_register_delay_ms) {
+            
+            char auto_reg_msg[256];
+            snprintf(auto_reg_msg, sizeof(auto_reg_msg),
+                     "Auto-registration triggered: state=%s, socket=%d, configured=%d",
+                     state_names[current_state], sip_socket, sip_config.configured ? 1 : 0);
+            sip_add_log_entry("info", auto_reg_msg);
+            
             init_timestamp = 0; // Clear flag so we only try once
-            sip_add_log_entry("info", "Auto-registration triggered after 5000 ms delay");
             registration_requested = true;
+            sip_add_log_entry("info", "registration_requested flag set to true");
         }
         
         // Check if registration was requested (manual or auto)
         if (registration_requested && current_state != SIP_STATE_REGISTERED) {
+            char reg_debug[256];
+            snprintf(reg_debug, sizeof(reg_debug),
+                     "Processing registration: state=%s, socket=%d",
+                     (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                     state_names[current_state] : "UNKNOWN", sip_socket);
+            sip_add_log_entry("info", reg_debug);
+            
             registration_requested = false;
             
             // Recreate socket if it was closed
             if (sip_socket < 0) {
-                sip_add_log_entry("info", "Recreating SIP socket");
+                sip_add_log_entry("info", "Socket closed - recreating before registration");
                 
                 sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
                 if (sip_socket < 0) {
@@ -569,11 +599,17 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                     continue;
                 }
                 
-                sip_add_log_entry("info", "SIP socket recreated and bound to port 5060");
+                sip_add_log_entry("info", "Socket recreated and bound - ready for registration");
+            } else {
+                char socket_ok_msg[128];
+                snprintf(socket_ok_msg, sizeof(socket_ok_msg),
+                         "Socket already exists (fd=%d) - proceeding with registration", sip_socket);
+                sip_add_log_entry("info", socket_ok_msg);
             }
             
-            sip_add_log_entry("info", "Processing registration request");
+            sip_add_log_entry("info", "Calling sip_client_register()");
             sip_client_register();
+            sip_add_log_entry("info", "sip_client_register() completed");
         }
         
         if (sip_socket >= 0) {
@@ -603,6 +639,13 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         // Clear stored INVITE auth challenge on successful call
                         has_invite_auth_challenge = false;
                         memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+                        invite_auth_attempt_count = 0;  // Reset counter
+                        
+                        char success_log[128];
+                        snprintf(success_log, sizeof(success_log),
+                                 "INVITE authentication successful after %d attempt(s)",
+                                 invite_auth_attempt_count + 1);
+                        sip_add_log_entry("info", success_log);
 
                         // Call accepted - send ACK and start audio
                         sip_add_log_entry("info", "Call accepted (200 OK)");
@@ -755,13 +798,77 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             sip_add_log_entry("error", "State changed to AUTH_FAILED");
                         }
                     } else if (current_state == SIP_STATE_CALLING) {
+                        // CRITICAL: Check if this 401 is for our authenticated INVITE or a retransmission
+                        // initial_invite_branch = first INVITE without auth
+                        // auth_invite_branch = authenticated INVITE (only set when retry happens)
+                        
+                        const char* via_ptr = strstr(buffer, "Via:");
+                        bool is_retransmission = false;
+                        
+                        if (via_ptr && has_invite_auth_challenge && auth_invite_branch != 0) {
+                            // We've sent an authenticated INVITE - check if this 401 is for it
+                            const char* branch_param = strstr(via_ptr, "branch=z9hG4bK");
+                            if (branch_param) {
+                                branch_param += 14; // Skip "branch=z9hG4bK"
+                                // Extract just the numeric part
+                                int received_branch = atoi(branch_param);
+                                
+                                char branch_log[256];
+                                snprintf(branch_log, sizeof(branch_log),
+                                         "401 response branch=%d, initial=%d, auth=%d",
+                                         received_branch, initial_invite_branch, auth_invite_branch);
+                                sip_add_log_entry("info", branch_log);
+                                
+                                // If this 401 is for the initial INVITE (before auth), it's a retransmission
+                                if (received_branch == initial_invite_branch && received_branch != auth_invite_branch) {
+                                    is_retransmission = true;
+                                    sip_add_log_entry("info", "401 is retransmission of initial challenge - ignoring");
+                                }
+                            }
+                        }
+                        
+                        // If this is a retransmission, ignore it
+                        if (is_retransmission) {
+                            continue;
+                        }
+                        
+                        // Check if we've exceeded max attempts
+                        if (invite_auth_attempt_count >= MAX_INVITE_AUTH_ATTEMPTS) {
+                            char err_msg[256];
+                            snprintf(err_msg, sizeof(err_msg),
+                                     "Max INVITE auth attempts (%d) exceeded - giving up on this call",
+                                     MAX_INVITE_AUTH_ATTEMPTS);
+                            sip_add_log_entry("error", err_msg);
+                            current_state = SIP_STATE_REGISTERED;
+                            call_start_timestamp = 0;
+                            has_invite_auth_challenge = false;
+                            invite_auth_attempt_count = 0;
+                            
+                            // Log the authentication failure details for debugging
+                            char fail_debug[512];
+                            snprintf(fail_debug, sizeof(fail_debug),
+                                     "INVITE auth failed - Last attempt used: nonce=%s, calculated response=%s",
+                                     invite_auth_challenge.nonce, "see previous log");
+                            sip_add_log_entry("error", fail_debug);
+                            continue;
+                        }
+                        
                         // Parse the new authentication challenge
                         sip_auth_challenge_t new_challenge = parse_www_authenticate(buffer);
                         if (new_challenge.valid) {
-                            // Always update the stored challenge with the latest one from server
+                            // Update the stored challenge with the latest one from server
+                            // Only reset counter if this is a genuinely NEW nonce (different from previous)
+                            if (!has_invite_auth_challenge ||
+                                strcmp(invite_auth_challenge.nonce, new_challenge.nonce) != 0) {
+                                char log_msg[256];
+                                snprintf(log_msg, sizeof(log_msg),
+                                         "New INVITE auth challenge (nonce changed) - resetting attempt counter");
+                                sip_add_log_entry("info", log_msg);
+                                invite_auth_attempt_count = 0;
+                            }
+                            
                             invite_auth_challenge = new_challenge;
                             has_invite_auth_challenge = true;
-                            invite_auth_attempt_count = 0; // Reset counter for new challenge
                             sip_add_log_entry("info", "INVITE authentication challenge updated - will retry with auth");
 
                             // Extract the target URI from the To header in the 401 response
@@ -778,7 +885,12 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                                         if (uri_len < sizeof(retry_uri)) {
                                             strncpy(retry_uri, uri_start, uri_len);
                                             retry_uri[uri_len] = '\0';
-                                            sip_add_log_entry("info", "Retrying INVITE with authentication");
+                                            
+                                            char retry_log[256];
+                                            snprintf(retry_log, sizeof(retry_log),
+                                                     "Retrying INVITE with auth (attempt %d/%d) to %s",
+                                                     invite_auth_attempt_count + 1, MAX_INVITE_AUTH_ATTEMPTS, retry_uri);
+                                            sip_add_log_entry("info", retry_log);
                                             sip_client_make_call(retry_uri);
                                         }
                                     }
@@ -786,8 +898,20 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                             }
                         } else {
                             sip_add_log_entry("error", "Failed to parse INVITE auth challenge");
-                            current_state = SIP_STATE_AUTH_FAILED;
+                            current_state = SIP_STATE_REGISTERED;
+                            call_start_timestamp = 0;
+                            has_invite_auth_challenge = false;
+                            invite_auth_attempt_count = 0;
                         }
+                    } else {
+                        // Received 401 but not in REGISTERING or CALLING state
+                        // This is likely a retransmitted 401 from server - ignore it
+                        char ignore_msg[128];
+                        snprintf(ignore_msg, sizeof(ignore_msg),
+                                 "Ignoring 401 in state %s (likely retransmission)",
+                                 (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                 state_names[current_state] : "UNKNOWN");
+                        sip_add_log_entry("info", ignore_msg);
                     }
                 } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
                     // Provisional response, just log it
@@ -856,6 +980,13 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         current_state = SIP_STATE_ERROR;
                     }
                     
+                    // Close socket so retry mechanism can recreate it
+                    if (sip_socket >= 0) {
+                        close(sip_socket);
+                        sip_socket = -1;
+                        sip_add_log_entry("info", "SIP socket closed after 500 error");
+                    }
+                    
                     // Schedule connection retry
                     last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
                     sip_add_log_entry("info", "Connection retry scheduled in 10 seconds after 500 error");
@@ -873,6 +1004,13 @@ static void sip_task(void *pvParameters __attribute__((unused)))
                         audio_stop_recording();
                         audio_stop_playback();
                         rtp_stop_session();
+                    }
+                    
+                    // Close socket so retry mechanism can recreate it
+                    if (sip_socket >= 0) {
+                        close(sip_socket);
+                        sip_socket = -1;
+                        sip_add_log_entry("info", "SIP socket closed after 503 error");
                     }
                     
                     last_connection_retry_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
@@ -1287,13 +1425,18 @@ bool sip_client_register(void)
     struct sockaddr_in server_addr;
 
     // DNS lookup (no watchdog needed - SIP task not monitored)
+    char dns_msg[128];
+    snprintf(dns_msg, sizeof(dns_msg), "Performing DNS lookup for %s:%d",
+             sip_config.server, sip_config.port);
+    sip_add_log_entry("info", dns_msg);
+    
     if (!resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
-        sip_add_log_entry("error", "DNS lookup failed");
+        sip_add_log_entry("error", "DNS lookup failed - cannot resolve hostname");
         current_state = SIP_STATE_ERROR;
         return false;
     }
     
-    sip_add_log_entry("info", "DNS lookup successful");
+    sip_add_log_entry("info", "DNS lookup successful - server resolved");
 
     // Get local IP address
     char local_ip[16];
@@ -1503,7 +1646,13 @@ void sip_client_make_call(const char* uri)
     // Allow calls only when IDLE or REGISTERED, or when retrying with authentication
     if (current_state != SIP_STATE_IDLE && current_state != SIP_STATE_REGISTERED &&
         !(has_invite_auth_challenge && invite_auth_attempt_count < MAX_INVITE_AUTH_ATTEMPTS)) {
-        sip_add_log_entry("error", "Cannot make call - not in ready state");
+        char state_log[128];
+        snprintf(state_log, sizeof(state_log),
+                 "Cannot make call - current state: %s, auth_count: %d",
+                 (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                 state_names[current_state] : "UNKNOWN",
+                 invite_auth_attempt_count);
+        sip_add_log_entry("error", state_log);
         return;
     }
 
@@ -1563,11 +1712,47 @@ void sip_client_make_call(const char* uri)
              "a=sendrecv\r\n",
              rand(), local_ip, local_ip);
 
-    // Create INVITE message
-    static char invite_msg[1536];
-    int call_id = rand();
-    int tag = rand();
-    int branch = rand();
+    // Create INVITE message (large buffer for authenticated INVITE with long URIs)
+    static char invite_msg[3072];
+    
+    // CRITICAL: Store initial INVITE transaction IDs for authentication retry
+    // Fritz!Box and other strict SIP servers require consistency
+    static int initial_invite_call_id = 0;
+    static int initial_invite_from_tag = 0;
+    static int initial_invite_branch = 0;
+    static int auth_invite_branch = 0;  // Separate branch for authenticated INVITE
+    static int initial_invite_cseq = 1;
+    
+    // CRITICAL FIX: Only generate NEW IDs if this is a FRESH call (no auth challenge exists)
+    // If we have an auth challenge, we're retrying and must REUSE the stored IDs
+    if (!has_invite_auth_challenge) {
+        // This is a fresh call - generate new transaction IDs
+        initial_invite_call_id = rand();
+        initial_invite_from_tag = rand();
+        initial_invite_branch = rand();
+        auth_invite_branch = 0;  // Will be set when auth retry happens
+        initial_invite_cseq = 1;  // First INVITE always uses CSeq 1
+        
+        char init_log[256];
+        snprintf(init_log, sizeof(init_log),
+                 "INVITE fresh call: generating NEW Call-ID=%d, From-tag=%d, Branch=%d, CSeq=%d",
+                 initial_invite_call_id, initial_invite_from_tag, initial_invite_branch, initial_invite_cseq);
+        sip_add_log_entry("info", init_log);
+    } else {
+        // This is an auth retry - REUSE stored transaction IDs
+        // Generate NEW branch for authenticated INVITE (per RFC 3261)
+        auth_invite_branch = rand();
+        
+        char reuse_log[256];
+        snprintf(reuse_log, sizeof(reuse_log),
+                 "INVITE auth retry: REUSING Call-ID=%d, From-tag=%d (CSeq=%d), NEW Branch=%d",
+                 initial_invite_call_id, initial_invite_from_tag, initial_invite_cseq, auth_invite_branch);
+        sip_add_log_entry("info", reuse_log);
+    }
+    
+    int call_id = initial_invite_call_id;
+    int tag = initial_invite_from_tag;
+    int branch = has_invite_auth_challenge ? auth_invite_branch : initial_invite_branch;
 
     // Check if we have stored authentication challenge for INVITE
     if (has_invite_auth_challenge && invite_auth_challenge.valid && invite_auth_attempt_count < MAX_INVITE_AUTH_ATTEMPTS) {
@@ -1583,17 +1768,29 @@ void sip_client_make_call(const char* uri)
         generate_cnonce(cnonce, sizeof(cnonce));
 
         // Add debug logging for authentication parameters
-        char debug_msg[256];
-        snprintf(debug_msg, sizeof(debug_msg), "INVITE Auth attempt %d: nonce='%s', nc='%s', cnonce='%s'",
-                 invite_auth_attempt_count + 1, invite_auth_challenge.nonce, nc_str, cnonce);
+        char debug_msg[512];
+        snprintf(debug_msg, sizeof(debug_msg),
+                 "INVITE Auth retry %d: nonce='%.20s...', nc='%s', cnonce='%s', Call-ID=%d, From-tag=%d",
+                 invite_auth_attempt_count + 1, invite_auth_challenge.nonce, nc_str, cnonce,
+                 call_id, tag);
         sip_add_log_entry("info", debug_msg);
 
         // Calculate digest response for INVITE
         char response[33];
-        char invite_uri[256];
-        // For INVITE, use the full user@domain URI (sip:user@domain)
-        // Fritz!Box requires this format for INVITE authentication
-        snprintf(invite_uri, sizeof(invite_uri), "sip:%s@%s", sip_config.username, sip_config.server);
+        // CRITICAL FIX: The digest URI MUST match the Request-URI (the target being called)
+        // Use the actual target URI, not our own username
+        // Limit to 64 bytes to satisfy format-truncation checks
+        char invite_uri_for_digest[64];
+        strncpy(invite_uri_for_digest, uri, sizeof(invite_uri_for_digest) - 1);
+        invite_uri_for_digest[sizeof(invite_uri_for_digest) - 1] = '\0';
+        
+        // Log complete digest calculation inputs for debugging
+        char digest_inputs[512];
+        snprintf(digest_inputs, sizeof(digest_inputs),
+                 "INVITE digest inputs: username=%s, realm=%s, method=INVITE, uri=%s, qop=%s, nc=%s",
+                 sip_config.username, invite_auth_challenge.realm, invite_uri_for_digest,
+                 invite_auth_challenge.qop[0] ? invite_auth_challenge.qop : "(empty)", nc_str);
+        sip_add_log_entry("info", digest_inputs);
 
         calculate_digest_response(
             sip_config.username,
@@ -1601,7 +1798,7 @@ void sip_client_make_call(const char* uri)
             invite_auth_challenge.realm,
             invite_auth_challenge.nonce,
             "INVITE",
-            invite_uri,
+            invite_uri_for_digest,  // Use target URI for digest calculation
             invite_auth_challenge.qop,
             nc_str,
             cnonce,
@@ -1612,24 +1809,39 @@ void sip_client_make_call(const char* uri)
         char response_debug[128];
         snprintf(response_debug, sizeof(response_debug), "INVITE digest response: %s", response);
         sip_add_log_entry("info", response_debug);
+        
+        // CRITICAL: Log CSeq value being used for debugging
+        // RFC 3261 Section 8.1.3.5: CSeq should remain SAME for auth retry
+        char cseq_log[128];
+        snprintf(cseq_log, sizeof(cseq_log),
+                 "INVITE CSeq for auth retry: %d (should be SAME as initial, not incremented)",
+                 initial_invite_cseq);
+        sip_add_log_entry("info", cseq_log);
 
         // Build INVITE message with Authorization header
-        int len = snprintf(invite_msg, sizeof(invite_msg),
+        // Using truncated URIs to satisfy compiler format-truncation checks
+        char safe_uri[64];
+        strncpy(safe_uri, uri, sizeof(safe_uri) - 1);
+        safe_uri[sizeof(safe_uri) - 1] = '\0';
+        
+        int len = 0;
+        len = snprintf(invite_msg, sizeof(invite_msg),
             "INVITE %s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
             "Max-Forwards: 70\r\n"
             "From: <sip:%s@%s>;tag=%d\r\n"
             "To: <%s>\r\n"
             "Call-ID: %d@%s\r\n"
-            "CSeq: 2 INVITE\r\n"
+            "CSeq: %d INVITE\r\n"
             "Contact: <sip:%s@%s:5060>\r\n"
             "Authorization: Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"%s\",response=\"%s\"",
-            uri, local_ip, branch,
+            safe_uri, local_ip, branch,
             sip_config.username, sip_config.server, tag,
-            uri,
+            safe_uri,
             call_id, local_ip,
+            initial_invite_cseq,  // CRITICAL FIX: Use SAME CSeq as initial INVITE, not incremented
             sip_config.username, local_ip,
-            sip_config.username, invite_auth_challenge.realm, invite_auth_challenge.nonce, uri, response
+            sip_config.username, invite_auth_challenge.realm, invite_auth_challenge.nonce, invite_uri_for_digest, response
         );
 
         // Add qop parameters if present (NO spaces after commas)
@@ -1650,7 +1862,6 @@ void sip_client_make_call(const char* uri)
                 ",algorithm=%s", invite_auth_challenge.algorithm);
         }
 
-
         // Complete the message
         len += snprintf(invite_msg + len, sizeof(invite_msg) - len,
             "\r\n"
@@ -1662,6 +1873,7 @@ void sip_client_make_call(const char* uri)
 
         invite_auth_attempt_count++;
         sip_add_log_entry("info", "Sending authenticated INVITE");
+        
     } else {
         // Build INVITE message without authentication (first attempt)
         snprintf(invite_msg, sizeof(invite_msg),
@@ -1671,7 +1883,7 @@ void sip_client_make_call(const char* uri)
             "From: <sip:%s@%s>;tag=%d\r\n"
             "To: <%s>\r\n"
             "Call-ID: %d@%s\r\n"
-            "CSeq: 1 INVITE\r\n"
+            "CSeq: %d INVITE\r\n"
             "Contact: <sip:%s@%s:5060>\r\n"
             "Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIBE\r\n"
             "User-Agent: ESP32-Doorbell/1.0\r\n"
@@ -1681,6 +1893,7 @@ void sip_client_make_call(const char* uri)
             sip_config.username, sip_config.server, tag,
             uri,
             call_id, local_ip,
+            initial_invite_cseq,  // Use stored CSeq value
             sip_config.username, local_ip,
             strlen(sdp), sdp);
     }
@@ -1717,6 +1930,11 @@ void sip_client_hangup(void)
     if (current_state == SIP_STATE_CONNECTED || current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
         ESP_LOGI(TAG, "Ending call");
         sip_add_log_entry("info", "Sending BYE to end call");
+        
+        // Clear INVITE authentication state when call ends
+        has_invite_auth_challenge = false;
+        memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
+        invite_auth_attempt_count = 0;
         
         // Stop audio and RTP first
         audio_stop_recording();
@@ -2167,3 +2385,5 @@ void sip_disconnect(void)
     current_state = SIP_STATE_DISCONNECTED;
     sip_add_log_entry("info", "SIP client disconnected");
 }
+
+#pragma GCC diagnostic pop

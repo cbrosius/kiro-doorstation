@@ -1,5 +1,9 @@
 # SIP-Konfiguration
 
+## RFCs
+
+Das System basiert auf dem in RFC 3261 definierten SIP-Protokoll.
+
 ## Unterstützte SIP-Server
 
 Das System wurde getestet mit:
