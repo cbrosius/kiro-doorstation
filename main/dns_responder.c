@@ -15,6 +15,7 @@ static bool dns_running = false;
 static char captive_ip[16] = "192.168.4.1";  // Default AP IP
 
 // DNS header structure
+#pragma pack(push, 1)
 typedef struct {
     uint16_t id;
     uint16_t flags;
@@ -23,107 +24,15 @@ typedef struct {
     uint16_t nscount;
     uint16_t arcount;
 } dns_header_t;
+#pragma pack(pop)
 
 // DNS question structure
+#pragma pack(push, 1)
 typedef struct {
     uint16_t qtype;
     uint16_t qclass;
 } dns_question_t;
-
-/**
- * @brief Parse DNS name from packet
- */
-static int parse_dns_name(const uint8_t *data, int offset, char *name, int max_len)
-{
-    int name_len = 0;
-    int jump = 0;
-    int pos = offset;
-
-    while (data[pos] != 0) {
-        if ((data[pos] & 0xC0) == 0xC0) {
-            // Compressed name - jump to offset
-            jump = ((data[pos] & 0x3F) << 8) | data[pos + 1];
-            pos = jump;
-            continue;
-        }
-
-        int label_len = data[pos++];
-        if (name_len + label_len + 1 >= max_len) {
-            return -1;  // Name too long
-        }
-
-        if (name_len > 0) {
-            name[name_len++] = '.';
-        }
-
-        memcpy(&name[name_len], &data[pos], label_len);
-        name_len += label_len;
-        pos += label_len;
-    }
-
-    name[name_len] = '\0';
-    return pos - offset + 1;  // Return bytes consumed
-}
-
-/**
- * @brief Build DNS response packet
- */
-static int build_dns_response(uint8_t *buffer, int buffer_size, uint16_t query_id, const char *domain_name)
-{
-    dns_header_t *header = (dns_header_t *)buffer;
-
-    // DNS header
-    header->id = query_id;
-    header->flags = htons(0x8180);  // Response, authoritative
-    header->qdcount = htons(1);     // 1 question
-    header->ancount = htons(1);     // 1 answer
-    header->nscount = htons(0);     // No authority
-    header->arcount = htons(0);     // No additional
-
-    int offset = sizeof(dns_header_t);
-
-    // Question section - copy the original question
-    // We need to properly copy the question section from the original query
-    // For simplicity, we'll assume the question starts right after the header
-
-    // Domain name (compressed pointer to question)
-    buffer[offset++] = 0xC0;  // Compression pointer
-    buffer[offset++] = 0x0C;  // Points to start of domain name in question
-
-    // Question type and class (A record, IN class)
-    buffer[offset++] = 0x00;  // QTYPE high byte
-    buffer[offset++] = 0x01;  // QTYPE low byte (A record)
-    buffer[offset++] = 0x00;  // QCLASS high byte
-    buffer[offset++] = 0x01;  // QCLASS low byte (IN)
-
-    // Answer section
-    // Domain name (compressed pointer to question)
-    buffer[offset++] = 0xC0;  // Compression pointer
-    buffer[offset++] = 0x0C;  // Points to start of domain name in question
-
-    // Answer: TYPE=A, CLASS=IN, TTL=300, RDATA length=4
-    buffer[offset++] = 0x00;  // TYPE high byte
-    buffer[offset++] = 0x01;  // TYPE low byte (A record)
-    buffer[offset++] = 0x00;  // CLASS high byte
-    buffer[offset++] = 0x01;  // CLASS low byte (IN)
-    buffer[offset++] = 0x00;  // TTL high byte
-    buffer[offset++] = 0x00;  // TTL
-    buffer[offset++] = 0x01;  // TTL
-    buffer[offset++] = 0x2C;  // TTL low byte (300 seconds)
-    buffer[offset++] = 0x00;  // RDATA length high byte
-    buffer[offset++] = 0x04;  // RDATA length low byte (4 bytes for IPv4)
-
-    // RDATA: IP address
-    struct in_addr addr;
-    if (inet_aton(captive_ip, &addr) == 0) {
-        ESP_LOGE(TAG, "Invalid IP address: %s", captive_ip);
-        return -1;
-    }
-    memcpy(&buffer[offset], &addr.s_addr, 4);
-    offset += 4;
-
-    return offset;
-}
+#pragma pack(pop)
 
 /**
  * @brief DNS responder task
@@ -166,7 +75,6 @@ static void dns_responder_task(void *pvParameters)
 
         if (recv_len < 0) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                // Timeout - check if we should still be running
                 vTaskDelay(pdMS_TO_TICKS(100));
                 continue;
             }
@@ -181,43 +89,60 @@ static void dns_responder_task(void *pvParameters)
 
         dns_header_t *header = (dns_header_t *)buffer;
 
-        // Check if this is a query (QR bit should be 0)
-        if (ntohs(header->flags) & 0x8000) {
-            continue;  // This is a response, ignore
-        }
+        // Respond only to standard queries for A records
+        if ((header->flags & 0x8000) == 0 && header->qdcount > 0) {
+            // Find the end of the question section
+            uint8_t *qname_end = buffer + sizeof(dns_header_t);
+            while (*qname_end != 0 && (qname_end < buffer + recv_len)) {
+                qname_end += *qname_end + 1;
+            }
+            qname_end++; // Skip the null terminator
 
-        uint16_t query_id = header->id;
+            if (qname_end > buffer + recv_len - sizeof(dns_question_t)) {
+                continue; // Malformed packet
+            }
 
-        // Parse domain name (simplified - just log it)
-        char domain_name[256] = {0};
-        int name_offset = sizeof(dns_header_t);
-        int consumed = parse_dns_name(buffer, name_offset, domain_name, sizeof(domain_name));
+            dns_question_t *question = (dns_question_t *)qname_end;
 
-        if (consumed < 0) {
-            ESP_LOGW(TAG, "Failed to parse DNS domain name");
-            continue;
-        }
+            // We only care about A records (host address)
+            if (question->qtype == htons(1) && question->qclass == htons(1)) {
+                // Prepare response
+                header->flags = htons(0x8180); // Standard response, no error
+                header->ancount = htons(1);    // One answer
 
-        ESP_LOGI(TAG, "DNS query for: %s from %s", domain_name,
-                inet_ntoa(client_addr.sin_addr));
+                int response_len = recv_len + 16; // Original length + answer length
+                if (response_len > sizeof(buffer)) {
+                    continue; // Response too long
+                }
 
-        // Build response - copy the original query first, then modify
-        uint8_t response_buffer[512];
-        memcpy(response_buffer, buffer, recv_len);  // Copy original query
+                uint8_t *answer_ptr = buffer + recv_len;
 
-        int response_len = build_dns_response(response_buffer, sizeof(response_buffer), query_id, domain_name);
-        if (response_len < 0) {
-            ESP_LOGW(TAG, "Failed to build DNS response");
-            continue;
-        }
+                // Answer section
+                *answer_ptr++ = 0xC0; // Compressed name
+                *answer_ptr++ = 0x0C; // Pointer to domain name in question
 
-        // Send response
-        int sent = sendto(sockfd, response_buffer, response_len, 0,
-                         (struct sockaddr *)&client_addr, client_len);
-        if (sent < 0) {
-            ESP_LOGE(TAG, "DNS sendto error: %d", errno);
-        } else {
-            ESP_LOGI(TAG, "DNS response sent: %s -> %s", domain_name, captive_ip);
+                *answer_ptr++ = 0x00; // Type A (high)
+                *answer_ptr++ = 0x01; // Type A (low)
+
+                *answer_ptr++ = 0x00; // Class IN (high)
+                *answer_ptr++ = 0x01; // Class IN (low)
+
+                // TTL (e.g., 60 seconds)
+                *answer_ptr++ = 0x00;
+                *answer_ptr++ = 0x00;
+                *answer_ptr++ = 0x00;
+                *answer_ptr++ = 0x3C;
+
+                *answer_ptr++ = 0x00; // Data length 4 (high)
+                *answer_ptr++ = 0x04; // Data length 4 (low)
+
+                // IP Address
+                struct in_addr addr;
+                inet_aton(captive_ip, &addr);
+                memcpy(answer_ptr, &addr.s_addr, 4);
+
+                sendto(sockfd, buffer, response_len, 0, (struct sockaddr *)&client_addr, client_len);
+            }
         }
     }
 
@@ -241,9 +166,9 @@ bool dns_responder_start(void)
     BaseType_t result = xTaskCreate(
         dns_responder_task,
         "dns_responder",
-        4096,  // Stack size
+        4096,
         NULL,
-        5,     // Priority
+        5,
         &dns_task_handle
     );
 
@@ -264,11 +189,10 @@ void dns_responder_stop(void)
         dns_running = false;
 
         if (dns_task_handle) {
-            vTaskDelay(pdMS_TO_TICKS(500));  // Give task time to stop gracefully
-            vTaskDelete(dns_task_handle);
+            // No need to forcefully delete, the task will exit its loop
+            // and delete itself. Just set the handle to NULL.
             dns_task_handle = NULL;
         }
-
         ESP_LOGI(TAG, "DNS responder stopped");
     }
 }
