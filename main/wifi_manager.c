@@ -6,6 +6,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "lwip/ip4_addr.h"
+#include "captive_portal.h"
+#include "dns_responder.h"
 #include <string.h>
 
 static const char *TAG = "WIFI";
@@ -102,12 +104,17 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "IP obtained: " IPSTR ", WiFi fully connected", IP2STR(&event->ip_info.ip));
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
-        
+
+        // Stop captive portal and DNS responder if they were running
+        ESP_LOGI(TAG, "WiFi connected - stopping captive portal and DNS responder");
+        captive_portal_stop();
+        dns_responder_stop();
+
         // Update connection info
         current_connection.connected = true;
-        snprintf(current_connection.ip_address, sizeof(current_connection.ip_address), 
+        snprintf(current_connection.ip_address, sizeof(current_connection.ip_address),
                 IPSTR, IP2STR(&event->ip_info.ip));
-        
+
         // Get SSID and RSSI
         wifi_ap_record_t ap_info;
         if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -115,7 +122,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             current_connection.ssid[sizeof(current_connection.ssid) - 1] = '\0';
             current_connection.rssi = ap_info.rssi;
         }
-        
+
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
@@ -216,6 +223,7 @@ void wifi_manager_init(void)
     } else {
         ESP_LOGI(TAG, "No WiFi configuration found, starting AP mode");
         wifi_start_ap_mode();
+        // Note: Captive portal and DNS responder will be started by main.c
     }
 
     ESP_LOGI(TAG, "WiFi Manager initialized");

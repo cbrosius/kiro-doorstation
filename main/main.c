@@ -18,6 +18,8 @@
 #include "ntp_sync.h"
 #include "cert_manager.h"
 #include "auth_manager.h"
+#include "captive_portal.h"
+#include "dns_responder.h"
 
 static const char *TAG = "MAIN";
 
@@ -75,6 +77,46 @@ void app_main(void)
     
     // Start WiFi Manager
     wifi_manager_init();
+
+    // Check if we're in captive portal mode (no saved WiFi config)
+    wifi_manager_config_t wifi_config = wifi_load_config();
+    if (!wifi_config.configured) {
+        ESP_LOGI(TAG, "No WiFi configuration found - starting in CAPTIVE PORTAL mode");
+        ESP_LOGI(TAG, "Captive portal will provide WiFi setup interface on port 80");
+        ESP_LOGI(TAG, "DNS responder will redirect all queries to 192.168.4.1");
+
+        // Start captive portal and DNS responder
+        if (!captive_portal_start()) {
+            ESP_LOGE(TAG, "Failed to start captive portal - system will not be accessible");
+        }
+        if (!dns_responder_start()) {
+            ESP_LOGE(TAG, "Failed to start DNS responder - captive portal may not work properly");
+        }
+
+        // In captive portal mode, we don't initialize NTP, SIP, or HTTPS server
+        // The device will stay in this mode until WiFi is configured
+        ESP_LOGI(TAG, "Captive portal mode active - waiting for WiFi configuration");
+
+        // Main loop for captive portal mode
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+
+            // Check if WiFi is now configured (user completed setup)
+            wifi_manager_config_t check_config = wifi_load_config();
+            if (check_config.configured) {
+                ESP_LOGI(TAG, "WiFi configuration detected - transitioning to normal mode");
+                break;
+            }
+        }
+
+        // Stop captive portal and DNS responder
+        ESP_LOGI(TAG, "Stopping captive portal and DNS responder");
+        captive_portal_stop();
+        dns_responder_stop();
+
+        // Now proceed with normal initialization
+        ESP_LOGI(TAG, "Transitioning to normal operation mode");
+    }
 
     // Wait for IP address before initializing network-dependent services
     ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
