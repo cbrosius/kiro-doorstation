@@ -143,6 +143,7 @@ static const httpd_uri_t ota_rollback_uri;
 static const httpd_uri_t ota_status_uri;
 static const httpd_uri_t system_state_uri;
 static const httpd_uri_t system_restart_uri;
+static const httpd_uri_t system_factory_reset_uri;
 static const httpd_uri_t system_info_uri;
 static const httpd_uri_t ntp_state_uri;
 static const httpd_uri_t ntp_config_get_uri;
@@ -214,9 +215,10 @@ void web_api_register_handlers(httpd_handle_t server) {
     // Log OTA endpoints for debugging
     ESP_LOGI(TAG, "Registered OTA endpoints: info, version, upload, rollback, status");
     
-    // Register System API handlers (3 endpoints)
+    // Register System API handlers (4 endpoints)
     if (httpd_register_uri_handler(server, &system_state_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &system_restart_uri) == ESP_OK) registered_count++; else failed_count++;
+    if (httpd_register_uri_handler(server, &system_factory_reset_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &system_info_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register NTP API handlers (4 endpoints)
@@ -258,7 +260,7 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (failed_count > 0) {
         ESP_LOGW(TAG, "Some API handlers failed to register. Server may have limited functionality.");
     } else {
-        ESP_LOGI(TAG, "All 47 API handlers registered successfully");
+        ESP_LOGI(TAG, "All 48 API handlers registered successfully");
     }
 }
 
@@ -1453,16 +1455,16 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
     if (auth_filter(req, true) != ESP_OK) {
         return ESP_FAIL;
     }
-    
+
     ESP_LOGI(TAG, "System restart requested - all sessions will be invalidated");
-    
+
     httpd_resp_set_type(req, "application/json");
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "success");
     cJSON_AddStringToObject(response, "message", "System restart initiated");
     cJSON_AddBoolToObject(response, "session_invalidated", true);
     cJSON_AddStringToObject(response, "redirect_to", "/login.html");
-    
+
     char *json_string = cJSON_Print(response);
     httpd_resp_send(req, json_string, strlen(json_string));
     free(json_string);
@@ -1471,7 +1473,50 @@ static esp_err_t post_system_restart_handler(httpd_req_t *req)
     // Restart after a short delay to allow response to be sent
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
-    
+
+    return ESP_OK;
+}
+
+static esp_err_t post_system_factory_reset_handler(httpd_req_t *req)
+{
+    // Check authentication (extend session for user action - factory reset)
+    if (auth_filter(req, true) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Factory reset requested - all configurations will be erased");
+
+    httpd_resp_set_type(req, "application/json");
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddStringToObject(response, "message", "Factory reset initiated. Device will restart with default settings.");
+    cJSON_AddBoolToObject(response, "session_invalidated", true);
+    cJSON_AddStringToObject(response, "redirect_to", "/login.html");
+
+    char *json_string = cJSON_Print(response);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(response);
+
+    // Perform factory reset
+    ESP_LOGI(TAG, "Performing factory reset - erasing NVS");
+    esp_err_t err = nvs_flash_erase();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to erase NVS: %s", esp_err_to_name(err));
+    }
+
+    // Re-initialize NVS
+    err = nvs_flash_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to re-initialize NVS: %s", esp_err_to_name(err));
+    }
+
+    ESP_LOGI(TAG, "Factory reset complete - restarting device");
+
+    // Restart after a short delay to allow response to be sent
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+
     return ESP_OK;
 }
 
@@ -3353,6 +3398,10 @@ static const httpd_uri_t system_state_uri = {
 
 static const httpd_uri_t system_restart_uri = {
     .uri = "/api/system/restart", .method = HTTP_POST, .handler = post_system_restart_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t system_factory_reset_uri = {
+    .uri = "/api/system/factory-reset", .method = HTTP_POST, .handler = post_system_factory_reset_handler, .user_ctx = NULL
 };
 
 static const httpd_uri_t system_info_uri = {
