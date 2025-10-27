@@ -33,11 +33,10 @@ static esp_err_t captive_generate_204_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "HTTP REQUEST: Android captive detection: %s", req->uri);
 
-    // Always return 204 No Content for /generate_204 - this is what triggers captive portal
-    // The key is that this endpoint returns 204, indicating "no content" which tells
-    // Android/iOS that this is a captive portal and they should show the login screen
-    ESP_LOGI(TAG, "Returning 204 No Content to trigger captive portal");
-    httpd_resp_set_status(req, "204 No Content");
+    // Redirect to setup page to reliably trigger captive portal popup
+    ESP_LOGI(TAG, "Redirecting to /setup.html to trigger captive portal");
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/setup.html");
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
