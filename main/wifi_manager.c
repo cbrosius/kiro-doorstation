@@ -22,6 +22,12 @@ static const int MAX_RETRIES = 10;
 static bool is_scanning = false;
 static wifi_manager_ap_start_callback_t ap_start_cb = NULL;
 
+// Parallel credential testing variables
+static bool is_testing_credentials = false;
+static char tested_sta_ip[16] = {0};
+static TaskHandle_t credential_test_task = NULL;
+static const int CREDENTIAL_TEST_TIMEOUT_MS = 30000; // 30 seconds
+
 // ESPHome-style scan results storage
 static wifi_scan_result_t scan_results[MAX_SCAN_RESULTS];
 static int scan_results_count = 0;
@@ -29,6 +35,7 @@ static bool scan_results_valid = false;
 
 // Forward declarations
 static void wifi_clear_scan_results(void);
+static void credential_test_task_func(void *pvParameters);
 
 void wifi_manager_register_ap_start_callback(wifi_manager_ap_start_callback_t cb)
 {
@@ -90,10 +97,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         retry_count++;
         ESP_LOGW(TAG, "WiFi disconnected (reason: %d - %s), retry %d/%d", disconnected->reason, wifi_reason_to_string(disconnected->reason), retry_count, MAX_RETRIES);
         is_connected = false;
-        
+
         // Clear connection info
         memset(&current_connection, 0, sizeof(current_connection));
-        
+
         if (retry_count >= MAX_RETRIES) {
             ESP_LOGW(TAG, "Max retries reached, falling back to AP mode");
             wifi_start_ap_mode();
@@ -227,8 +234,8 @@ void wifi_manager_init(void)
     wifi_manager_config_t saved_config = wifi_load_config();
 
     if (saved_config.configured) {
-        ESP_LOGI(TAG, "Saved WiFi configuration found, connecting to %s", saved_config.ssid);
-        wifi_connect_sta(saved_config.ssid, saved_config.password);
+        ESP_LOGI(TAG, "Saved WiFi configuration found, but deferring connection until credential testing completes");
+        // Don't auto-connect here - let the main loop handle it after checking for credential testing
     } else {
         ESP_LOGI(TAG, "No WiFi configuration found, starting AP mode");
         wifi_start_ap_mode();
@@ -475,34 +482,34 @@ wifi_connection_info_t wifi_get_connection_info(void)
 int wifi_scan_networks(wifi_scan_result_t** results)
 {
     ESP_LOGI(TAG, "WiFi scan requested via API");
-    
+
     // Start a new async scan
     wifi_start_background_scan();
-    
+
     // Wait for scan to complete (typical scan takes 1-3 seconds)
     int max_wait_ms = 5000;  // 5 seconds max
     int wait_interval_ms = 100;
     int waited_ms = 0;
-    
+
     while (waited_ms < max_wait_ms) {
         vTaskDelay(pdMS_TO_TICKS(wait_interval_ms));
         waited_ms += wait_interval_ms;
-        
+
         // Check if scan completed
         if (scan_results_valid && !is_scanning) {
             break;
         }
     }
-    
+
     // Check if we have valid results
     if (!scan_results_valid || scan_results_count == 0) {
         ESP_LOGW(TAG, "Scan timeout or no results after %d ms", waited_ms);
         *results = NULL;
         return 0;
     }
-    
+
     ESP_LOGI(TAG, "Scan completed with %d results after %d ms", scan_results_count, waited_ms);
-    
+
     // Allocate memory for results to return
     wifi_scan_result_t *scan_results_ptr = malloc(sizeof(wifi_scan_result_t) * scan_results_count);
     if (scan_results_ptr == NULL) {
@@ -510,12 +517,214 @@ int wifi_scan_networks(wifi_scan_result_t** results)
         *results = NULL;
         return 0;
     }
-    
+
     // Copy results from global array
     memcpy(scan_results_ptr, scan_results, sizeof(wifi_scan_result_t) * scan_results_count);
-    
+
     *results = scan_results_ptr;
     ESP_LOGI(TAG, "Returning %d scan results to caller", scan_results_count);
-    
+
     return scan_results_count;
+}
+
+/**
+ * @brief Task function for testing WiFi credentials in parallel with AP mode
+ */
+static void credential_test_event_handler(void* arg, esp_event_base_t event_base,
+                                         int32_t event_id, void* event_data)
+{
+    EventGroupHandle_t test_event_group = (EventGroupHandle_t)arg;
+
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        ESP_LOGI(TAG, "Credential test: STA connected to AP");
+        xEventGroupSetBits(test_event_group, BIT0); // TEST_CONNECTED_BIT
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "Credential test: STA disconnected from AP");
+        xEventGroupSetBits(test_event_group, BIT1); // TEST_FAILED_BIT
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI(TAG, "Credential test: IP obtained: " IPSTR, IP2STR(&event->ip_info.ip));
+        xEventGroupSetBits(test_event_group, BIT2); // TEST_IP_BIT
+    }
+}
+
+static void credential_test_task_func(void *pvParameters)
+{
+    char *ssid = ((char**)pvParameters)[0];
+    char *password = ((char**)pvParameters)[1];
+
+    ESP_LOGI(TAG, "Starting parallel credential test for SSID: %s", ssid);
+
+    // Create a separate event group for credential testing
+    EventGroupHandle_t test_event_group = xEventGroupCreate();
+    const int TEST_CONNECTED_BIT = BIT0;
+    const int TEST_FAILED_BIT = BIT1;
+    const int TEST_IP_BIT = BIT2;
+
+    // Register temporary event handlers for credential testing
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &credential_test_event_handler, test_event_group));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &credential_test_event_handler, test_event_group));
+
+    // Configure STA interface for testing
+    wifi_config_t sta_config = {0};
+    strncpy((char*)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid));
+    strncpy((char*)sta_config.sta.password, password, sizeof(sta_config.sta.password));
+
+    // Set STA mode temporarily for testing
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
+
+    // Start connection attempt
+    esp_err_t err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start credential test connection: %s", esp_err_to_name(err));
+        goto cleanup;
+    }
+
+    // Wait for connection result or timeout
+    EventBits_t bits = xEventGroupWaitBits(test_event_group,
+                                          TEST_CONNECTED_BIT | TEST_FAILED_BIT,
+                                          pdFALSE, pdFALSE,
+                                          pdMS_TO_TICKS(CREDENTIAL_TEST_TIMEOUT_MS));
+
+    if (bits & TEST_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "Credential test: Connected to AP, waiting for IP...");
+
+        // Wait for IP assignment
+        EventBits_t ip_bits = xEventGroupWaitBits(test_event_group,
+                                                 TEST_IP_BIT,
+                                                 pdFALSE, pdFALSE,
+                                                 pdMS_TO_TICKS(10000)); // 10 seconds for IP
+
+        if (ip_bits & TEST_IP_BIT) {
+            // Connection successful - get IP address
+            esp_netif_ip_info_t ip_info;
+            if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
+                snprintf(tested_sta_ip, sizeof(tested_sta_ip), IPSTR, IP2STR(&ip_info.ip));
+                ESP_LOGI(TAG, "Credential test successful - STA IP: %s", tested_sta_ip);
+            } else {
+                ESP_LOGE(TAG, "Failed to get IP info after successful connection");
+                memset(tested_sta_ip, 0, sizeof(tested_sta_ip));
+            }
+        } else {
+            ESP_LOGW(TAG, "Credential test: Connected but no IP assigned within timeout");
+            memset(tested_sta_ip, 0, sizeof(tested_sta_ip));
+        }
+    } else {
+        ESP_LOGW(TAG, "Credential test failed or timed out - no connection established");
+        memset(tested_sta_ip, 0, sizeof(tested_sta_ip));
+    }
+
+    // Disconnect STA interface
+    esp_wifi_disconnect();
+
+cleanup:
+    // Unregister temporary event handlers
+    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &credential_test_event_handler);
+    esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, &credential_test_event_handler);
+
+    // Clean up
+    vEventGroupDelete(test_event_group);
+    free(ssid);
+    free(password);
+    is_testing_credentials = false;
+    credential_test_task = NULL;
+
+    ESP_LOGI(TAG, "Credential test task completed");
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Test WiFi credentials in parallel with AP mode operation
+ */
+bool wifi_test_credentials(const char* ssid, const char* password)
+{
+    if (is_testing_credentials) {
+        ESP_LOGW(TAG, "Credential test already in progress");
+        return false;
+    }
+
+    if (!ssid || strlen(ssid) == 0) {
+        ESP_LOGE(TAG, "Invalid SSID for credential testing");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Starting parallel credential test for SSID: %s", ssid);
+
+    // Clear any previous test results
+    wifi_clear_tested_sta_ip();
+
+    // Allocate memory for task parameters
+    char *task_ssid = strdup(ssid);
+    char *task_password = strdup(password ? password : "");
+
+    if (!task_ssid || !task_password) {
+        ESP_LOGE(TAG, "Failed to allocate memory for credential test");
+        free(task_ssid);
+        free(task_password);
+        return false;
+    }
+
+    char *params[2] = {task_ssid, task_password};
+    is_testing_credentials = true;
+
+    // Create task for parallel testing
+    BaseType_t result = xTaskCreate(&credential_test_task_func, "credential_test",
+                                   4096, params, 5, &credential_test_task);
+
+    if (result != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create credential test task");
+        free(task_ssid);
+        free(task_password);
+        is_testing_credentials = false;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Credential test task started successfully");
+    return true;
+}
+
+/**
+ * @brief Transition from APSTA mode to STA-only mode after successful credential testing
+ * This should be called after the user has been redirected to the STA IP
+ */
+void wifi_transition_to_sta_mode(void)
+{
+    ESP_LOGI(TAG, "Transitioning from APSTA to STA-only mode");
+
+    // Stop captive portal and DNS responder
+    captive_portal_stop();
+    dns_responder_stop();
+
+    // Switch to STA-only mode
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+
+    // The STA interface should already be configured from the credential test
+    // Just ensure it's started
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "Successfully transitioned to STA-only mode");
+}
+
+/**
+ * @brief Check if credential testing is currently in progress
+ */
+bool wifi_is_testing_credentials(void)
+{
+    return is_testing_credentials;
+}
+
+/**
+ * @brief Get the STA IP address from successful credential testing
+ */
+const char* wifi_get_tested_sta_ip(void)
+{
+    return tested_sta_ip[0] != '\0' ? tested_sta_ip : NULL;
+}
+
+/**
+ * @brief Clear the cached STA IP from credential testing
+ */
+void wifi_clear_tested_sta_ip(void)
+{
+    memset(tested_sta_ip, 0, sizeof(tested_sta_ip));
 }

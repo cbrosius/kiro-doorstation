@@ -94,9 +94,31 @@ static esp_err_t captive_msftconnecttest_handler(httpd_req_t *req)
  */
 static esp_err_t captive_redirect_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "HTTP REQUEST: Unknown captive URL: %s - redirecting to setup", req->uri);
+    ESP_LOGI(TAG, "HTTP REQUEST: Unknown captive URL: %s - checking for STA IP redirect", req->uri);
 
-    // Redirect to setup page
+    // Check if we have a tested STA IP available for redirect
+    const char* sta_ip = wifi_get_tested_sta_ip();
+    if (sta_ip && strlen(sta_ip) > 0) {
+        ESP_LOGI(TAG, "Redirecting to STA IP: %s", sta_ip);
+        char redirect_url[64];
+        snprintf(redirect_url, sizeof(redirect_url), "http://%s/", sta_ip);
+
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", redirect_url);
+        httpd_resp_send(req, NULL, 0);
+
+        // Clear the tested IP after redirect to prevent repeated redirects
+        wifi_clear_tested_sta_ip();
+
+        // After successful redirect, transition to STA-only mode
+        ESP_LOGI(TAG, "Successful redirect completed, transitioning to STA-only mode");
+        wifi_transition_to_sta_mode();
+
+        return ESP_OK;
+    }
+
+    // Default: redirect to setup page
+    ESP_LOGI(TAG, "No STA IP available, redirecting to setup page");
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/setup.html");
     httpd_resp_send(req, NULL, 0);
@@ -240,6 +262,47 @@ static esp_err_t captive_post_wifi_scan_handler(httpd_req_t *req)
 }
 
 /**
+ * @brief Handler for getting captive portal status (credential testing, STA IP)
+ */
+esp_err_t captive_get_status_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "HTTP REQUEST: Status check for URI: %s", req->uri);
+
+    httpd_resp_set_type(req, "application/json");
+    cJSON *root = cJSON_CreateObject();
+
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
+    // Add testing status
+    cJSON_AddBoolToObject(root, "testing", wifi_is_testing_credentials());
+
+    // Add STA IP if available
+    const char* sta_ip = wifi_get_tested_sta_ip();
+    if (sta_ip) {
+        cJSON_AddStringToObject(root, "sta_ip", sta_ip);
+        cJSON_AddBoolToObject(root, "ready", true);
+    } else {
+        cJSON_AddNullToObject(root, "sta_ip");
+        cJSON_AddBoolToObject(root, "ready", false);
+    }
+
+    char *json_string = cJSON_Print(root);
+    if (!json_string) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/**
  * @brief Captive portal wrapper for WiFi connect handler
  */
 static esp_err_t captive_post_wifi_connect_handler(httpd_req_t *req)
@@ -286,14 +349,25 @@ static esp_err_t captive_post_wifi_connect_handler(httpd_req_t *req)
     // Save WiFi configuration
     wifi_save_config(ssid->valuestring, pwd);
 
-    // Attempt connection
-    wifi_connect_sta(ssid->valuestring, pwd);
+    // Start parallel credential testing instead of immediate connection
+    if (wifi_test_credentials(ssid->valuestring, pwd)) {
+        ESP_LOGI(TAG, "Parallel credential testing started successfully");
+        cJSON_Delete(root);
 
-    cJSON_Delete(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"status\":\"testing\",\"message\":\"Testing WiFi credentials...\"}",
+                        strlen("{\"status\":\"testing\",\"message\":\"Testing WiFi credentials...\"}"));
+    } else {
+        ESP_LOGE(TAG, "Failed to start credential testing, falling back to direct connection");
+        // Fallback to direct connection if parallel testing fails
+        wifi_connect_sta(ssid->valuestring, pwd);
+        cJSON_Delete(root);
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}",
-                    strlen("{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}"));
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}",
+                        strlen("{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}"));
+    }
+
     return ESP_OK;
 }
 
@@ -460,6 +534,15 @@ bool captive_portal_start(void)
 
     // Register WiFi API handlers (no authentication required)
     captive_api_register_handlers(captive_server);
+
+    // Register status handler for credential testing feedback
+    httpd_uri_t status_uri = {
+        .uri = "/api/status",
+        .method = HTTP_GET,
+        .handler = captive_get_status_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(captive_server, &status_uri);
 
     // Skip test TCP server for now - focus on fixing the main HTTP server issue
     ESP_LOGI(TAG, "Skipping test TCP server - focusing on HTTP server fix");

@@ -95,10 +95,35 @@ void app_main(void)
     // Start WiFi Manager. It will either connect to a saved network or start AP mode and trigger the callback.
     wifi_manager_init();
 
+    // Check if we have saved WiFi config; defer auto-connect briefly to allow credential testing to complete
+    wifi_manager_config_t saved_config = wifi_load_config();
+    if (saved_config.configured) {
+        ESP_LOGI(TAG, "Saved WiFi configuration found; waiting for any credential testing to finish before connecting");
+
+        // Wait up to 10s for credential testing to finish or produce a tested STA IP
+        int waited_ms = 0;
+        const int max_wait_ms = 10000;
+        const int wait_interval_ms = 100;
+        while (wifi_is_testing_credentials() && waited_ms < max_wait_ms) {
+            vTaskDelay(pdMS_TO_TICKS(wait_interval_ms));
+            waited_ms += wait_interval_ms;
+        }
+
+        // If credential testing produced a working STA IP, transition to STA-only mode and skip manual connect
+        const char* tested_ip = wifi_get_tested_sta_ip();
+        if (tested_ip) {
+            ESP_LOGI(TAG, "Detected tested STA IP %s from captive portal flow - transitioning to STA-only mode and skipping auto-connect", tested_ip);
+            wifi_transition_to_sta_mode();
+        } else {
+            ESP_LOGI(TAG, "No successful credential test detected - connecting to saved WiFi network: %s", saved_config.ssid);
+            wifi_connect_sta(saved_config.ssid, saved_config.password);
+        }
+    }
+
     // Wait for IP address before initializing network-dependent services
     ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
     while (!wifi_is_connected()) {
-        // If we are not connected, we might be in captive portal mode. 
+        // If we are not connected, we might be in captive portal mode.
         // The user will configure WiFi, and the device will restart or reconnect.
         // This loop will exit once a WiFi connection is established.
         vTaskDelay(pdMS_TO_TICKS(1000));

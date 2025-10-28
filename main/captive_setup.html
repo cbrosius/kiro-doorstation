@@ -615,17 +615,27 @@
 
         const data = await response.json();
 
-        if (response.ok && data.status === 'success') {
-          showMessage('WiFi connection initiated. Device will restart when connected.', 'success');
+        if (response.ok) {
+          if (data.status === 'testing') {
+            showMessage('Testing WiFi credentials... Please wait.', 'success');
+            // Start polling for status updates
+            pollConnectionStatus();
+          } else if (data.status === 'success') {
+            showMessage('WiFi connection initiated. Device will restart when connected.', 'success');
 
-          // Disable form after successful submission
-          wifiForm.style.pointerEvents = 'none';
-          wifiForm.style.opacity = '0.6';
+            // Disable form after successful submission
+            wifiForm.style.pointerEvents = 'none';
+            wifiForm.style.opacity = '0.6';
 
-          // Auto-refresh after 10 seconds to check status
-          setTimeout(() => {
-            window.location.reload();
-          }, 10000);
+            // Auto-refresh after 10 seconds to check status
+            setTimeout(() => {
+              window.location.reload();
+            }, 10000);
+          } else {
+            const errorMsg = data.message || 'Failed to connect to WiFi';
+            showMessage(errorMsg, 'error');
+            setConnectLoading(false);
+          }
         } else {
           const errorMsg = data.message || 'Failed to connect to WiFi';
           showMessage(errorMsg, 'error');
@@ -636,6 +646,45 @@
         showMessage('Connection failed. Please try again.', 'error');
         setConnectLoading(false);
       }
+    }
+
+    // Poll for connection status during credential testing
+    async function pollConnectionStatus() {
+      const pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/status');
+          const status = await response.json();
+
+          if (status.ready && status.sta_ip) {
+            // Credentials tested successfully, redirect to STA IP
+            clearInterval(pollInterval);
+            showMessage(`Success! Redirecting to ${status.sta_ip}...`, 'success');
+
+            // Redirect after a short delay
+            setTimeout(() => {
+              window.location.href = `http://${status.sta_ip}/`;
+            }, 2000);
+          } else if (!status.testing) {
+            // Testing completed but no STA IP (failed)
+            clearInterval(pollInterval);
+            showMessage('WiFi connection test failed. Please check your credentials and try again.', 'error');
+            setConnectLoading(false);
+          }
+          // Continue polling if still testing
+        } catch (error) {
+          console.error('Status poll error:', error);
+          clearInterval(pollInterval);
+          showMessage('Lost connection to device. Please refresh the page.', 'error');
+          setConnectLoading(false);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Timeout after 45 seconds (30s test + 15s buffer)
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        showMessage('Connection test timed out. Please try again.', 'error');
+        setConnectLoading(false);
+      }, 45000);
     }
 
     // Load existing WiFi config on page load

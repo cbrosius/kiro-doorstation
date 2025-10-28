@@ -34,4 +34,14 @@ void captive_portal_stop(void);
  */
 void captive_api_register_handlers(httpd_handle_t server);
 
+/**
+ * @brief Get the current status of WiFi credential testing
+ *
+ * This endpoint allows the captive portal to check if credential testing
+ * is in progress and if a STA IP is available for redirect.
+ *
+ * @return JSON response with testing status and STA IP if available
+ */
+esp_err_t captive_get_status_handler(httpd_req_t *req);
+
 #endif // CAPTIVE_PORTAL_H
