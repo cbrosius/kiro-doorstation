@@ -24,6 +24,20 @@
 static const char *TAG = "MAIN";
 
 /**
+ * @brief Starts the captive portal and DNS responder.
+ * This function is registered as a callback to be executed when the WiFi manager enters AP mode.
+ */
+static void start_captive_portal_services(void) {
+    ESP_LOGI(TAG, "Starting captive portal services as requested by WiFi manager.");
+    if (!captive_portal_start()) {
+        ESP_LOGE(TAG, "Failed to start captive portal - system will not be accessible for configuration.");
+    }
+    if (!dns_responder_start()) {
+        ESP_LOGE(TAG, "Failed to start DNS responder - captive portal may not work properly.");
+    }
+}
+
+/**
  * @brief Session cleanup task - runs periodically to clean up expired sessions
  */
 static void session_cleanup_task(void *pvParameters) {
@@ -75,53 +89,19 @@ void app_main(void)
     // Initialize certificate manager (check only, don't generate yet)
     cert_manager_init();
     
-    // Start WiFi Manager
+    // Register the callback for starting captive portal services
+    wifi_manager_register_ap_start_callback(start_captive_portal_services);
+
+    // Start WiFi Manager. It will either connect to a saved network or start AP mode and trigger the callback.
     wifi_manager_init();
-
-    // Check if we're in captive portal mode (no saved WiFi config)
-    wifi_manager_config_t wifi_config = wifi_load_config();
-    if (!wifi_config.configured) {
-        ESP_LOGI(TAG, "No WiFi configuration found - starting in CAPTIVE PORTAL mode");
-        ESP_LOGI(TAG, "Captive portal will provide WiFi setup interface on port 80");
-        ESP_LOGI(TAG, "DNS responder will redirect all queries to 192.168.4.1");
-
-        // Start captive portal and DNS responder
-        if (!captive_portal_start()) {
-            ESP_LOGE(TAG, "Failed to start captive portal - system will not be accessible");
-        }
-        if (!dns_responder_start()) {
-            ESP_LOGE(TAG, "Failed to start DNS responder - captive portal may not work properly");
-        }
-
-        // In captive portal mode, we don't initialize NTP, SIP, or HTTPS server
-        // The device will stay in this mode until WiFi is configured
-        ESP_LOGI(TAG, "Captive portal mode active - waiting for WiFi configuration");
-
-        // Main loop for captive portal mode
-        while (1) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-
-            // Check if WiFi is now configured (user completed setup)
-            wifi_manager_config_t check_config = wifi_load_config();
-            if (check_config.configured) {
-                ESP_LOGI(TAG, "WiFi configuration detected - transitioning to normal mode");
-                break;
-            }
-        }
-
-        // Stop captive portal and DNS responder
-        ESP_LOGI(TAG, "Stopping captive portal and DNS responder");
-        captive_portal_stop();
-        dns_responder_stop();
-
-        // Now proceed with normal initialization
-        ESP_LOGI(TAG, "Transitioning to normal operation mode");
-    }
 
     // Wait for IP address before initializing network-dependent services
     ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
     while (!wifi_is_connected()) {
-        vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
+        // If we are not connected, we might be in captive portal mode. 
+        // The user will configure WiFi, and the device will restart or reconnect.
+        // This loop will exit once a WiFi connection is established.
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
     ESP_LOGI(TAG, "IP address obtained, proceeding with NTP and SIP initialization");
 

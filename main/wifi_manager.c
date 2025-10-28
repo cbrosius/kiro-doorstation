@@ -20,6 +20,7 @@ static wifi_connection_info_t current_connection = {0};
 static int retry_count = 0;
 static const int MAX_RETRIES = 10;
 static bool is_scanning = false;
+static wifi_manager_ap_start_callback_t ap_start_cb = NULL;
 
 // ESPHome-style scan results storage
 static wifi_scan_result_t scan_results[MAX_SCAN_RESULTS];
@@ -28,6 +29,11 @@ static bool scan_results_valid = false;
 
 // Forward declarations
 static void wifi_clear_scan_results(void);
+
+void wifi_manager_register_ap_start_callback(wifi_manager_ap_start_callback_t cb)
+{
+    ap_start_cb = cb;
+}
 
 static const char* wifi_reason_to_string(uint8_t reason) {
     switch (reason) {
@@ -91,6 +97,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         if (retry_count >= MAX_RETRIES) {
             ESP_LOGW(TAG, "Max retries reached, falling back to AP mode");
             wifi_start_ap_mode();
+            if (ap_start_cb) {
+                ap_start_cb();
+            }
             retry_count = 0; // Reset for future attempts
         } else {
             ESP_LOGI(TAG, "Retrying WiFi connection...");
@@ -223,7 +232,9 @@ void wifi_manager_init(void)
     } else {
         ESP_LOGI(TAG, "No WiFi configuration found, starting AP mode");
         wifi_start_ap_mode();
-        // Note: Captive portal and DNS responder will be started by main.c
+        if (ap_start_cb) {
+            ap_start_cb();
+        }
     }
 
     ESP_LOGI(TAG, "WiFi Manager initialized");
@@ -237,6 +248,9 @@ bool wifi_is_connected(void)
 void wifi_start_ap_mode(void)
 {
     ESP_LOGI(TAG, "Starting AP mode");
+
+    // Stop WiFi if it's running to ensure a clean state
+    esp_wifi_stop();
 
     // ESPHome approach: Start in APSTA mode to allow STA configuration
     ESP_LOGI(TAG, "ESPHome approach: Starting in APSTA mode for dual-interface support");

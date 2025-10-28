@@ -8,6 +8,9 @@
 #define WIFI_PASSWORD_MAX_LEN   64
 #define MAX_SCAN_RESULTS        20
 
+// Callback for when AP mode is started
+typedef void (*wifi_manager_ap_start_callback_t)(void);
+
 typedef struct {
     char ssid[WIFI_SSID_MAX_LEN];
     int rssi;
@@ -35,5 +38,6 @@ void wifi_save_config(const char* ssid, const char* password);
 wifi_manager_config_t wifi_load_config(void);
 wifi_connection_info_t wifi_get_connection_info(void);
 int wifi_scan_networks(wifi_scan_result_t** results);
+void wifi_manager_register_ap_start_callback(wifi_manager_ap_start_callback_t cb);
 
 #endif
