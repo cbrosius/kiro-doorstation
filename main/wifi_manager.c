@@ -239,7 +239,26 @@ void wifi_manager_init(void)
     // Gespeicherte WiFi-Konfiguration laden
     wifi_manager_config_t saved_config = wifi_load_config();
 
-    // Always start in APSTA mode for captive portal functionality
+    if (saved_config.configured) {
+        ESP_LOGI(TAG, "Saved WiFi config found, attempting STA connection: %s", saved_config.ssid);
+
+        // Try to connect to saved network in STA mode
+        wifi_connect_sta(saved_config.ssid, saved_config.password);
+
+        // Wait a short time for connection attempt
+        vTaskDelay(pdMS_TO_TICKS(5000)); // 5 seconds
+
+        if (wifi_is_connected()) {
+            ESP_LOGI(TAG, "Successfully connected to saved WiFi, staying in STA mode");
+            return; // Exit early, no captive portal needed
+        } else {
+            ESP_LOGW(TAG, "Failed to connect to saved WiFi, falling back to APSTA mode");
+        }
+    } else {
+        ESP_LOGI(TAG, "No saved WiFi config found, starting APSTA mode for captive portal");
+    }
+
+    // Start APSTA mode for captive portal functionality (fallback or initial setup)
     ESP_LOGI(TAG, "Starting APSTA mode for captive portal functionality");
     wifi_start_ap_mode();
     if (ap_start_cb) {
