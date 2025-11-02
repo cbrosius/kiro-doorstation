@@ -121,10 +121,16 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         is_connected = true;
         retry_count = 0; // Reset retry count on successful connection
 
-        // Stop captive portal and DNS responder if they were running
-        ESP_LOGI(TAG, "WiFi connected - stopping captive portal and DNS responder");
-        captive_portal_stop();
-        dns_responder_stop();
+        // Only stop captive portal and DNS responder if NOT in APSTA mode (normal STA connection)
+        wifi_mode_t current_mode;
+        esp_wifi_get_mode(&current_mode);
+        if (current_mode == WIFI_MODE_STA) {
+            ESP_LOGI(TAG, "WiFi connected in STA mode - stopping captive portal and DNS responder");
+            captive_portal_stop();
+            dns_responder_stop();
+        } else {
+            ESP_LOGI(TAG, "IP obtained in APSTA mode - keeping captive portal active for user redirection");
+        }
 
         // Update connection info
         current_connection.connected = true;
@@ -233,15 +239,11 @@ void wifi_manager_init(void)
     // Gespeicherte WiFi-Konfiguration laden
     wifi_manager_config_t saved_config = wifi_load_config();
 
-    if (saved_config.configured) {
-        ESP_LOGI(TAG, "Saved WiFi configuration found, but deferring connection until credential testing completes");
-        // Don't auto-connect here - let the main loop handle it after checking for credential testing
-    } else {
-        ESP_LOGI(TAG, "No WiFi configuration found, starting AP mode");
-        wifi_start_ap_mode();
-        if (ap_start_cb) {
-            ap_start_cb();
-        }
+    // Always start in APSTA mode for captive portal functionality
+    ESP_LOGI(TAG, "Starting APSTA mode for captive portal functionality");
+    wifi_start_ap_mode();
+    if (ap_start_cb) {
+        ap_start_cb();
     }
 
     ESP_LOGI(TAG, "WiFi Manager initialized");

@@ -110,8 +110,10 @@ static esp_err_t captive_redirect_handler(httpd_req_t *req)
         // Clear the tested IP after redirect to prevent repeated redirects
         wifi_clear_tested_sta_ip();
 
-        // After successful redirect, transition to STA-only mode
-        ESP_LOGI(TAG, "Successful redirect completed, transitioning to STA-only mode");
+        // After successful redirect, stop captive portal and transition to STA-only mode
+        ESP_LOGI(TAG, "Successful redirect completed, stopping captive portal and transitioning to STA-only mode");
+        captive_portal_stop();
+        dns_responder_stop();
         wifi_transition_to_sta_mode();
 
         return ESP_OK;
@@ -358,14 +360,12 @@ static esp_err_t captive_post_wifi_connect_handler(httpd_req_t *req)
         httpd_resp_send(req, "{\"status\":\"testing\",\"message\":\"Testing WiFi credentials...\"}",
                         strlen("{\"status\":\"testing\",\"message\":\"Testing WiFi credentials...\"}"));
     } else {
-        ESP_LOGE(TAG, "Failed to start credential testing, falling back to direct connection");
-        // Fallback to direct connection if parallel testing fails
-        wifi_connect_sta(ssid->valuestring, pwd);
+        ESP_LOGE(TAG, "Failed to start credential testing, staying in APSTA mode for retry");
         cJSON_Delete(root);
 
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_send(req, "{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}",
-                        strlen("{\"status\":\"success\",\"message\":\"WiFi connection initiated\"}"));
+        httpd_resp_send(req, "{\"status\":\"error\",\"message\":\"Failed to start credential testing\"}",
+                        strlen("{\"status\":\"error\",\"message\":\"Failed to start credential testing\"}"));
     }
 
     return ESP_OK;
