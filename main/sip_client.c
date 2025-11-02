@@ -1220,8 +1220,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         // auth_invite_branch = authenticated INVITE (only set when retry happens)
                         
                         const char* via_ptr = strstr(buffer, "Via:");
-                        bool is_retransmission = false;
-                        
+
                         if (via_ptr && has_invite_auth_challenge && auth_invite_branch != 0) {
                             // We've sent an authenticated INVITE - check if this 401 is for it
                             const char* branch_param = strstr(via_ptr, "branch=z9hG4bK");
@@ -1229,24 +1228,19 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                                 branch_param += 14; // Skip "branch=z9hG4bK"
                                 // Extract just the numeric part
                                 int received_branch = atoi(branch_param);
-                                
+
                                 char branch_log[256];
                                 snprintf(branch_log, sizeof(branch_log),
                                          "401 response branch=%d, initial=%d, auth=%d",
                                          received_branch, initial_invite_branch, auth_invite_branch);
                                 sip_add_log_entry("info", branch_log);
-                                
+
                                 // If this 401 is for the initial INVITE (before auth), it's a retransmission
                                 if (received_branch == initial_invite_branch && received_branch != auth_invite_branch) {
-                                    is_retransmission = true;
                                     sip_add_log_entry("info", "401 is retransmission of initial challenge - ignoring");
+                                    continue;
                                 }
                             }
-                        }
-                        
-                        // If this is a retransmission, ignore it
-                        if (is_retransmission) {
-                            continue;
                         }
 
                         // Extract headers to check Call-ID for debugging
@@ -1668,13 +1662,11 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                        bool is_retransmission = false;
                         
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
                             strcmp(last_error_via_branch, via_branch) == 0 &&
                             (current_time - last_error_timestamp) < 10000) {
-                            is_retransmission = true;
                             sip_add_log_entry("info", "603 Decline is a retransmission - ignoring to prevent loop");
                         } else {
                             // This is a new error response - process it
@@ -2995,9 +2987,10 @@ void sip_client_send_dtmf(char dtmf_digit)
         
         char info_body[64];
         snprintf(info_body, sizeof(info_body), "Signal=%c\r\nDuration=100\r\n", dtmf_digit);
-        
+
         static char info_msg[512];
         int info_len = strlen(info_body);
+        int cseq = 1; // Sequence number for INFO request
         int len = snprintf(info_msg, sizeof(info_msg),
             "INFO sip:%s@%s SIP/2.0\r\n"
             "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
@@ -3013,7 +3006,7 @@ void sip_client_send_dtmf(char dtmf_digit)
             sip_config.username, sip_config.server, rand(),
             sip_config.username, sip_config.server,
             rand(), local_ip,
-            info_len, info_body);
+            cseq, info_len, info_body);
         
         struct sockaddr_in server_addr;
         if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {

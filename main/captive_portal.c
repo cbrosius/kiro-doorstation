@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "wifi_manager.h"
+#include "dns_responder.h"
 #include "web_api.h"
 #include "cJSON.h"
 #include <string.h>
