@@ -1643,7 +1643,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                 } else if (strstr(buffer, "SIP/2.0 603 Decline")) {
                     // Check if this is a retransmission of a 603 we've already handled
                     sip_request_headers_t headers = extract_request_headers(buffer);
-                    
+
                     if (headers.valid) {
                         // Extract Via branch for retransmission detection
                         char via_branch[64] = {0};
@@ -1659,10 +1659,12 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                                 }
                             }
                         }
-                        
+
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
                         
+                        bool is_retransmission = false;
+
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
                             strcmp(last_error_via_branch, via_branch) == 0 &&
@@ -1671,23 +1673,23 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         } else {
                             // This is a new error response - process it
                             sip_add_log_entry("info", "Call declined by remote party");
-                            
+
                             // Store this error response info for retransmission detection
                             strncpy(last_error_call_id, headers.call_id, sizeof(last_error_call_id) - 1);
                             strncpy(last_error_via_branch, via_branch, sizeof(last_error_via_branch) - 1);
                             last_error_timestamp = current_time;
-                            
+
                             // Send ACK to stop retransmissions (RFC 3261 requirement)
                             send_ack_for_error_response(buffer);
-                            
+
                             // Clear INVITE authentication state to prevent retransmission loops
                             has_invite_auth_challenge = false;
                             memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
                             invite_auth_attempt_count = 0;
-                            
+
                             call_start_timestamp = 0; // Clear timeout
                             current_state = SIP_STATE_REGISTERED;
-                            
+
                             sip_add_log_entry("info", "INVITE authentication state cleared - ready for new call");
                         }
                     } else {
@@ -1695,6 +1697,122 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         sip_add_log_entry("error", "Failed to parse 603 headers - sending ACK anyway");
                         send_ack_for_error_response(buffer);
                     }
+                } else if (strncmp(buffer, "INFO ", 5) == 0) {
+                    // Handle INFO request (DTMF signaling, keepalive, etc.)
+                    sip_add_log_entry("received", "INFO request received");
+
+                    // Extract headers using helper function
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+
+                    if (!headers.valid) {
+                        sip_add_log_entry("error", "Failed to parse INFO headers");
+                        continue;
+                    }
+
+                    // Extract Content-Type and body for DTMF analysis
+                    const char* content_type = strstr(buffer, "Content-Type:");
+                    const char* body_start = strstr(buffer, "\r\n\r\n");
+                    char dtmf_signal = '\0';
+                    int dtmf_duration = 0;
+
+                    if (content_type && body_start) {
+                        body_start += 4;  // Skip "\r\n\r\n"
+
+                        // Check for DTMF relay content type
+                        if (strstr(content_type, "application/dtmf-relay") ||
+                            strstr(content_type, "application/dtmf")) {
+
+                            // Parse DTMF signal from body
+                            const char* signal_line = strstr(body_start, "Signal=");
+                            if (signal_line) {
+                                signal_line += 7;  // Skip "Signal="
+                                dtmf_signal = *signal_line;
+
+                                // Validate DTMF character
+                                if ((dtmf_signal >= '0' && dtmf_signal <= '9') ||
+                                    dtmf_signal == '*' || dtmf_signal == '#' ||
+                                    (dtmf_signal >= 'A' && dtmf_signal <= 'D') ||
+                                    (dtmf_signal >= 'a' && dtmf_signal <= 'd')) {
+
+                                    // Extract duration if present
+                                    const char* duration_line = strstr(body_start, "Duration=");
+                                    if (duration_line) {
+                                        duration_line += 9;  // Skip "Duration="
+                                        dtmf_duration = atoi(duration_line);
+                                    }
+
+                                    char dtmf_log[128];
+                                    snprintf(dtmf_log, sizeof(dtmf_log),
+                                             "DTMF via INFO: signal='%c', duration=%d ms",
+                                             dtmf_signal, dtmf_duration);
+                                    sip_add_log_entry("info", dtmf_log);
+
+                                    // Process DTMF if we're in a connected call
+                                    if (current_state == SIP_STATE_CONNECTED) {
+                                        // Convert to event code for DTMF decoder
+                                        uint8_t event_code = 0;
+                                        switch (dtmf_signal) {
+                                            case '0': event_code = 0; break;
+                                            case '1': event_code = 1; break;
+                                            case '2': event_code = 2; break;
+                                            case '3': event_code = 3; break;
+                                            case '4': event_code = 4; break;
+                                            case '5': event_code = 5; break;
+                                            case '6': event_code = 6; break;
+                                            case '7': event_code = 7; break;
+                                            case '8': event_code = 8; break;
+                                            case '9': event_code = 9; break;
+                                            case '*': event_code = 10; break;
+                                            case '#': event_code = 11; break;
+                                            case 'A': case 'a': event_code = 12; break;
+                                            case 'B': case 'b': event_code = 13; break;
+                                            case 'C': case 'c': event_code = 14; break;
+                                            case 'D': case 'd': event_code = 15; break;
+                                            default:
+                                                sip_add_log_entry("warning", "Invalid DTMF signal in INFO packet");
+                                                event_code = 255;  // Invalid
+                                                break;
+                                        }
+
+                                        if (event_code <= 15) {
+                                            // Process as telephone-event
+                                            dtmf_process_telephone_event(event_code);
+                                        }
+                                    } else {
+                                        char state_warning[128];
+                                        snprintf(state_warning, sizeof(state_warning),
+                                                 "DTMF INFO received but not in CONNECTED state (state=%s)",
+                                                 (current_state < sizeof(state_names)/sizeof(state_names[0])) ?
+                                                 state_names[current_state] : "UNKNOWN");
+                                        sip_add_log_entry("warning", state_warning);
+                                    }
+                                } else {
+                                    char invalid_signal[64];
+                                    snprintf(invalid_signal, sizeof(invalid_signal),
+                                             "Invalid DTMF signal in INFO: '%c'", dtmf_signal);
+                                    sip_add_log_entry("warning", invalid_signal);
+                                }
+                            } else {
+                                sip_add_log_entry("info", "INFO with DTMF content-type but no Signal line");
+                            }
+                        } else {
+                            // Log other INFO content types
+                            char content_log[128];
+                            const char* ct_end = strstr(content_type, "\r\n");
+                            if (ct_end) {
+                                size_t ct_len = ct_end - content_type;
+                                if (ct_len < sizeof(content_log)) {
+                                    strncpy(content_log, content_type, ct_len);
+                                    content_log[ct_len] = '\0';
+                                    sip_add_log_entry("info", content_log);
+                                }
+                            }
+                        }
+                    }
+
+                    // Send 200 OK response to INFO
+                    send_sip_response(200, "OK", &headers, NULL, NULL);
+                    sip_add_log_entry("sent", "200 OK response to INFO");
                 } else if (strncmp(buffer, "INVITE ", 7) == 0) {
                     // Check for INVITE request (not response)
                     sip_add_log_entry("info", "Incoming INVITE detected");
