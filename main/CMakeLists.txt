@@ -14,6 +14,8 @@ idf_component_register(
         "auth_manager.c"
         "cert_manager.c"
         "ota_handler.c"
+        "captive_portal.c"
+        "dns_responder.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -33,3 +35,4 @@ target_add_binary_data(${COMPONENT_TARGET} "index.html" TEXT)
 target_add_binary_data(${COMPONENT_TARGET} "documentation.html" TEXT)
 target_add_binary_data(${COMPONENT_TARGET} "login.html" TEXT)
 target_add_binary_data(${COMPONENT_TARGET} "setup.html" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "captive_setup.html" TEXT)

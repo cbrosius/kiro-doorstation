@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include <fcntl.h>
 
 static const char *TAG = "RTP";
 
@@ -25,6 +26,7 @@ static uint32_t last_telephone_event_timestamp = 0;
 // Forward declarations
 static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_t* payload, size_t payload_size);
 static char rtp_map_event_to_char(uint8_t event_code);
+static uint8_t rtp_map_char_to_event(char dtmf_char);
 
 // G.711 μ-law encoding table (simplified)
 static const int16_t mulaw_decode_table[256] = {
@@ -50,9 +52,9 @@ static const int16_t mulaw_decode_table[256] = {
      11900, 11388, 10876, 10364,  9852,  9340,  8828,  8316,
       7932,  7676,  7420,  7164,  6908,  6652,  6396,  6140,
       5884,  5628,  5372,  5116,  4860,  4604,  4348,  4092,
-      3900,  3772,  3644,  3516,  3388,  3260,  3132,  3004,
+      3900,  3772,  3644,  -3516,  3388,  3260,  3132,  3004,
       2876,  2748,  2620,  2492,  2364,  2236,  2108,  1980,
-      1884,  1820,  1756,  1692,  1628,  1564,  1500,  1436,
+      1884,  1820,  1756,  1692,  1628,  -1564,  1500,  1436,
       1372,  1308,  1244,  1180,  1116,  1052,   988,   924,
        876,   844,   812,   780,   748,   716,   684,   652,
        620,   588,   556,   524,   492,   460,   428,   396,
@@ -281,6 +283,67 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     return sample_count;
 }
 
+// NEW: Send RFC 4733 telephone-event DTMF digit
+int rtp_send_dtmf(char dtmf_digit)
+{
+    if (!session_active || rtp_socket < 0) {
+        ESP_LOGW(TAG, "Cannot send DTMF: RTP session not active");
+        return -1;
+    }
+    
+    // Map character to event code
+    uint8_t event_code = rtp_map_char_to_event(dtmf_digit);
+    if (event_code == 255) {
+        ESP_LOGW(TAG, "Invalid DTMF character: %c", dtmf_digit);
+        return -1;
+    }
+    
+    ESP_LOGI(TAG, "Sending DTMF via RFC 4733: %c (event code %d)", dtmf_digit, event_code);
+    
+    // Allocate buffer for RTP telephone-event packet
+    size_t packet_size = sizeof(rtp_header_t) + sizeof(rtp_telephone_event_t);
+    uint8_t* packet = malloc(packet_size);
+    if (!packet) {
+        ESP_LOGE(TAG, "Failed to allocate DTMF packet buffer");
+        return -1;
+    }
+    
+    // Build RTP header for telephone-event
+    rtp_header_t* header = (rtp_header_t*)packet;
+    header->version = 2;
+    header->padding = 0;
+    header->extension = 0;
+    header->csrc_count = 0;
+    header->marker = 0;
+    header->payload_type = 101; // RFC 4733 telephone-event
+    header->sequence = htons(sequence_number++);
+    header->timestamp = htonl(timestamp);
+    header->ssrc = htonl(ssrc);
+    
+    // Build telephone-event payload
+    rtp_telephone_event_t* event = (rtp_telephone_event_t*)(packet + sizeof(rtp_header_t));
+    event->event = event_code;
+    event->e_r_volume = 0x80 | 10; // End bit set, volume 10 (default)
+    event->duration = htons(160); // 20ms duration at 8000Hz (20ms * 8000 / 1000)
+    
+    // Send packet
+    int sent = sendto(rtp_socket, packet, packet_size, 0,
+                     (struct sockaddr*)&remote_addr, sizeof(remote_addr));
+    
+    free(packet);
+    
+    if (sent < 0) {
+        ESP_LOGE(TAG, "Failed to send DTMF RTP packet");
+        return -1;
+    }
+    
+    // Update timestamp for next packet
+    timestamp += 160; // 20ms worth of samples at 8000Hz
+    
+    ESP_LOGI(TAG, "DTMF sent successfully via RFC 4733: %c", dtmf_digit);
+    return sent;
+}
+
 bool rtp_is_active(void)
 {
     return session_active;
@@ -314,6 +377,30 @@ static char rtp_map_event_to_char(uint8_t event_code)
         case DTMF_EVENT_C: return 'C';
         case DTMF_EVENT_D: return 'D';
         default: return '\0'; // Invalid event code
+    }
+}
+
+// NEW: Map DTMF character to RFC 4733 event code
+static uint8_t rtp_map_char_to_event(char dtmf_char)
+{
+    switch (dtmf_char) {
+        case '0': return DTMF_EVENT_0;
+        case '1': return DTMF_EVENT_1;
+        case '2': return DTMF_EVENT_2;
+        case '3': return DTMF_EVENT_3;
+        case '4': return DTMF_EVENT_4;
+        case '5': return DTMF_EVENT_5;
+        case '6': return DTMF_EVENT_6;
+        case '7': return DTMF_EVENT_7;
+        case '8': return DTMF_EVENT_8;
+        case '9': return DTMF_EVENT_9;
+        case '*': return DTMF_EVENT_STAR;
+        case '#': return DTMF_EVENT_HASH;
+        case 'A': case 'a': return DTMF_EVENT_A;
+        case 'B': case 'b': return DTMF_EVENT_B;
+        case 'C': case 'c': return DTMF_EVENT_C;
+        case 'D': case 'd': return DTMF_EVENT_D;
+        default: return 255; // Invalid character
     }
 }
 

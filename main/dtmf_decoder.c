@@ -577,35 +577,15 @@ void dtmf_process_telephone_event(uint8_t event)
     }
 }
 
-static void dtmf_command_handler(dtmf_tone_t tone)
-{
-    static char command_buffer[10] = {0};
-    static int command_index = 0;
-    
-    ESP_LOGI(TAG, "DTMF tone received: %c", tone);
-    
-    if (tone == DTMF_HASH) {
-        // Execute command
-        if (strcmp(command_buffer, "*1") == 0) {
-            ESP_LOGI(TAG, "Activating door opener");
-            xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
-        } else if (strcmp(command_buffer, "*2") == 0) {
-            ESP_LOGI(TAG, "Toggling light");
-            light_relay_toggle();
-        }
-        
-        // Reset buffer
-        memset(command_buffer, 0, sizeof(command_buffer));
-        command_index = 0;
-    } else if (command_index < sizeof(command_buffer) - 1) {
-        command_buffer[command_index++] = (char)tone;
-    }
-}
+// REMOVED: Legacy audio DTMF processing - SECURITY VULNERABILITY
+// This function processed audio tones which could be replayed at the door
+// for unauthorized access. Only RFC 4733 telephone-events are now supported.
 
 void dtmf_decoder_init(void)
 {
-    ESP_LOGI(TAG, "Initializing DTMF Decoder");
-    dtmf_callback = dtmf_command_handler;
+    ESP_LOGI(TAG, "Initializing DTMF Decoder (RFC 4733 secure mode)");
+    
+    // REMOVED: dtmf_callback assignment - no longer using legacy callback
     
     // Create mutex for security log
     if (security_log_mutex == NULL) {
@@ -618,16 +598,19 @@ void dtmf_decoder_init(void)
     // Load security configuration from NVS
     dtmf_load_security_config();
     
-    // Register telephone-event callback with RTP handler
+    // Register telephone-event callback with RTP handler (SECURE method)
     rtp_set_telephone_event_callback(dtmf_process_telephone_event);
-    ESP_LOGI(TAG, "Telephone-event callback registered");
+    ESP_LOGI(TAG, "RFC 4733 telephone-event callback registered");
     
-    ESP_LOGI(TAG, "DTMF Decoder initialized");
+    ESP_LOGI(TAG, "DTMF Decoder initialized (SECURE - audio tones disabled)");
 }
 
 void dtmf_set_callback(dtmf_callback_t callback)
 {
-    dtmf_callback = callback;
+    // LEGACY FUNCTION - DEPRECATED
+    // Audio DTMF processing has been removed for security
+    ESP_LOGE(TAG, "WARNING: dtmf_set_callback() is deprecated - audio DTMF disabled for security");
+    ESP_LOGI(TAG, "Only RFC 4733 telephone-events are now supported");
 }
 
 // Reset call state for new call
