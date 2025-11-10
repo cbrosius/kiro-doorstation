@@ -716,9 +716,14 @@ static void sip_task(void *pvParameters __attribute__((unused)))
     sip_add_log_entry("info", "SIP task started on Core 1");
     
     while (1) {
-        // Longer delay to minimize CPU usage - SIP doesn't need fast polling
-        // 1000ms (1 second) reduces system load significantly
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // Adaptive delay based on call state:
+        // - During active call: 20ms for real-time RTP/DTMF processing
+        // - Otherwise: 1000ms to minimize CPU usage
+        if (current_state == SIP_STATE_CONNECTED && rtp_is_active()) {
+            vTaskDelay(pdMS_TO_TICKS(20));  // 20ms for real-time audio/DTMF
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(1000));  // 1 second when idle
+        }
         
         // Yield to WiFi and other high-priority tasks
         taskYIELD();
@@ -2284,19 +2289,12 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
             if (samples_read > 0) {
                 // Send audio via RTP
                 int sent = rtp_send_audio(tx_buffer, samples_read);
-                if (sent > 0) {
-                    char rtp_log[128];
-                    snprintf(rtp_log, sizeof(rtp_log), "RTP audio sent: %d samples (%d bytes)", samples_read, sent);
-                    sip_add_log_entry("info", rtp_log);
-                } else {
+                if (sent < 0) {
+                    // Only log errors, not every successful send
                     char rtp_log[128];
                     snprintf(rtp_log, sizeof(rtp_log), "RTP send failed: %d", sent);
                     sip_add_log_entry("error", rtp_log);
                 }
-            } else {
-                char rtp_log[128];
-                snprintf(rtp_log, sizeof(rtp_log), "Audio read returned 0 samples");
-                sip_add_log_entry("info", rtp_log);
             }
             
             // Receive audio
@@ -2305,18 +2303,12 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
             if (samples_received > 0) {
                 // Update RTP timestamp on packet receive for timeout tracking
                 last_rtp_received_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                char rtp_log[128];
-                snprintf(rtp_log, sizeof(rtp_log), "RTP audio packet received: %d samples, timestamp updated", samples_received);
-                sip_add_log_entry("info", rtp_log);
                 // Play received audio
                 audio_write(rx_buffer, samples_received);
-            } else if (samples_received == 0) {
+            } else if (samples_received < 0) {
+                // Only log actual errors, not "no data available"
                 char rtp_log[128];
-                snprintf(rtp_log, sizeof(rtp_log), "RTP receive: No packets received (samples_received=0)");
-                sip_add_log_entry("info", rtp_log);
-            } else {
-                char rtp_log[128];
-                snprintf(rtp_log, sizeof(rtp_log), "RTP receive: Error (samples_received=%d)", samples_received);
+                snprintf(rtp_log, sizeof(rtp_log), "RTP receive error: %d", samples_received);
                 sip_add_log_entry("error", rtp_log);
             }
         }

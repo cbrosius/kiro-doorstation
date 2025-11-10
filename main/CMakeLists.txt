@@ -10,6 +10,7 @@ idf_component_register(
         "web_api.c"
         "ntp_sync.c"
         "rtp_handler.c"
+        "rfc4733_test.c"
         "hardware_test.c"
         "auth_manager.c"
         "cert_manager.c"

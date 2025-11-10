@@ -285,7 +285,10 @@
 
 
 
-- [ ]* 8.1 Test RFC 4733 packet parsing
+- [x]* 8.1 Test RFC 4733 packet parsing
+
+
+
   - Send test telephone-event packets
   - Verify correct event code extraction
   - Verify end bit detection

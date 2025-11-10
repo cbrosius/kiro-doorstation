@@ -227,15 +227,13 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
                              (struct sockaddr*)&from_addr, &from_len);
 
     if (received <= 0) {
-        ESP_LOGD(TAG, "RTP receive: No data available (recvfrom returned %d)", received);
-        return 0; // No data available
+        // No data available - this is normal with non-blocking socket
+        return 0;
     }
 
-    // Log packet reception for debugging
-    char log_msg[128];
-    snprintf(log_msg, sizeof(log_msg), "RTP packet received: %d bytes from %s:%d", received,
+    // Log packet reception only at debug level to avoid flooding
+    ESP_LOGD(TAG, "RTP packet received: %d bytes from %s:%d", received,
              inet_ntoa(from_addr.sin_addr), ntohs(from_addr.sin_port));
-    ESP_LOGI(TAG, "%s", log_msg);
     
     if (received < sizeof(rtp_header_t)) {
         ESP_LOGW(TAG, "Received packet too small");
@@ -250,15 +248,24 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     // Extract payload type from RTP header
     uint8_t payload_type = header->payload_type;
     
-    char rtp_log[128];
-    snprintf(rtp_log, sizeof(rtp_log), "RTP packet received: payload_type=%d, payload_size=%zu", payload_type, payload_size);
-    ESP_LOGI(TAG, "%s", rtp_log);
+    // Log payload type for debugging (only for non-audio packets to reduce spam)
+    if (payload_type != 0 && payload_type != 8) {
+        ESP_LOGI(TAG, "RTP packet: payload_type=%d, payload_size=%zu", payload_type, payload_size);
+    }
     
     // Route by payload type
-    if (payload_type == 101) {
-        // RFC 4733 telephone-event
-        rtp_process_telephone_event(header, payload, payload_size);
-        return 0; // No audio samples to return
+    if (payload_type == 101 || payload_type == 114) {
+        // RFC 4733 telephone-event (payload type 101 is standard, but some systems use 114 or others)
+        ESP_LOGI(TAG, "Detected telephone-event packet: payload_type=%d, size=%zu, expected_size=%zu", 
+                 payload_type, payload_size, sizeof(rtp_telephone_event_t));
+        // Telephone-event packets are always 4 bytes
+        if (payload_size == sizeof(rtp_telephone_event_t)) {
+            ESP_LOGI(TAG, "Processing telephone-event...");
+            rtp_process_telephone_event(header, payload, payload_size);
+            return 0; // No audio samples to return
+        } else {
+            ESP_LOGW(TAG, "Payload type %d but size %zu != 4 (expected telephone-event)", payload_type, payload_size);
+        }
     } else if (payload_type == 0 || payload_type == 8) {
         // Audio payload (PCMU=0, PCMA=8)
         // Decode μ-law to linear PCM
@@ -267,11 +274,15 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
             samples[i] = mulaw_decode_table[payload[i]];
         }
         return sample_count;
+    } else if (payload_size == sizeof(rtp_telephone_event_t)) {
+        // Unknown payload type but size matches telephone-event (4 bytes)
+        // Likely a telephone-event with non-standard payload type
+        ESP_LOGI(TAG, "Treating payload type %d as telephone-event (size=4)", payload_type);
+        rtp_process_telephone_event(header, payload, payload_size);
+        return 0;
     } else {
         // Unknown payload type - treat as PCMU for compatibility
-        char unknown_log[128];
-        snprintf(unknown_log, sizeof(unknown_log), "Unknown RTP payload type: %d - treating as PCMU", payload_type);
-        ESP_LOGW(TAG, "%s", unknown_log);
+        ESP_LOGW(TAG, "Unknown RTP payload type: %d (size=%zu) - treating as PCMU", payload_type, payload_size);
         // Fall through to PCMU handling
     }
 
@@ -439,7 +450,7 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     // Get RTP timestamp
     uint32_t rtp_timestamp = ntohl(header->timestamp);
     
-    ESP_LOGD(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
+    ESP_LOGI(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
              event->event, end_bit, volume, duration, rtp_timestamp);
     
     // Only process when end bit is set and timestamp is new (deduplication)
@@ -454,11 +465,20 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
             
             // Invoke callback if registered
             if (telephone_event_callback) {
+                ESP_LOGI(TAG, "Calling telephone_event_callback with event %d", event->event);
                 telephone_event_callback(event->event);
+            } else {
+                ESP_LOGW(TAG, "No telephone_event_callback registered!");
             }
         } else {
             ESP_LOGE(TAG, "Malformed telephone-event: failed to map event code %d to character", 
                      event->event);
+        }
+    } else {
+        if (!end_bit) {
+            ESP_LOGD(TAG, "Telephone-event: end bit not set (ongoing event)");
+        } else {
+            ESP_LOGD(TAG, "Telephone-event: duplicate timestamp %u (last=%u)", rtp_timestamp, last_telephone_event_timestamp);
         }
     }
 }

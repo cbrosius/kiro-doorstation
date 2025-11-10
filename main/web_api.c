@@ -19,6 +19,7 @@
 #include "cert_manager.h"
 #include "dtmf_decoder.h"
 #include "ota_handler.h"
+#include "rfc4733_test.h"
 
 // Use the same SAN constants as cert_manager
 #define CERT_SAN_COUNT_MAX 16
@@ -152,6 +153,7 @@ static const httpd_uri_t ntp_sync_uri;
 static const httpd_uri_t dtmf_security_get_uri;
 static const httpd_uri_t dtmf_security_post_uri;
 static const httpd_uri_t dtmf_logs_uri;
+static const httpd_uri_t rfc4733_test_uri;
 static const httpd_uri_t hardware_test_doorbell_uri;
 static const httpd_uri_t hardware_test_door_uri;
 static const httpd_uri_t hardware_test_light_uri;
@@ -231,6 +233,9 @@ void web_api_register_handlers(httpd_handle_t server) {
     if (httpd_register_uri_handler(server, &dtmf_security_get_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &dtmf_security_post_uri) == ESP_OK) registered_count++; else failed_count++;
     if (httpd_register_uri_handler(server, &dtmf_logs_uri) == ESP_OK) registered_count++; else failed_count++;
+    
+    // Register RFC 4733 Test API handler (1 endpoint)
+    if (httpd_register_uri_handler(server, &rfc4733_test_uri) == ESP_OK) registered_count++; else failed_count++;
     
     // Register Hardware Test API handlers (6 endpoints)
     if (httpd_register_uri_handler(server, &hardware_test_doorbell_uri) == ESP_OK) registered_count++; else failed_count++;
@@ -2083,6 +2088,34 @@ static esp_err_t get_dtmf_logs_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t post_rfc4733_test_handler(httpd_req_t *req)
+{
+    // Check authentication (don't extend session for test)
+    if (auth_filter(req, false) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "RFC 4733 test requested");
+    
+    // Run the tests
+    bool all_passed = rfc4733_run_tests();
+    
+    httpd_resp_set_type(req, "application/json");
+    
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", all_passed);
+    cJSON_AddStringToObject(root, "message", all_passed ? 
+                            "All RFC 4733 tests passed" : 
+                            "Some RFC 4733 tests failed - check logs");
+    
+    char *json_string = cJSON_Print(root);
+    httpd_resp_send(req, json_string, strlen(json_string));
+    free(json_string);
+    cJSON_Delete(root);
+    
+    return ESP_OK;
+}
+
 // ============================================================================
 // Hardware Test API Handlers
 // ============================================================================
@@ -3436,6 +3469,10 @@ static const httpd_uri_t dtmf_security_post_uri = {
 
 static const httpd_uri_t dtmf_logs_uri = {
     .uri = "/api/dtmf/logs", .method = HTTP_GET, .handler = get_dtmf_logs_handler, .user_ctx = NULL
+};
+
+static const httpd_uri_t rfc4733_test_uri = {
+    .uri = "/api/rfc4733/test", .method = HTTP_POST, .handler = post_rfc4733_test_handler, .user_ctx = NULL
 };
 
 // Hardware Test API URI handlers
