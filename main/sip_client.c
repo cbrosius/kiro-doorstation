@@ -1220,8 +1220,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         // auth_invite_branch = authenticated INVITE (only set when retry happens)
                         
                         const char* via_ptr = strstr(buffer, "Via:");
-                        bool is_retransmission = false;
-                        
+
                         if (via_ptr && has_invite_auth_challenge && auth_invite_branch != 0) {
                             // We've sent an authenticated INVITE - check if this 401 is for it
                             const char* branch_param = strstr(via_ptr, "branch=z9hG4bK");
@@ -1229,24 +1228,19 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                                 branch_param += 14; // Skip "branch=z9hG4bK"
                                 // Extract just the numeric part
                                 int received_branch = atoi(branch_param);
-                                
+
                                 char branch_log[256];
                                 snprintf(branch_log, sizeof(branch_log),
                                          "401 response branch=%d, initial=%d, auth=%d",
                                          received_branch, initial_invite_branch, auth_invite_branch);
                                 sip_add_log_entry("info", branch_log);
-                                
+
                                 // If this 401 is for the initial INVITE (before auth), it's a retransmission
                                 if (received_branch == initial_invite_branch && received_branch != auth_invite_branch) {
-                                    is_retransmission = true;
                                     sip_add_log_entry("info", "401 is retransmission of initial challenge - ignoring");
+                                    continue;
                                 }
                             }
-                        }
-                        
-                        // If this is a retransmission, ignore it
-                        if (is_retransmission) {
-                            continue;
                         }
 
                         // Extract headers to check Call-ID for debugging
@@ -1553,8 +1547,8 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     // Build Allow header with supported methods
                     char extra_headers[256];
                     snprintf(extra_headers, sizeof(extra_headers),
-                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS\r\n"
-                            "Accept: application/sdp\r\n"
+                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, INFO\r\n"
+                            "Accept: application/sdp, application/dtmf-relay\r\n"
                             "Accept-Encoding: identity\r\n"
                             "Accept-Language: en\r\n"
                             "Supported: \r\n");
@@ -1562,7 +1556,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     // Send 200 OK response using helper function
                     send_sip_response(200, "OK", &headers, extra_headers, NULL);
                     
-                    sip_add_log_entry("info", "OPTIONS response sent - capabilities advertised");
+                    sip_add_log_entry("info", "OPTIONS response sent - capabilities advertised (INFO method supported)");
                 } else if (strncmp(buffer, "CANCEL ", 7) == 0) {
                     // Handle CANCEL request (call cancellation before answer)
                     sip_add_log_entry("received", "CANCEL request received");
@@ -1668,13 +1662,11 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                        bool is_retransmission = false;
                         
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
                             strcmp(last_error_via_branch, via_branch) == 0 &&
                             (current_time - last_error_timestamp) < 10000) {
-                            is_retransmission = true;
                             sip_add_log_entry("info", "603 Decline is a retransmission - ignoring to prevent loop");
                         } else {
                             // This is a new error response - process it
@@ -1799,14 +1791,124 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         while (*from_ptr == ' ') {
                             from_ptr++;
                         }
-                } else if (strncmp(buffer, "INFO ", 5) == 0 ||
-                           strncmp(buffer, "UPDATE ", 7) == 0 ||
+} else if (strncmp(buffer, "INFO ", 5) == 0) {
+                    // Handle RFC 2976 INFO method for DTMF relay (secure alternative to audio tones)
+                    sip_add_log_entry("received", "RFC 2976 INFO method received");
+                    
+                    // Extract headers using helper function
+                    sip_request_headers_t headers = extract_request_headers(buffer);
+                    
+                    if (!headers.valid) {
+                        sip_add_log_entry("error", "Failed to parse INFO headers");
+                        continue;
+                    }
+                    
+                    // Check Content-Type for DTMF relay
+                    const char* content_type = strstr(buffer, "Content-Type:");
+                    if (content_type && strstr(content_type, "application/dtmf-relay")) {
+                        // Process DTMF relay message
+                        sip_add_log_entry("info", "Processing DTMF relay INFO message");
+                        
+                        // Extract Signal and Duration from body
+                        const char* body_start = strstr(buffer, "\r\n\r\n");
+                        if (body_start) {
+                            body_start += 4; // Skip \r\n\r\n
+                            
+                            char signal[8] = {0};
+                            char duration[8] = {0};
+                            
+                            // Parse Signal= parameter
+                            const char* signal_line = strstr(body_start, "Signal=");
+                            if (signal_line) {
+                                signal_line += 7; // Skip "Signal="
+                                const char* signal_end = strpbrk(signal_line, "\r\n; ");
+                                if (signal_end) {
+                                    size_t signal_len = signal_end - signal_line;
+                                    if (signal_len < sizeof(signal)) {
+                                        strncpy(signal, signal_line, signal_len);
+                                        signal[signal_len] = '\0';
+                                    }
+                                } else {
+                                    strncpy(signal, signal_line, sizeof(signal) - 1);
+                                }
+                            }
+                            
+                            // Parse Duration= parameter
+                            const char* duration_line = strstr(body_start, "Duration=");
+                            if (duration_line) {
+                                duration_line += 9; // Skip "Duration="
+                                const char* duration_end = strpbrk(duration_line, "\r\n; ");
+                                if (duration_end) {
+                                    size_t duration_len = duration_end - duration_line;
+                                    if (duration_len < sizeof(duration)) {
+                                        strncpy(duration, duration_line, duration_len);
+                                        duration[duration_len] = '\0';
+                                    }
+                                } else {
+                                    strncpy(duration, duration_line, sizeof(duration) - 1);
+                                }
+                            }
+                            
+                            char dtmf_log[128];
+                            snprintf(dtmf_log, sizeof(dtmf_log), "DTMF relay: Signal=%s, Duration=%s", signal, duration);
+                            sip_add_log_entry("info", dtmf_log);
+                            
+                            // Process DTMF character if valid
+                            if (strlen(signal) == 1) {
+                                char dtmf_char = signal[0];
+                                ESP_LOGI(TAG, "DTMF from INFO: %c", dtmf_char);
+                                
+                                // Convert to event code and process via RFC 4733 handler
+                                uint8_t event_code = 255; // Invalid
+                                switch(dtmf_char) {
+                                    case '0': event_code = DTMF_EVENT_0; break;
+                                    case '1': event_code = DTMF_EVENT_1; break;
+                                    case '2': event_code = DTMF_EVENT_2; break;
+                                    case '3': event_code = DTMF_EVENT_3; break;
+                                    case '4': event_code = DTMF_EVENT_4; break;
+                                    case '5': event_code = DTMF_EVENT_5; break;
+                                    case '6': event_code = DTMF_EVENT_6; break;
+                                    case '7': event_code = DTMF_EVENT_7; break;
+                                    case '8': event_code = DTMF_EVENT_8; break;
+                                    case '9': event_code = DTMF_EVENT_9; break;
+                                    case '*': event_code = DTMF_EVENT_STAR; break;
+                                    case '#': event_code = DTMF_EVENT_HASH; break;
+                                    case 'A': case 'a': event_code = DTMF_EVENT_A; break;
+                                    case 'B': case 'b': event_code = DTMF_EVENT_B; break;
+                                    case 'C': case 'c': event_code = DTMF_EVENT_C; break;
+                                    case 'D': case 'd': event_code = DTMF_EVENT_D; break;
+                                    default:
+                                        ESP_LOGW(TAG, "Invalid DTMF character in INFO: %c", dtmf_char);
+                                        break;
+                                }
+                                
+                                if (event_code <= DTMF_EVENT_D) {
+                                    // Process via RFC 4733 handler (end bit set for INFO method)
+                                    dtmf_process_telephone_event(event_code);
+                                    sip_add_log_entry("info", "DTMF processed via RFC 2976 INFO method");
+                                }
+                            }
+                        }
+                        
+                        // Send 200 OK response for INFO
+                        send_sip_response(200, "OK", &headers, NULL, NULL);
+                        sip_add_log_entry("sent", "200 OK response to INFO DTMF relay");
+                    } else {
+                        // INFO method for non-DTMF purposes - send 501 Not Implemented
+                        sip_add_log_entry("info", "INFO method not supported for non-DTMF purposes");
+                        char allow_header[128];
+                        snprintf(allow_header, sizeof(allow_header),
+                                "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS\r\n"
+                                "Accept: application/dtmf-relay\r\n");
+                        send_sip_response(501, "Not Implemented", &headers, allow_header, NULL);
+                    }
+                } else if (strncmp(buffer, "UPDATE ", 7) == 0 ||
                            strncmp(buffer, "PRACK ", 6) == 0 ||
                            strncmp(buffer, "SUBSCRIBE ", 10) == 0 ||
                            strncmp(buffer, "NOTIFY ", 7) == 0 ||
                            strncmp(buffer, "MESSAGE ", 8) == 0 ||
                            strncmp(buffer, "REFER ", 6) == 0) {
-                    // Handle unsupported SIP methods with proper error response
+                    // Handle other unsupported SIP methods with proper error response
                     
                     // Extract method name from request line
                     char method[32] = {0};
@@ -1836,7 +1938,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     // Build Allow header showing what we DO support
                     char allow_header[128];
                     snprintf(allow_header, sizeof(allow_header),
-                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS\r\n");
+                            "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, INFO\r\n");
                     
                     // Send 501 Not Implemented response
                     send_sip_response(501, "Not Implemented", &headers, allow_header, NULL);
@@ -2852,15 +2954,88 @@ void sip_client_send_dtmf(char dtmf_digit)
         sip_add_log_entry("info", "Sending DTMF - State: DTMF_SENDING");
         current_state = SIP_STATE_DTMF_SENDING;
 
-        // DTMF sending logic would go here
-        // For now, we'll just log it and return to connected state
-        ESP_LOGI(TAG, "DTMF %c sent", dtmf_digit);
+        // Validate DTMF character
+        if (dtmf_digit < '0' || (dtmf_digit > '9' && dtmf_digit < 'A') ||
+            (dtmf_digit > 'Z' && dtmf_digit != '*' && dtmf_digit != '#')) {
+            ESP_LOGW(TAG, "Invalid DTMF character: %c", dtmf_digit);
+            current_state = SIP_STATE_CONNECTED;
+            return;
+        }
+
+        bool rtp_success = false;
+        bool info_success = false;
+
+        // Method 1: Try RFC 4733 telephone-event via RTP (preferred)
+        if (rtp_is_active()) {
+            int rtp_result = rtp_send_dtmf(dtmf_digit);
+            if (rtp_result > 0) {
+                rtp_success = true;
+                ESP_LOGI(TAG, "DTMF %c sent via RFC 4733 RTP", dtmf_digit);
+                sip_add_log_entry("info", "DTMF sent via RFC 4733 telephone-event");
+            } else {
+                ESP_LOGW(TAG, "Failed to send DTMF via RFC 4733");
+            }
+        } else {
+            ESP_LOGW(TAG, "RTP not active, cannot send DTMF via RFC 4733");
+        }
+
+        // Method 2: Try RFC 2976 INFO method via SIP (backup)
+        char local_ip[16];
+        if (!get_local_ip(local_ip, sizeof(local_ip))) {
+            strcpy(local_ip, "192.168.1.100"); // Fallback
+        }
+        
+        char info_body[64];
+        snprintf(info_body, sizeof(info_body), "Signal=%c\r\nDuration=100\r\n", dtmf_digit);
+
+        static char info_msg[512];
+        int info_len = strlen(info_body);
+        int cseq = 1; // Sequence number for INFO request
+        int len = snprintf(info_msg, sizeof(info_msg),
+            "INFO sip:%s@%s SIP/2.0\r\n"
+            "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+            "Max-Forwards: 70\r\n"
+            "From: <sip:%s@%s>;tag=%d\r\n"
+            "To: <sip:%s@%s>\r\n"
+            "Call-ID: %d@%s\r\n"
+            "CSeq: %d INFO\r\n"
+            "Content-Type: application/dtmf-relay\r\n"
+            "Content-Length: %d\r\n\r\n%s",
+            sip_config.username, sip_config.server,
+            local_ip, rand(),
+            sip_config.username, sip_config.server, rand(),
+            sip_config.username, sip_config.server,
+            rand(), local_ip,
+            cseq, info_len, info_body);
+        
+        struct sockaddr_in server_addr;
+        if (resolve_hostname(sip_config.server, &server_addr, (uint16_t)sip_config.port)) {
+            int sent = sendto(sip_socket, info_msg, len, 0,
+                             (struct sockaddr*)&server_addr, sizeof(server_addr));
+            if (sent > 0) {
+                info_success = true;
+                ESP_LOGI(TAG, "DTMF %c sent via RFC 2976 INFO", dtmf_digit);
+                sip_add_log_entry("info", "DTMF sent via RFC 2976 INFO method");
+            } else {
+                ESP_LOGW(TAG, "Failed to send DTMF via INFO method");
+            }
+        }
+
+        // Log final result
+        if (rtp_success || info_success) {
+            ESP_LOGI(TAG, "DTMF %c sent successfully", dtmf_digit);
+            sip_add_log_entry("info", "DTMF sent successfully");
+        } else {
+            ESP_LOGE(TAG, "Failed to send DTMF via any method");
+            sip_add_log_entry("error", "DTMF sending failed");
+        }
 
         // Return to connected state after DTMF
         current_state = SIP_STATE_CONNECTED;
-        sip_add_log_entry("info", "DTMF sent - State: CONNECTED");
+        sip_add_log_entry("info", "DTMF sending complete - State: CONNECTED");
     } else {
-        ESP_LOGW(TAG, "Cannot send DTMF - Status: %d", current_state);
+        ESP_LOGW(TAG, "Cannot send DTMF - Not in connected state (%d)", current_state);
+        sip_add_log_entry("error", "Cannot send DTMF - not in connected state");
     }
 }
 
