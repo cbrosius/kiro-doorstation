@@ -453,15 +453,25 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     ESP_LOGI(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
              event->event, end_bit, volume, duration, rtp_timestamp);
     
-    // Only process when end bit is set and timestamp is new (deduplication)
-    if (end_bit && rtp_timestamp != last_telephone_event_timestamp) {
+    // FritzBox workaround: Some systems (like FritzBox) don't set the end bit properly
+    // Detect new events by checking if the event code changed OR timestamp changed significantly
+    static uint8_t last_event_code = 255;
+    bool is_new_event = (event->event != last_event_code);
+    
+    // Process when: end bit is set OR new event detected (FritzBox workaround)
+    if ((end_bit || is_new_event) && rtp_timestamp != last_telephone_event_timestamp) {
         last_telephone_event_timestamp = rtp_timestamp;
+        last_event_code = event->event;
         
         // Map event code to DTMF character
         char dtmf_char = rtp_map_event_to_char(event->event);
         
         if (dtmf_char != '\0') {
-            ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d)", dtmf_char, event->event);
+            if (end_bit) {
+                ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d) [end bit set]", dtmf_char, event->event);
+            } else {
+                ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d) [FritzBox workaround - no end bit]", dtmf_char, event->event);
+            }
             
             // Invoke callback if registered
             if (telephone_event_callback) {
@@ -475,8 +485,8 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
                      event->event);
         }
     } else {
-        if (!end_bit) {
-            ESP_LOGD(TAG, "Telephone-event: end bit not set (ongoing event)");
+        if (!is_new_event) {
+            ESP_LOGD(TAG, "Telephone-event: continuing same event (code=%d)", event->event);
         } else {
             ESP_LOGD(TAG, "Telephone-event: duplicate timestamp %u (last=%u)", rtp_timestamp, last_telephone_event_timestamp);
         }
