@@ -248,19 +248,11 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     // Extract payload type from RTP header
     uint8_t payload_type = header->payload_type;
     
-    // Log payload type for debugging (only for non-audio packets to reduce spam)
-    if (payload_type != 0 && payload_type != 8) {
-        ESP_LOGI(TAG, "RTP packet: payload_type=%d, payload_size=%zu", payload_type, payload_size);
-    }
-    
     // Route by payload type
     if (payload_type == 101 || payload_type == 114) {
         // RFC 4733 telephone-event (payload type 101 is standard, but some systems use 114 or others)
-        ESP_LOGI(TAG, "Detected telephone-event packet: payload_type=%d, size=%zu, expected_size=%zu", 
-                 payload_type, payload_size, sizeof(rtp_telephone_event_t));
         // Telephone-event packets are always 4 bytes
         if (payload_size == sizeof(rtp_telephone_event_t)) {
-            ESP_LOGI(TAG, "Processing telephone-event...");
             rtp_process_telephone_event(header, payload, payload_size);
             return 0; // No audio samples to return
         } else {
@@ -444,16 +436,9 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     
     // Extract end bit from e_r_volume field (bit 7)
     bool end_bit = (event->e_r_volume & 0x80) != 0;
-    uint8_t volume = event->e_r_volume & 0x3F; // Lower 6 bits
-    uint16_t duration = ntohs(event->duration);
     
     // Get RTP timestamp
     uint32_t rtp_timestamp = ntohl(header->timestamp);
-    
-    // Map event code to character for logging
-    char dtmf_char_preview = rtp_map_event_to_char(event->event);
-    ESP_LOGI(TAG, "Telephone-event: '%c' code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
-             dtmf_char_preview, event->event, end_bit, volume, duration, rtp_timestamp);
     
     // FritzBox workaround: Some systems (like FritzBox) don't set the end bit properly
     // Detect new events by checking if:
@@ -466,9 +451,6 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     // Consider it a new event if event code changed OR timestamp changed
     bool is_new_event = event_code_changed || timestamp_changed;
     
-    ESP_LOGD(TAG, "Detection: event_code_changed=%d, timestamp_changed=%d, is_new_event=%d", 
-             event_code_changed, timestamp_changed, is_new_event);
-    
     // Process when: end bit is set OR new event detected (FritzBox workaround)
     if ((end_bit || is_new_event) && timestamp_changed) {
         last_telephone_event_timestamp = rtp_timestamp;
@@ -478,28 +460,17 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
         char dtmf_char = rtp_map_event_to_char(event->event);
         
         if (dtmf_char != '\0') {
-            if (end_bit) {
-                ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d) [end bit set]", dtmf_char, event->event);
-            } else {
-                ESP_LOGI(TAG, "DTMF detected: '%c' (event code %d) [FritzBox workaround - no end bit]", dtmf_char, event->event);
-            }
+            // Only log the detected key
+            ESP_LOGI(TAG, "DTMF: '%c'", dtmf_char);
             
             // Invoke callback if registered
             if (telephone_event_callback) {
-                ESP_LOGI(TAG, "Calling telephone_event_callback with event %d", event->event);
                 telephone_event_callback(event->event);
             } else {
-                ESP_LOGW(TAG, "No telephone_event_callback registered!");
+                ESP_LOGW(TAG, "No DTMF callback registered!");
             }
         } else {
-            ESP_LOGE(TAG, "Malformed telephone-event: failed to map event code %d to character", 
-                     event->event);
-        }
-    } else {
-        if (!is_new_event) {
-            ESP_LOGD(TAG, "Telephone-event: continuing same event (code=%d)", event->event);
-        } else {
-            ESP_LOGD(TAG, "Telephone-event: duplicate timestamp %u (last=%u)", rtp_timestamp, last_telephone_event_timestamp);
+            ESP_LOGE(TAG, "Invalid DTMF event code: %d", event->event);
         }
     }
 }
