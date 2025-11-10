@@ -450,16 +450,27 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     // Get RTP timestamp
     uint32_t rtp_timestamp = ntohl(header->timestamp);
     
-    ESP_LOGI(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
-             event->event, end_bit, volume, duration, rtp_timestamp);
+    // Map event code to character for logging
+    char dtmf_char_preview = rtp_map_event_to_char(event->event);
+    ESP_LOGI(TAG, "Telephone-event: '%c' code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
+             dtmf_char_preview, event->event, end_bit, volume, duration, rtp_timestamp);
     
     // FritzBox workaround: Some systems (like FritzBox) don't set the end bit properly
-    // Detect new events by checking if the event code changed OR timestamp changed significantly
+    // Detect new events by checking if:
+    // 1. Event code changed (different key pressed)
+    // 2. Timestamp changed significantly (same key pressed again after release)
     static uint8_t last_event_code = 255;
-    bool is_new_event = (event->event != last_event_code);
+    bool event_code_changed = (event->event != last_event_code);
+    bool timestamp_changed = (rtp_timestamp != last_telephone_event_timestamp);
+    
+    // Consider it a new event if event code changed OR timestamp changed
+    bool is_new_event = event_code_changed || timestamp_changed;
+    
+    ESP_LOGD(TAG, "Detection: event_code_changed=%d, timestamp_changed=%d, is_new_event=%d", 
+             event_code_changed, timestamp_changed, is_new_event);
     
     // Process when: end bit is set OR new event detected (FritzBox workaround)
-    if ((end_bit || is_new_event) && rtp_timestamp != last_telephone_event_timestamp) {
+    if ((end_bit || is_new_event) && timestamp_changed) {
         last_telephone_event_timestamp = rtp_timestamp;
         last_event_code = event->event;
         
