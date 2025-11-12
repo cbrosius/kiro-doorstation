@@ -67,4 +67,7 @@ bool rtp_is_active(void);
 // Register callback for telephone-events
 void rtp_set_telephone_event_callback(telephone_event_callback_t callback);
 
+// Send RFC 4733 telephone-event DTMF digit
+int rtp_send_dtmf(char dtmf_digit);
+
 #endif // RTP_HANDLER_H
