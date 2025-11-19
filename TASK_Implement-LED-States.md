@@ -11,7 +11,7 @@ Implement control of the integrated WS2812B RGB LED connected to GPIO48 on the E
 - **LED Type**: WS2812B RGB LED (addressable RGB LED)
 - **GPIO Pin**: GPIO48 (data pin for WS2812B protocol)
 - **Control Method**: RMT (Remote Control) peripheral for precise timing
-- **esp-idf** Version:5.5.x rmt_tx lib
+- **esp-idf** Version:5.5.x, The legacy RMT driver is deprecated, please use driver/rmt_tx.h and/or driver/rmt_rx.h
 
 ### Device State to LED Mapping
 
