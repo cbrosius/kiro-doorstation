@@ -16,6 +16,7 @@ idf_component_register(
         "ota_handler.c"
         "captive_portal.c"
         "dns_responder.c"
+        "led_handler.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

@@ -1,4 +1,5 @@
 #include "sip_client.h"
+#include "led_handler.h"
 #include "audio_handler.h"
 #include "dtmf_decoder.h"
 #include "rtp_handler.h"
@@ -788,6 +789,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
             call_start_timestamp > 0) {
             uint32_t elapsed = xTaskGetTickCount() * portTICK_PERIOD_MS - call_start_timestamp;
             if (elapsed >= call_timeout_ms) {
+                led_handler_set_state(LED_STATE_ERROR);
                 sip_add_log_entry("error", "Call timeout - no response from server");
                 call_start_timestamp = 0;
                 current_state = SIP_STATE_REGISTERED;
@@ -801,6 +803,7 @@ static void sip_task(void *pvParameters __attribute__((unused)))
         if (current_state == SIP_STATE_CONNECTED && last_rtp_received_timestamp > 0) {
             uint32_t elapsed_rtp = xTaskGetTickCount() * portTICK_PERIOD_MS - last_rtp_received_timestamp;
             if (elapsed_rtp >= rtp_timeout_ms) {
+                led_handler_set_state(LED_STATE_ERROR);
                 sip_add_log_entry("error", "RTP timeout - no audio received for 5 seconds. Hanging up.");
                 sip_client_hangup();
                 last_rtp_received_timestamp = 0; // Reset timestamp
@@ -1005,6 +1008,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         current_state = SIP_STATE_REGISTERED;
                         auth_attempt_count = 0;  // Reset counter on success
                         has_initial_transaction_ids = false;  // Clear stored IDs
+                        led_handler_set_state(LED_STATE_SIP_REGISTERED);
                         sip_add_log_entry("info", "SIP registration successful");
                     } else if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         // Clear stored INVITE auth challenge on successful call
@@ -1147,6 +1151,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         current_state = SIP_STATE_CONNECTED;
                         call_start_timestamp = 0; // Clear timeout
                         last_rtp_received_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                        led_handler_set_state(LED_STATE_CALL_ACTIVE);
                         sip_add_log_entry("info", "Call connected - State: CONNECTED");
                         
                         // Reset DTMF decoder state for new call
@@ -1158,6 +1163,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                 } else if (strstr(buffer, "SIP/2.0 180 Ringing")) {
                     if (current_state == SIP_STATE_CALLING) {
                         current_state = SIP_STATE_RINGING;
+                        led_handler_set_state(LED_STATE_RINGING);
                         sip_add_log_entry("info", "Call ringing (180 Ringing)");
                     }
                 } else if (strstr(buffer, "SIP/2.0 183 Session Progress")) {
@@ -1177,6 +1183,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         // Check if we've exceeded max attempts (prevent infinite loop)
                         if (auth_attempt_count > MAX_AUTH_ATTEMPTS) {
                             sip_add_log_entry("error", "Max authentication attempts exceeded - authentication failed");
+                            led_handler_set_state(LED_STATE_ERROR);
                             current_state = SIP_STATE_AUTH_FAILED;
                             auth_attempt_count = 0;
                             has_initial_transaction_ids = false;
@@ -1205,6 +1212,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                             sip_client_register_auth(&last_auth_challenge);
                         } else {
                             sip_add_log_entry("error", "Failed to parse auth challenge");
+                            led_handler_set_state(LED_STATE_ERROR);
                             current_state = SIP_STATE_AUTH_FAILED;
                             auth_attempt_count = 0;
                             has_initial_transaction_ids = false;
@@ -1440,6 +1448,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     // Provisional response, just log it
                     sip_add_log_entry("info", "Server processing request (100 Trying)");
                 } else if (strstr(buffer, "SIP/2.0 403 Forbidden")) {
+                    led_handler_set_state(LED_STATE_ERROR);
                     sip_add_log_entry("error", "SIP forbidden - State: AUTH_FAILED");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         // Send ACK to stop retransmissions
@@ -1453,9 +1462,11 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         call_start_timestamp = 0; // Clear timeout
                         current_state = SIP_STATE_REGISTERED; // Return to registered state
                     } else {
+                        led_handler_set_state(LED_STATE_ERROR);
                         current_state = SIP_STATE_AUTH_FAILED;
                     }
                 } else if (strstr(buffer, "SIP/2.0 404 Not Found")) {
+                    led_handler_set_state(LED_STATE_ERROR);
                     sip_add_log_entry("error", "SIP target not found");
                     if (current_state == SIP_STATE_CALLING || current_state == SIP_STATE_RINGING) {
                         // Send ACK to stop retransmissions
@@ -1469,6 +1480,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         call_start_timestamp = 0; // Clear timeout
                         current_state = SIP_STATE_REGISTERED; // Return to registered state
                     } else {
+                        led_handler_set_state(LED_STATE_ERROR);
                         current_state = SIP_STATE_ERROR;
                     }
                 } else if (strstr(buffer, "SIP/2.0 408 Request Timeout")) {
@@ -1663,8 +1675,6 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         // Check if this is a retransmission (same Call-ID and branch within 10 seconds)
                         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
                         
-                        bool is_retransmission = false;
-
                         if (strlen(last_error_call_id) > 0 &&
                             strcmp(last_error_call_id, headers.call_id) == 0 &&
                             strcmp(last_error_via_branch, via_branch) == 0 &&
@@ -1833,6 +1843,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                         continue;
                     }
                     
+                    led_handler_set_state(LED_STATE_CALL_INCOMING);
                     sip_add_log_entry("info", "Processing incoming call");
                     
                     
@@ -2190,6 +2201,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                             // Update state
                             current_state = SIP_STATE_CONNECTED;
                             call_start_timestamp = 0;
+                            led_handler_set_state(LED_STATE_CALL_ACTIVE);
                             sip_add_log_entry("info", "Incoming call answered - State: CONNECTED");
 
                             // Reset DTMF decoder state for new call
@@ -2264,6 +2276,7 @@ ESP_LOGI(TAG, "log_msg at line 992: %p", (void*)&log_msg);
                     
                     current_state = SIP_STATE_REGISTERED;
                     call_start_timestamp = 0; // Clear timeout
+                    led_handler_set_state(LED_STATE_IDLE);
 
                     // Reset DTMF decoder state when call ends
                     dtmf_reset_call_state();
@@ -2725,6 +2738,7 @@ void sip_client_make_call(const char* uri)
     // Only change state and set timestamp for initial call, not for auth retries
     if (invite_auth_attempt_count == 0) {
         current_state = SIP_STATE_CALLING;
+        led_handler_set_state(LED_STATE_CALL_OUTGOING);
         call_start_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     }
 

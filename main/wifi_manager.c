@@ -245,8 +245,8 @@ void wifi_manager_init(void)
         // Try to connect to saved network in STA mode
         wifi_connect_sta(saved_config.ssid, saved_config.password);
 
-        // Wait a short time for connection attempt
-        vTaskDelay(pdMS_TO_TICKS(5000)); // 5 seconds
+        // Wait for connection attempt (increased timeout for DHCP)
+        vTaskDelay(pdMS_TO_TICKS(10000)); // 10 seconds
 
         if (wifi_is_connected()) {
             ESP_LOGI(TAG, "Successfully connected to saved WiFi, staying in STA mode");
@@ -322,6 +322,12 @@ void wifi_connect_sta(const char* ssid, const char* password)
         ESP_LOGI(TAG, "Stopped existing WiFi connection");
     } else if (err != ESP_ERR_WIFI_NOT_INIT) {
         ESP_LOGW(TAG, "WiFi stop returned: %s", esp_err_to_name(err));
+    }
+    
+    // Ensure STA netif exists after stop
+    if (sta_netif == NULL) {
+        ESP_LOGI(TAG, "Recreating STA netif after WiFi stop");
+        sta_netif = esp_netif_create_default_wifi_sta();
     }
     
     // Set the mode and configuration
