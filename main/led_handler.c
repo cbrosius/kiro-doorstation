@@ -57,15 +57,15 @@ static void led_control_task(void *pvParameters) {
     bool led_on = true;
     float pulse_brightness = 0.0;
 
-    // Colors for each state
-    const uint8_t color_init[] = {255, 255, 0};   // Yellow
-    const uint8_t color_wifi[] = {0, 0, 255};     // Blue
-    const uint8_t color_sip[] = {255, 165, 0};    // Orange
-    const uint8_t color_registered[] = {0, 255, 0}; // Green
-    const uint8_t color_call[] = {255, 0, 255};   // Magenta
-    const uint8_t color_active[] = {255, 0, 0};   // Red
-    const uint8_t color_error[] = {255, 0, 0};    // Red
-    const uint8_t color_idle[] = {0, 255, 0};     // Green
+    // Colors for each state (10% brightness)
+    const uint8_t color_init[] = {26, 26, 0};   // Yellow
+    const uint8_t color_wifi[] = {0, 0, 26};     // Blue
+    const uint8_t color_sip[] = {26, 17, 0};    // Orange
+    const uint8_t color_registered[] = {0, 26, 0}; // Green
+    const uint8_t color_call[] = {26, 0, 26};   // Magenta
+    const uint8_t color_active[] = {26, 0, 0};   // Red
+    const uint8_t color_error[] = {26, 0, 0};    // Red
+    const uint8_t color_idle[] = {0, 26, 0};     // Green
 
     led_state_t local_state = LED_STATE_INIT;
 
