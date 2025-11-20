@@ -33,7 +33,7 @@ Replaced the single SIP-URI configuration with two separate SIP targets (SIP-Tar
 - Updated JavaScript to fetch and save both targets
 - Updated DTMF information section to clarify:
   - Bell 1 (GPIO 21) calls SIP-Target1
-  - Bell 2 (GPIO 4) calls SIP-Target2
+  - Bell 2 (GPIO 22) calls SIP-Target2
 
 ### 5. GPIO Handler (`main/gpio_handler.c`)
 - Updated doorbell press handlers to use configured targets:
@@ -55,7 +55,7 @@ Password: ********
 
 ### Behavior
 - When doorbell button 1 (GPIO 21) or BOOT button (GPIO 0) is pressed → Calls SIP-Target1
-- When doorbell button 2 (GPIO 4) is pressed → Calls SIP-Target2
+- When doorbell button 2 (GPIO 22) is pressed → Calls SIP-Target2
 - Both targets can be different apartments, extensions, or phone numbers
 - Configuration is stored in NVS and persists across reboots
 

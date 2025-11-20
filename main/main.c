@@ -20,6 +20,7 @@
 #include "auth_manager.h"
 #include "captive_portal.h"
 #include "dns_responder.h"
+#include "led_handler.h"
 
 static const char *TAG = "MAIN";
 
@@ -52,6 +53,9 @@ static void session_cleanup_task(void *pvParameters) {
 
 void app_main(void)
 {
+    // Initialize LED Handler as early as possible
+    led_handler_init();
+    led_handler_set_state(LED_STATE_INIT);
 
     ESP_LOGI(TAG, "ESP32 SIP Door Station started");
 
@@ -93,6 +97,7 @@ void app_main(void)
     wifi_manager_register_ap_start_callback(start_captive_portal_services);
 
     // Start WiFi Manager. It will either connect to a saved network or start AP mode and trigger the callback.
+    led_handler_set_state(LED_STATE_WIFI_CONNECTING);
     wifi_manager_init();
 
     // Check current WiFi mode
@@ -142,6 +147,7 @@ void app_main(void)
     while (!wifi_is_connected()) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    led_handler_set_state(LED_STATE_WIFI_CONNECTED);
     ESP_LOGI(TAG, "IP address obtained, proceeding with NTP and SIP initialization");
 
     // NTP time synchronization (after WiFi and IP)
@@ -155,6 +161,7 @@ void app_main(void)
     web_server_start();
 
     // Initialize SIP Client (after IP is available)
+    led_handler_set_state(LED_STATE_SIP_CONNECTING);
     sip_client_init();
 
     // Initialize authentication manager (for session cleanup)
