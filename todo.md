@@ -67,14 +67,14 @@
 - [ ] Add audio quality indicators
 
 ### Phase 9: Hardware Integration
-- [ ] Test and validate GPIO operations (door relay, light relay, bell buttons)
-- [ ] Implement proper I2S audio configuration for specific hardware
+- [x] Test and validate GPIO operations (door relay, light relay, bell buttons)
+- [x] Implement proper I2S audio configuration for specific hardware
 - [ ] Add hardware status monitoring (relay states, button states)
-- [ ] Implement proper audio codec initialization
+- [x] Implement proper audio codec initialization
 
 ### Phase 10: Security & Reliability
 - [ ] Add HTTPS support for web interface
-- [ ] Implement SIP authentication (digest authentication)
+- [x] Implement SIP authentication (digest authentication)
 - [ ] Add configuration backup/restore functionality
 - [ ] Implement watchdog timer and automatic recovery
 

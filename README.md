@@ -31,8 +31,8 @@ An ESP32-based SIP door station project with the following features:
 |----------|------|
 | Klingel 1 | GPIO 21 |
 | Klingel 2 | GPIO 22 |
-| Türöffner Relais | GPIO 25 |
-| Licht Relais | GPIO 26 |
+| Türöffner Relais | GPIO 13 |
+| Licht Relais | GPIO 27 |
 | I2S SCK | GPIO 14 |
 | I2S WS | GPIO 15 |
 | I2S SD (OUT) | GPIO 32 |
