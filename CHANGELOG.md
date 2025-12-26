@@ -1,5 +1,29 @@
 # Changelog - ESP32 SIP Door Station
 
+## Version 1.1.0 - 2025-12-26
+
+### 🚀 Major Feature Expansion & UI Redesign
+
+#### Web Interface & API
+- ✅ **New**: Complete web interface redesign with modern responsive layout.
+- ✅ **New**: Tabbed interface with 10 specialized sections.
+- ✅ **New**: RESTful API endpoints for WiFi, Network, Email, and System status.
+- ✅ **New**: REAL-TIME SIP logging and connection management in the browser.
+- ✅ **New**: Hardware Testing Interface for installers.
+
+#### Core Functionality
+- ✅ **NTP Sync**: Full implementation of NTP time synchronization with timezone support.
+- ✅ **Secure DTMF**: RFC 4733 telephone-events with PIN security and rate limiting.
+- ✅ **SIP Persistence**: Fixed configuration saving and persistence in NVS.
+- ✅ **Enhanced WiFi**: Improved network scanning and connection reliability.
+
+#### Documentation & Cleanup
+- ✅ Organized documentation into `docs/` and archived previous session reports.
+- ✅ Standardized technical specifications and design documents.
+
+---
+
+
 ## Version 1.0.7 - 2025-10-15
 
 ### ✅ Stability Confirmed + Logging Added
