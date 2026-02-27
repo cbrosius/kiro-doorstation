@@ -1,2 +1,16 @@
 CompileFlags:
-    Remove: [-f*, -m*]
+  # Strip GCC-specific flags clangd cannot parse.
+  # All include paths come from the compilation database (build/compile_commands.json).
+  Remove:
+    - -fno-tree-switch-conversion
+    - -fno-jump-tables
+    - -fstrict-volatile-bitfields
+    - -fno-shrink-wrap
+    - -fmacro-prefix-map=*
+    - -mdisable-hardware-atomics
+    - -mlongcalls
+    - -mtext-section-literals
+
+Diagnostics:
+  # Suppress noisy clangd-specific hints that don't apply to embedded C.
+  UnusedIncludes: None

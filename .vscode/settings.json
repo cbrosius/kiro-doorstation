@@ -7,7 +7,7 @@
   "idf.customExtraPaths": "/opt/esp/tools/xtensa-esp32-elf/esp-12.2.0_20230208/xtensa-esp32-elf/bin:/opt/esp/tools/cmake/3.24.0/bin",
   "idf.port": "/dev/ttyUSB0",
   "idf.flashBaudRate": "460800",
-  "C_Cpp.intelliSenseEngine": "Tag Parser",
+  "C_Cpp.intelliSenseEngine": "disabled",
   "files.associations": {
     "*.h": "c",
     "*.c": "c"
@@ -25,11 +25,13 @@
   "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
   "clangd.arguments": [
     "--background-index",
-    "--query-driver=C:\\Espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
-    "--compile-commands-dir=c:\\Projekte\\Github\\OpenDoorstation\\kiro-doorstation\\firmware"
+    "--query-driver=C:\\Users\\Christian\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
+    "--compile-commands-dir=c:\\Projekte\\Github\\OpenDoorstation\\kiro-doorstation\\build",
+    "--header-insertion=never",
+    "--clang-tidy=false"
   ],
   "idf.flashType": "UART",
-  "sonarlint.pathToCompileCommands": "${workspaceFolder}\\firmware\\compile_commands.json",
+  "sonarlint.pathToCompileCommands": "${workspaceFolder}\\build\\compile_commands.json",
   "idf.espIdfPathWin": "c:\\ESP-IDF\\v5.5.1\\esp-idf",
   "idf.toolsPathWin": "C:\\Espressif",
   "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe",
