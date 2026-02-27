@@ -2273,6 +2273,13 @@ CONFIG_WIFI_PROV_AUTOSTOP_TIMEOUT=30
 CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # CONFIG_WIFI_PROV_STA_FAST_SCAN is not set
 # end of Wi-Fi Provisioning Manager
+
+#
+# Door Station Configuration
+#
+CONFIG_DOOR_STATION_AP_SSID="ESP32-Doorbell"
+CONFIG_DOOR_STATION_AP_PASSWORD="doorstation123"
+# end of Door Station Configuration
 # end of Component config
 
 # CONFIG_IDF_EXPERIMENTAL_FEATURES is not set

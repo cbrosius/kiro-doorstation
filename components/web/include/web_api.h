@@ -4,6 +4,6 @@
 #include "esp_http_server.h"
 
 // Register all API endpoint handlers with the server
-void web_api_register_handlers(httpd_handle_t server);
+esp_err_t web_api_register_handlers(httpd_handle_t server);
 
 #endif

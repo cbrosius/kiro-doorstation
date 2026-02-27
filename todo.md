@@ -1,5 +1,11 @@
 # ESP32 SIP Door Station - Development Progress
 
+## Recently Completed
+- [x] Refactor Web API Components (Modularized `web_api.c`)
+- [x] Reorganize project structure into `core` and `web` components
+- [x] Standardize JSON response patterns with `web_utils`
+- [x] Verify project builds with the new modular structure
+
 ## Next Development Phases
 
 ### Phase 8: Audio & DTMF Improvement

@@ -10,7 +10,6 @@
 #include "nvs_flash.h"
 #include <string.h>
 
-
 static const char *TAG = "WIFI";
 static EventGroupHandle_t wifi_event_group;
 static const int WIFI_CONNECTED_BIT = BIT0;
@@ -345,9 +344,9 @@ void wifi_start_ap_mode(void) {
       "ESPHome approach: Starting in APSTA mode for dual-interface support");
 
   wifi_config_t wifi_config = {
-      .ap = {.ssid = "ESP32-Doorbell",
-             .ssid_len = strlen("ESP32-Doorbell"),
-             .password = "doorbell123",
+      .ap = {.ssid = CONFIG_DOOR_STATION_AP_SSID,
+             .ssid_len = strlen(CONFIG_DOOR_STATION_AP_SSID),
+             .password = CONFIG_DOOR_STATION_AP_PASSWORD,
              .max_connection = 4,
              .authmode = WIFI_AUTH_WPA_WPA2_PSK},
   };
@@ -548,6 +547,10 @@ wifi_connection_info_t wifi_get_connection_info(void) {
       if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
         snprintf(info.ip_address, sizeof(info.ip_address), IPSTR,
                  IP2STR(&ip_info.ip));
+        snprintf(info.netmask, sizeof(info.netmask), IPSTR,
+                 IP2STR(&ip_info.netmask));
+        snprintf(info.gateway, sizeof(info.gateway), IPSTR,
+                 IP2STR(&ip_info.gw));
       }
     }
 
@@ -794,6 +797,48 @@ bool wifi_test_credentials(const char *ssid, const char *password) {
  * credential testing This should be called after the user has been redirected
  * to the STA IP
  */
+// Global wifi config structure for easy access
+static wifi_config_data_t g_wifi_config = {0};
+
+void wifi_manager_get_config(wifi_config_data_t *config) {
+  if (config) {
+    *config = g_wifi_config;
+  }
+}
+
+void wifi_manager_set_config(const wifi_config_data_t *config) {
+  if (config) {
+    g_wifi_config = *config;
+  }
+}
+
+void wifi_manager_save_config(void) {
+  ESP_LOGI(TAG, "Saving WiFi configuration to NVS");
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("wifi_config_ext", NVS_READWRITE, &nvs_handle);
+  if (err == ESP_OK) {
+    nvs_set_str(nvs_handle, "ssid", g_wifi_config.ssid);
+    nvs_set_str(nvs_handle, "password", g_wifi_config.password);
+    nvs_set_u8(nvs_handle, "dhcp", g_wifi_config.dhcp ? 1 : 0);
+    nvs_set_str(nvs_handle, "static_ip", g_wifi_config.static_ip);
+    nvs_set_str(nvs_handle, "gateway", g_wifi_config.gateway);
+    nvs_set_str(nvs_handle, "netmask", g_wifi_config.netmask);
+    nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+
+    // Also save to the legacy wifi_config for compatibility with existing logic
+    wifi_save_config(g_wifi_config.ssid, g_wifi_config.password);
+  } else {
+    ESP_LOGE(TAG, "Error opening NVS for saving extended wifi config: %s",
+             esp_err_to_name(err));
+  }
+}
+
+void wifi_manager_connect(void) {
+  ESP_LOGI(TAG, "WiFi connect requested");
+  wifi_connect_sta(g_wifi_config.ssid, g_wifi_config.password);
+}
+
 void wifi_transition_to_sta_mode(void) {
   ESP_LOGI(TAG, "Transitioning from APSTA to STA-only mode");
 

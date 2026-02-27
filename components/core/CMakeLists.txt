@@ -1,0 +1,34 @@
+idf_component_register(
+    SRCS
+        "sip_client.c"
+        "sip_utils.c"
+        "sip_auth.c"
+        "sip_msg.c"
+        "audio_handler.c"
+        "dtmf_decoder.c"
+        "gpio_handler.c"
+        "wifi_manager.c"
+        "ntp_sync.c"
+        "rtp_handler.c"
+        "hardware_test.c"
+        "auth_manager.c"
+        "cert_manager.c"
+        "ota_handler.c"
+        "captive_portal.c"
+        "dns_responder.c"
+        "led_handler.c"
+    INCLUDE_DIRS "include" "."
+    EMBED_FILES "captive_setup.html"
+    REQUIRES
+        esp_wifi
+        esp_http_server
+        esp_https_server
+        esp_netif
+        nvs_flash
+        driver
+        esp_timer
+        esp_adc
+        json
+        mbedtls
+        app_update
+)

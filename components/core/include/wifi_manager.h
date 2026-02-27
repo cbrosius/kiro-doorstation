@@ -4,7 +4,6 @@
 #include "esp_event.h"
 #include "esp_wifi.h"
 
-
 #define WIFI_SSID_MAX_LEN 32
 #define WIFI_PASSWORD_MAX_LEN 64
 #define MAX_SCAN_RESULTS 20
@@ -27,9 +26,20 @@ typedef struct {
 typedef struct {
   char ssid[WIFI_SSID_MAX_LEN];
   char ip_address[16];
+  char gateway[16];
+  char netmask[16];
   int rssi;
   bool connected;
 } wifi_connection_info_t;
+
+typedef struct {
+  char ssid[WIFI_SSID_MAX_LEN];
+  char password[WIFI_PASSWORD_MAX_LEN];
+  bool dhcp;
+  char static_ip[16];
+  char gateway[16];
+  char netmask[16];
+} wifi_config_data_t;
 
 void wifi_manager_init(void);
 bool wifi_is_connected(void);
@@ -38,10 +48,14 @@ void wifi_connect_sta(const char *ssid, const char *password);
 void wifi_save_config(const char *ssid, const char *password);
 void wifi_clear_config(void);
 wifi_manager_config_t wifi_load_config(void);
+void wifi_manager_get_config(wifi_config_data_t *config);
+void wifi_manager_set_config(const wifi_config_data_t *config);
+void wifi_manager_save_config(void);
 wifi_connection_info_t wifi_get_connection_info(void);
 void wifi_start_background_scan(void);
 int wifi_get_scan_results(wifi_scan_result_t *results, int max_results);
 int wifi_scan_networks(wifi_scan_result_t **results);
+void wifi_manager_connect(void);
 
 // Parallel credential testing functions
 bool wifi_test_credentials(const char *ssid, const char *password);
