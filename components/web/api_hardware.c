@@ -2,6 +2,7 @@
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "hardware_status.h"
 #include "hardware_test.h"
 #include "web_server.h"
 #include "web_utils.h"
@@ -9,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 
 static const char *TAG = "API_HARDWARE";
 
@@ -116,14 +118,46 @@ static esp_err_t get_hardware_state_handler(httpd_req_t *req) {
 
   cJSON *response = cJSON_CreateObject();
   if (response) {
+    // Current door state (legacy structure compatibility)
+    cJSON *door = cJSON_AddObjectToObject(response, "door");
+    cJSON_AddStringToObject(door, "status",
+                            state.door_relay_active ? "open" : "closed");
+    cJSON_AddNumberToObject(door, "remaining_ms",
+                            (double)state.door_relay_remaining_ms);
+
+    // Current light state
+    cJSON *light = cJSON_AddObjectToObject(response, "light");
+    cJSON_AddStringToObject(light, "status",
+                            state.light_relay_active ? "on" : "off");
+
+    // Doorbell states
+    cJSON *bells = cJSON_AddArrayToObject(response, "bells");
+    cJSON *bell1 = cJSON_CreateObject();
+    cJSON_AddNumberToObject(bell1, "id", 1);
+    cJSON_AddBoolToObject(bell1, "pressed", state.bell1_pressed);
+    cJSON_AddItemToArray(bells, bell1);
+
+    cJSON *bell2 = cJSON_CreateObject();
+    cJSON_AddNumberToObject(bell2, "id", 2);
+    cJSON_AddBoolToObject(bell2, "pressed", state.bell2_pressed);
+    cJSON_AddItemToArray(bells, bell2);
+
+    // Stats
+    hw_stats_t stats;
+    hw_status_get_stats(&stats);
+    cJSON *stat_obj = cJSON_AddObjectToObject(response, "stats");
+    cJSON_AddNumberToObject(stat_obj, "door_opens", stats.door_open_count);
+    cJSON_AddNumberToObject(stat_obj, "light_toggles",
+                            stats.light_toggle_count);
+    cJSON_AddNumberToObject(stat_obj, "bell_presses", stats.bell_press_count);
+    cJSON_AddNumberToObject(stat_obj, "uptime_s", stats.uptime_seconds);
+
+    // Legacy fields for back-compat
     cJSON_AddBoolToObject(response, "door_relay_active",
                           state.door_relay_active);
     cJSON_AddBoolToObject(response, "light_relay_active",
                           state.light_relay_active);
-    cJSON_AddBoolToObject(response, "bell1_pressed", state.bell1_pressed);
-    cJSON_AddBoolToObject(response, "bell2_pressed", state.bell2_pressed);
-    cJSON_AddNumberToObject(response, "door_relay_remaining_ms",
-                            (double)state.door_relay_remaining_ms);
+
     return http_response_json_data(req, response);
   }
 
@@ -144,6 +178,58 @@ static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req) {
     return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "Emergency stop failed");
   }
+}
+
+static esp_err_t get_hardware_events_handler(httpd_req_t *req) {
+  if (auth_filter(req, false) != ESP_OK) {
+    return ESP_FAIL;
+  }
+
+  // Get 'since' parameter from query string if available
+  char query[64];
+  uint64_t since_ts = 0;
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    char val[32];
+    if (httpd_query_key_value(query, "since", val, sizeof(val)) == ESP_OK) {
+      since_ts = strtoull(val, NULL, 10);
+    }
+  }
+
+  hw_event_log_t logs[50];
+  int count = hw_status_get_logs(logs, 50, since_ts);
+
+  cJSON *response = cJSON_CreateObject();
+  cJSON *events = cJSON_AddArrayToObject(response, "events");
+
+  for (int i = 0; i < count; i++) {
+    cJSON *event = cJSON_CreateObject();
+    cJSON_AddNumberToObject(event, "timestamp", (double)logs[i].timestamp);
+
+    const char *type_str = "unknown";
+    switch (logs[i].type) {
+    case HW_EVENT_DOOR_OPEN:
+      type_str = "door_open";
+      break;
+    case HW_EVENT_LIGHT_TOGGLE:
+      type_str = "light_toggle";
+      break;
+    case HW_EVENT_BELL_PRESS:
+      type_str = "bell_press";
+      break;
+    case HW_EVENT_SYSTEM_BOOT:
+      type_str = "system_boot";
+      break;
+    case HW_EVENT_RESET_PRESS:
+      type_str = "reset_press";
+      break;
+    }
+    cJSON_AddStringToObject(event, "type", type_str);
+    cJSON_AddNumberToObject(event, "value", logs[i].value);
+    cJSON_AddStringToObject(event, "metadata", logs[i].metadata);
+    cJSON_AddItemToArray(events, event);
+  }
+
+  return http_response_json_data(req, response);
 }
 
 // ============================================================================
@@ -180,6 +266,12 @@ static const httpd_uri_t hardware_test_stop_uri = {
     .handler = post_hardware_test_stop_handler,
     .user_ctx = NULL};
 
+static const httpd_uri_t hardware_events_uri = {.uri = "/api/hardware/events",
+                                                .method = HTTP_GET,
+                                                .handler =
+                                                    get_hardware_events_handler,
+                                                .user_ctx = NULL};
+
 esp_err_t api_hardware_register(httpd_handle_t server) {
   ESP_LOGI(TAG, "Registering Hardware API handlers");
 
@@ -205,6 +297,10 @@ esp_err_t api_hardware_register(httpd_handle_t server) {
     return ret;
 
   ret = httpd_register_uri_handler(server, &hardware_test_stop_uri);
+  if (ret != ESP_OK)
+    return ret;
+
+  ret = httpd_register_uri_handler(server, &hardware_events_uri);
   if (ret != ESP_OK)
     return ret;
 

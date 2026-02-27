@@ -4,6 +4,7 @@
 - [x] Refactor Web API Components (Modularized `web_api.c`)
 - [x] Reorganize project structure into `core` and `web` components
 - [x] Standardize JSON response patterns with `web_utils`
+- [x] Implement Hardware Status Monitoring and Logging (Phase 9)
 - [x] Verify project builds with the new modular structure
 
 ## Next Development Phases
@@ -14,7 +15,8 @@
 - [ ] Add audio quality indicators
 
 ### Phase 9: Hardware Integration
-- [ ] Add hardware status monitoring (relay states, button states)
+- [x] Add hardware status monitoring (relay states, button states, event logging)
+- [x] Implement hardware status API and UI log display
 
 ### Phase 10: Security & Reliability
 - [ ] Add HTTPS support for web interface

@@ -17,6 +17,7 @@ idf_component_register(
         "captive_portal.c"
         "dns_responder.c"
         "led_handler.c"
+        "hardware_status.c"
     INCLUDE_DIRS "include" "."
     EMBED_FILES "captive_setup.html"
     REQUIRES

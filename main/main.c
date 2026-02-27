@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 #include "audio_handler.h"
 #include "auth_manager.h"
 #include "captive_portal.h"
@@ -16,13 +15,13 @@
 #include "dns_responder.h"
 #include "dtmf_decoder.h"
 #include "gpio_handler.h"
+#include "hardware_status.h"
 #include "hardware_test.h"
 #include "led_handler.h"
 #include "ntp_sync.h"
 #include "sip_client.h"
 #include "web_server.h"
 #include "wifi_manager.h"
-
 
 static const char *TAG = "MAIN";
 
@@ -61,6 +60,7 @@ void app_main(void) {
   // Initialize LED Handler as early as possible
   led_handler_init();
   led_handler_set_state(LED_STATE_INIT);
+  hw_status_init();
 
   ESP_LOGI(TAG, "ESP32 SIP Door Station started");
 

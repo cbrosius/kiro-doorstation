@@ -3045,6 +3045,35 @@
             logs...</div>
         </div>
       </div>
+
+      <!-- Hardware Event Logs (Phase 9) -->
+      <div class="config-form" style="margin-top: var(--spacing-lg);">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+          <h3 style="margin: 0;">Hardware Event Logs</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
+              <input type="checkbox" id="hw-log-auto-refresh" checked>
+              <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
+            </label>
+            <button class="btn btn-sm btn-info" onclick="refreshHWLogs()" id="hw-log-refresh-btn">
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <p class="form-help">View recent hardware events such as doorbell presses, door opener activations, and system
+          boots.</p>
+
+        <!-- Hardware Log Container -->
+        <div id="hw-log-container"
+          style="max-height: 400px; overflow-y: auto; background-color: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: var(--spacing-md);">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">Loading
+            hardware
+            logs...</div>
+        </div>
+      </div>
     </section>
 
     <!-- Hardware Testing Section -->
@@ -3642,9 +3671,11 @@
           </span>
           <span class="btn-spinner" hidden>⏳</span>
         </button>
-        
-        <div id="ota-rollback-info" style="display: none; margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
-          <span style="font-size: var(--font-size-sm); color: var(--color-text);">ℹ️ Rollback is not available. No previous firmware version found.</span>
+
+        <div id="ota-rollback-info"
+          style="display: none; margin-top: var(--spacing-md); padding: var(--spacing-md); background-color: rgba(23, 162, 184, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <span style="font-size: var(--font-size-sm); color: var(--color-text);">ℹ️ Rollback is not available. No
+            previous firmware version found.</span>
         </div>
       </div>
 
@@ -5407,7 +5438,7 @@
         showToast('Connecting to SIP server...', 'info');
         const response = await apiRequest('/api/sip/connect', { method: 'POST' });
         showToast(response.message || 'Connected to SIP server successfully!', 'success');
-        
+
         // Invalidate SIP state cache to force immediate refresh
         apiCache.invalidate('sipState');
       } catch (error) {
@@ -5426,7 +5457,7 @@
         showToast('Disconnecting from SIP server...', 'info');
         const response = await apiRequest('/api/sip/disconnect', { method: 'POST' });
         showToast(response.message || 'Disconnected from SIP server', 'success');
-        
+
         // Invalidate SIP state cache to force immediate refresh
         apiCache.invalidate('sipState');
       } catch (error) {
@@ -5457,7 +5488,7 @@
       try {
         showToast('Restarting system...', 'info');
         const response = await apiRequest('/api/system/restart', { method: 'POST' });
-        
+
         // Check if session will be invalidated (device restart)
         if (response && response.session_invalidated) {
           showToast('System is restarting. You will need to log in again.', 'info', 5000);
@@ -8024,6 +8055,115 @@
       }
     }
 
+    // --- Hardware Events Logs (Phase 9) ---
+    let hwLogEntries = [];
+    let hwLogLastTimestamp = 0;
+    let hwLogAutoRefreshInterval = null;
+
+    /**
+     * Start/Stop hardware log auto-refresh
+     */
+    function toggleHWLogAutoRefresh() {
+      const checkbox = document.getElementById('hw-log-auto-refresh');
+      if (checkbox && checkbox.checked) {
+        if (!hwLogAutoRefreshInterval) {
+          hwLogAutoRefreshInterval = setInterval(() => refreshHWLogs(true), 5000);
+          console.log('Hardware log auto-refresh started (5s)');
+        }
+      } else {
+        if (hwLogAutoRefreshInterval) {
+          clearInterval(hwLogAutoRefreshInterval);
+          hwLogAutoRefreshInterval = null;
+          console.log('Hardware log auto-refresh stopped');
+        }
+      }
+    }
+
+    /**
+     * Refresh hardware logs from server
+     * @param {boolean} silent - If true, don't show loading message
+     */
+    async function refreshHWLogs(silent = false) {
+      const btn = document.getElementById('hw-log-refresh-btn');
+      if (!silent && btn) btn.classList.add('rotating');
+
+      try {
+        const endpoint = hwLogLastTimestamp > 0
+          ? `/api/hardware/events?since=${hwLogLastTimestamp}`
+          : '/api/hardware/events';
+
+        const response = await apiRequest(endpoint, { silentError: silent });
+
+        if (response && response.events && Array.isArray(response.events)) {
+          if (response.events.length > 0) {
+            hwLogEntries = hwLogEntries.concat(response.events);
+            const timestamps = response.events.map(e => e.timestamp || 0);
+            hwLogLastTimestamp = Math.max(...timestamps, hwLogLastTimestamp);
+
+            if (hwLogEntries.length > 500) {
+              hwLogEntries = hwLogEntries.slice(-500);
+            }
+            displayHWLogs(hwLogEntries);
+          } else if (hwLogEntries.length === 0) {
+            const container = document.getElementById('hw-log-container');
+            if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No hardware events recorded</div>';
+          }
+        }
+      } catch (error) {
+        if (!silent) {
+          console.error('Error refreshing HW logs:', error);
+          const container = document.getElementById('hw-log-container');
+          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading hardware logs</div>';
+        }
+      } finally {
+        if (!silent && btn) btn.classList.remove('rotating');
+      }
+    }
+
+    /**
+     * Display hardware logs in the container
+     * @param {Array} logs - Array of log entries to display
+     */
+    function displayHWLogs(logs) {
+      const container = document.getElementById('hw-log-container');
+      if (!container) return;
+
+      if (logs.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No hardware events</div>';
+        return;
+      }
+
+      // Sort logs descending (newest first)
+      const displayLogs = [...logs].sort((a, b) => b.timestamp - a.timestamp);
+
+      container.innerHTML = displayLogs.map(entry => {
+        const date = new Date(entry.timestamp);
+        const timeStr = date.toLocaleTimeString();
+
+        let icon = 'ℹ️';
+        let color = 'var(--color-text)';
+
+        switch (entry.type) {
+          case 'door_open': icon = '🚪'; color = 'var(--color-warning)'; break;
+          case 'light_toggle': icon = '💡'; color = 'var(--color-info)'; break;
+          case 'bell_press': icon = '🔔'; color = 'var(--color-success)'; break;
+          case 'system_boot': icon = '🚀'; color = 'var(--color-primary)'; break;
+          case 'reset_press': icon = '⚠️'; color = 'var(--color-danger)'; break;
+        }
+
+        return `
+          <div style="display: flex; gap: var(--spacing-md); padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border-subtle); align-items: flex-start;">
+            <div style="min-width: 80px; font-size: 0.8rem; color: var(--color-text-secondary);">${timeStr}</div>
+            <div style="font-size: 1.1rem; min-width: 24px;">${icon}</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; color: ${color}; text-transform: capitalize;">${entry.type.replace('_', ' ')}</div>
+              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">${entry.metadata || ''} ${entry.value ? `(${entry.value})` : ''}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     /**
      * Refresh DTMF logs from server
      * @param {boolean} silent - If true, don't show loading message
@@ -9300,7 +9440,7 @@
           }
 
           const status = await response.json();
-          
+
           // Update progress bar with backend progress
           if (status.progress_percent !== undefined) {
             document.getElementById('ota-progress-bar').style.width = status.progress_percent + '%';
@@ -9346,7 +9486,7 @@
                 stopOTAStatusPolling();
                 break;
             }
-            
+
             if (displayMessage && !status.status_message) {
               document.getElementById('ota-upload-status').textContent = displayMessage;
             }
@@ -9764,7 +9904,7 @@
     function hasSessionCookie() {
       return document.cookie.includes('session_id=');
     }
-    
+
     /**
      * Check if user is currently logged in (has valid session cookie)
      * @returns {boolean} True if user appears to be logged in
@@ -9772,14 +9912,14 @@
     function isLoggedIn() {
       return hasSessionCookie();
     }
-    
+
     /**
      * Force logout by clearing session cookie and redirecting to login
      */
     function forceLogout() {
       // Clear session cookie by setting it to expire immediately
       document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    
+
       // Clear any cached session data
       if (typeof apiCache !== 'undefined') {
         // Clear all cached data that might contain sensitive information
@@ -9790,11 +9930,11 @@
           }
         });
       }
-    
+
       // Redirect to login page
       window.location.href = '/login.html';
     }
-    
+
     /**
      * Check if user has a valid session
      * @returns {Promise<boolean>} True if session is valid
@@ -9806,26 +9946,26 @@
         window.location.href = '/login.html';
         return false;
       }
-    
+
       try {
         // Make a simple API call to check session validity
         const response = await fetch('/api/system/info', {
           method: 'GET',
           credentials: 'include'
         });
-    
+
         if (response.status === 401) {
           // Session invalid or expired - redirect to login
           console.log('Session expired or invalid (401 response), redirecting to login');
           window.location.href = '/login.html';
           return false;
         }
-    
+
         if (response.ok) {
           // Session is valid
           return true;
         }
-    
+
         // Other error - log but don't redirect
         console.warn('Session check returned unexpected status:', response.status);
         return true; // Assume valid to avoid false redirects
@@ -9918,23 +10058,23 @@
           window.location.href = '/login.html';
           return;
         }
-    
+
         const isValid = await checkSession();
-    
+
         if (isValid && sessionManager.sessionExpiresAt) {
           const timeRemaining = sessionManager.sessionExpiresAt - Date.now();
           const minutesRemaining = Math.floor(timeRemaining / 60000);
-    
+
           // Show warning 5 minutes before expiration
           if (minutesRemaining <= 5 && minutesRemaining > 0 && !sessionManager.warningShown) {
             showSessionWarning(minutesRemaining);
           }
         }
       }, 120000); // Check every 2 minutes
-    
+
       // Set initial session expiration time (30 minutes from now)
       sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
-    
+
       console.log('Session monitoring started');
     }
 
@@ -9966,52 +10106,52 @@
      */
     async function initSessionManagement() {
       console.log('Initializing session management');
-    
+
       // Only check session on authenticated pages (not login, setup, etc.)
       const currentPath = window.location.pathname;
       const publicPages = ['/login.html', '/setup.html'];
-    
+
       if (publicPages.includes(currentPath)) {
         console.log('On public page, skipping session check');
         return;
       }
-    
+
       // Allow a brief moment for cookie to be set after login redirect
       let retries = 0;
       const maxRetries = 5;
       const retryDelay = 200; // 200ms
-    
+
       while (retries < maxRetries) {
         if (hasSessionCookie()) {
           console.log('Session cookie found, proceeding with validation');
           break;
         }
-    
+
         if (retries === maxRetries - 1) {
           console.log('No session cookie found after retries, redirecting to login');
           window.location.href = '/login.html';
           return;
         }
-    
+
         console.log(`Session cookie not found, retry ${retries + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         retries++;
       }
-    
+
       // Check if session is valid on page load
       const isValid = await checkSession();
-    
+
       if (!isValid) {
         // Will redirect to login, no need to continue
         return;
       }
-    
+
       // Setup activity tracking for automatic session extension
       setupActivityTracking();
-    
+
       // Start monitoring session expiration
       startSessionMonitoring();
-    
+
       console.log('Session management initialized');
     }
 
@@ -10661,15 +10801,15 @@
           //   signal: AbortSignal.timeout(2000) // 2 second timeout
           // });
           fetch('/')
-              .then(response => {
-                // If this block is reached, the device is online.
-                console.log('Device is back online. Redirecting to login page...');
-                window.location.href = '/login.html';
-              })
-              .catch(err => {
-                // This block will only be reached on a network error.
-                throw new Error('Device not ready yet');
-              }); 
+            .then(response => {
+              // If this block is reached, the device is online.
+              console.log('Device is back online. Redirecting to login page...');
+              window.location.href = '/login.html';
+            })
+            .catch(err => {
+              // This block will only be reached on a network error.
+              throw new Error('Device not ready yet');
+            });
           if (response) {
             // Device is back online and session is valid!
             clearInterval(pollInterval);
@@ -10808,6 +10948,9 @@
       // Initialize Documentation section
       initDocumentation();
 
+      // Initialize Hardware Logs (Phase 9)
+      initHardwareLogs();
+
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
       if (themeToggle) {
@@ -10851,6 +10994,25 @@
       });
 
       console.log('ESP32 SIP Door Station initialized');
+    }
+
+    /**
+     * Initialize hardware logs section
+     */
+    function initHardwareLogs() {
+      // Initial refresh
+      refreshHWLogs();
+
+      // Setup log auto-refresh toggle
+      const checkbox = document.getElementById('hw-log-auto-refresh');
+      if (checkbox) {
+        checkbox.addEventListener('change', toggleHWLogAutoRefresh);
+
+        // Start auto-refresh initially if checked
+        if (checkbox.checked) {
+          toggleHWLogAutoRefresh();
+        }
+      }
     }
 
     // Initialize when DOM is ready
