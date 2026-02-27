@@ -32,5 +32,6 @@
   "sonarlint.pathToCompileCommands": "${workspaceFolder}\\firmware\\compile_commands.json",
   "idf.espIdfPathWin": "c:\\ESP-IDF\\v5.5.1\\esp-idf",
   "idf.toolsPathWin": "C:\\Espressif",
-  "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe"
+  "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.currentSetup": "c:\\ESP-IDF\\v5.5.1\\esp-idf"
 }

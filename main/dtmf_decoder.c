@@ -14,7 +14,6 @@
 #include <sys/time.h>
 
 static const char *TAG = "DTMF";
-static dtmf_callback_t dtmf_callback = NULL;
 
 // NVS namespace for security configuration
 #define NVS_NAMESPACE "dtmf_security"
