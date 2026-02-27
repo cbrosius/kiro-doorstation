@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -103,6 +102,14 @@ esp_err_t ota_rollback(void);
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t ota_mark_valid(void);
+
+/**
+ * @brief Start OTA update from a remote URL (async)
+ *
+ * @param url URL to fetch firmware from
+ * @return ESP_OK if task started, error otherwise
+ */
+esp_err_t ota_update_from_url(const char *url);
 
 /**
  * @brief Get human-readable status string

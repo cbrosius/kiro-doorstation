@@ -32,4 +32,6 @@ idf_component_register(
         json
         mbedtls
         app_update
+        esp_https_ota
+        esp_http_client
 )

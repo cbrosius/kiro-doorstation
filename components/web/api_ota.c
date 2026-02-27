@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 static const char *TAG = "API_OTA";
 
 // ============================================================================
@@ -115,6 +114,39 @@ static esp_err_t post_ota_rollback_handler(httpd_req_t *req) {
   }
 }
 
+static esp_err_t post_ota_url_handler(httpd_req_t *req) {
+  if (auth_filter(req, true) != ESP_OK) {
+    return ESP_FAIL;
+  }
+
+  cJSON *root = NULL;
+  esp_err_t ret = http_parse_json_body(req, &root);
+  if (ret != ESP_OK) {
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST,
+                                    "Invalid JSON body");
+  }
+
+  cJSON *url_json = cJSON_GetObjectItem(root, "url");
+  if (!url_json || !cJSON_IsString(url_json)) {
+    cJSON_Delete(root);
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST,
+                                    "Missing 'url' field");
+  }
+
+  const char *url = url_json->valuestring;
+  ESP_LOGI(TAG, "Triggering remote OTA from URL: %s", url);
+
+  esp_err_t err = ota_update_from_url(url);
+  cJSON_Delete(root);
+
+  if (err == ESP_OK) {
+    return http_response_json_success(req, "Remote OTA update started");
+  } else {
+    return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                    "Failed to start remote OTA");
+  }
+}
+
 static esp_err_t get_ota_status_handler(httpd_req_t *req) {
   if (auth_filter(req, false) != ESP_OK) {
     return ESP_FAIL;
@@ -163,6 +195,11 @@ static const httpd_uri_t ota_status_uri = {.uri = "/api/ota/status",
                                            .handler = get_ota_status_handler,
                                            .user_ctx = NULL};
 
+static const httpd_uri_t ota_url_uri = {.uri = "/api/ota/url",
+                                        .method = HTTP_POST,
+                                        .handler = post_ota_url_handler,
+                                        .user_ctx = NULL};
+
 esp_err_t api_ota_register(httpd_handle_t server) {
   ESP_LOGI(TAG, "Registering OTA API handlers");
 
@@ -181,6 +218,9 @@ esp_err_t api_ota_register(httpd_handle_t server) {
   if (ret != ESP_OK)
     return ret;
   ret = httpd_register_uri_handler(server, &ota_status_uri);
+  if (ret != ESP_OK)
+    return ret;
+  ret = httpd_register_uri_handler(server, &ota_url_uri);
   if (ret != ESP_OK)
     return ret;
 

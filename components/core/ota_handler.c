@@ -1,14 +1,17 @@
 #include "ota_handler.h"
 #include "bootloader_common.h"
 #include "esp_app_format.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
 #include "esp_image_format.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mbedtls/sha256.h"
 #include <string.h>
 #include <time.h>
-
 
 static const char *TAG = "OTA_HANDLER";
 
@@ -547,3 +550,106 @@ const char *ota_get_status_string(void) {
 }
 
 const ota_context_t *ota_get_context(void) { return &g_ota_ctx; }
+
+static void ota_remote_task(void *pvParameters) {
+  char *url = (char *)pvParameters;
+
+  ESP_LOGI(TAG, "Starting remote OTA from URL: %s", url);
+
+  esp_http_client_config_t config = {
+      .url = url,
+      .keep_alive_enable = true,
+#ifdef CONFIG_EXAMPLE_SKIP_COMMON_NAME_CHECK
+      .skip_cert_common_name_check = true,
+#endif
+  };
+
+  esp_https_ota_config_t ota_config = {
+      .http_config = &config,
+  };
+
+  // Reset context
+  g_ota_ctx.state = OTA_STATE_BEGIN;
+  memset(g_ota_ctx.error_message, 0, sizeof(g_ota_ctx.error_message));
+  strncpy(g_ota_ctx.status_message, "Connecting to update server...",
+          sizeof(g_ota_ctx.status_message) - 1);
+  g_ota_ctx.progress_percent = 0;
+
+  esp_https_ota_handle_t https_ota_handle = NULL;
+  esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(err));
+    g_ota_ctx.state = OTA_STATE_ERROR;
+    snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
+             "Connection failed: %s", esp_err_to_name(err));
+    free(url);
+    vTaskDelete(NULL);
+    return;
+  }
+
+  g_ota_ctx.state = OTA_STATE_WRITING;
+
+  while (1) {
+    err = esp_https_ota_perform(https_ota_handle);
+    if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+      break;
+    }
+
+    // Update progress
+    int len = esp_https_ota_get_image_len_read(https_ota_handle);
+    int total = esp_https_ota_get_image_size(https_ota_handle);
+    if (total > 0) {
+      g_ota_ctx.progress_percent = (len * 100) / total;
+      g_ota_ctx.written_size = len;
+      g_ota_ctx.total_size = total;
+      snprintf(g_ota_ctx.status_message, sizeof(g_ota_ctx.status_message),
+               "Downloading: %d%% (%d/%d bytes)", g_ota_ctx.progress_percent,
+               len, total);
+    }
+  }
+
+  if (esp_https_ota_is_complete_data_received(https_ota_handle)) {
+    err = esp_https_ota_finish(https_ota_handle);
+    if (err == ESP_OK) {
+      ESP_LOGI(TAG, "Remote OTA Successful, rebooting...");
+      g_ota_ctx.state = OTA_STATE_COMPLETE;
+      g_ota_ctx.progress_percent = 100;
+      strncpy(g_ota_ctx.status_message, "Complete! Rebooting...",
+              sizeof(g_ota_ctx.status_message) - 1);
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_restart();
+    } else {
+      ESP_LOGE(TAG, "esp_https_ota_finish failed: %s", esp_err_to_name(err));
+      g_ota_ctx.state = OTA_STATE_ERROR;
+      snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
+               "Finish failed: %s", esp_err_to_name(err));
+    }
+  } else {
+    ESP_LOGE(TAG, "Remote OTA Failed: Data incomplete or error occurred");
+    g_ota_ctx.state = OTA_STATE_ERROR;
+    snprintf(g_ota_ctx.error_message, sizeof(g_ota_ctx.error_message),
+             "Download failed");
+    esp_https_ota_abort(https_ota_handle);
+  }
+
+  free(url);
+  vTaskDelete(NULL);
+}
+
+esp_err_t ota_update_from_url(const char *url) {
+  if (g_ota_ctx.state != OTA_STATE_IDLE) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  char *url_copy = strdup(url);
+  if (!url_copy)
+    return ESP_ERR_NO_MEM;
+
+  if (xTaskCreate(ota_remote_task, "ota_remote_task", 8192, url_copy, 5,
+                  NULL) != pdPASS) {
+    free(url_copy);
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
+}

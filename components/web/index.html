@@ -3534,7 +3534,7 @@
             <div
               style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs);">
               <span
-                style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">Upload
+                style="font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text);">OTA
                 Progress</span>
               <span id="ota-progress-percent"
                 style="font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); color: var(--color-primary);">0%</span>
@@ -3549,23 +3549,58 @@
           <div
             style="display: flex; justify-content: space-between; font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-sm);">
             <span id="ota-upload-speed">Speed: --</span>
-            <span id="ota-time-remaining">Time remaining: --</span>
-          </div>
-          <div id="ota-upload-status"
-            style="margin-top: var(--spacing-md); padding: var(--spacing-sm); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); font-size: var(--font-size-sm); color: var(--color-text);">
+            <span id="ota-upload-status">Ready</span>
+            <span id="ota-time-remaining">Time left: --</span>
           </div>
         </div>
 
-        <!-- Upload Button -->
-        <div style="margin-top: var(--spacing-lg);">
-          <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="uploadFirmware()" disabled>
-            <span class="btn-text">
-              <span>⬆️</span>
-              <span>Upload Firmware</span>
-            </span>
-            <span class="btn-spinner" hidden>⏳</span>
+        <!-- Action Buttons -->
+        <div style="margin-top: var(--spacing-xl); text-align: right;">
+          <button id="ota-upload-btn" class="btn btn-lg btn-success" disabled onclick="uploadFirmware()">
+            <span>🚀</span>
+            <span>Apply Update</span>
           </button>
         </div>
+      </div>
+
+      <!-- Remote URL Update (Phase 11) -->
+      <div class="config-form">
+        <h3 style="margin-bottom: var(--spacing-md);">Remote Firmware Update</h3>
+        <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
+          Specify a URL to download and install a firmware update directly from a server.
+        </p>
+
+        <div class="form-group">
+          <label for="ota-remote-url">Firmware URL</label>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <input type="url" id="ota-remote-url" class="form-control" placeholder="https://example.com/firmware.bin"
+              style="flex: 1;">
+            <button type="button" class="btn btn-primary" id="ota-remote-btn" onclick="startRemoteOTA()">
+              <span>☁️</span>
+              <span>Start Remote Update</span>
+            </button>
+          </div>
+          <p class="form-help">Enter the full URL including http:// or https://</p>
+        </div>
+      </div>
+      <span id="ota-upload-speed">Speed: --</span>
+      <span id="ota-time-remaining">Time remaining: --</span>
+      </div>
+      <div id="ota-upload-status"
+        style="margin-top: var(--spacing-md); padding: var(--spacing-sm); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); font-size: var(--font-size-sm); color: var(--color-text);">
+      </div>
+      </div>
+
+      <!-- Upload Button -->
+      <div style="margin-top: var(--spacing-lg);">
+        <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="uploadFirmware()" disabled>
+          <span class="btn-text">
+            <span>⬆️</span>
+            <span>Upload Firmware</span>
+          </span>
+          <span class="btn-spinner" hidden>⏳</span>
+        </button>
+      </div>
       </div>
 
       <!-- Task 14.4: Update Confirmation and Warnings -->
@@ -10517,11 +10552,11 @@
         xhr.send(fileData);
 
       } catch (error) {
-        console.error('Error uploading firmware:', error);
+        console.error('Error during upload:', error);
         if (uploadStatus) {
-          uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ ${error.message}</strong>`;
+          uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Network error during upload</strong>';
         }
-        showToast('Error uploading firmware: ' + error.message, 'error');
+        showToast('Error: Network connection failed during upload', 'error');
 
         // Re-enable upload button
         if (uploadBtn) {
@@ -10529,6 +10564,106 @@
           uploadBtn.disabled = false;
         }
       }
+    }
+
+    /**
+     * Start remote OTA from URL (Phase 11)
+     */
+    async function startRemoteOTA() {
+      const urlInput = document.getElementById('ota-remote-url');
+      const url = urlInput?.value.trim();
+
+      if (!url) {
+        showToast('Please enter a firmware URL', 'error');
+        return;
+      }
+
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        showToast('URL must start with http:// or https://', 'error');
+        return;
+      }
+
+      const confirmed = await showConfirmDialog(
+        'Start Remote Update',
+        `<strong>⚠️ Warning:</strong><br><br>` +
+        `The device will download and install firmware from:<br><br>` +
+        `<code style="word-break: break-all;">${url}</code><br><br>` +
+        `Do you want to proceed?`,
+        'Start Update',
+        'Cancel',
+        'warning'
+      );
+
+      if (!confirmed) return;
+
+      const remoteBtn = document.getElementById('ota-remote-btn');
+      const progressContainer = document.getElementById('ota-progress-container');
+      const uploadStatus = document.getElementById('ota-upload-status');
+
+      if (remoteBtn) setLoadingState(remoteBtn, true);
+      if (progressContainer) progressContainer.style.display = 'block';
+      if (uploadStatus) uploadStatus.textContent = 'Contacting server...';
+
+      try {
+        const response = await apiRequest('/api/ota/url', {
+          method: 'POST',
+          body: JSON.stringify({ url: url })
+        });
+
+        if (response && response.success) {
+          showToast('Remote OTA update started. Monitoring progress...', 'success');
+          // Start polling status
+          pollOTAStatus();
+        } else {
+          showToast('Failed to start remote OTA: ' + (response?.error || 'Unknown error'), 'error');
+          if (remoteBtn) setLoadingState(remoteBtn, false);
+        }
+      } catch (error) {
+        console.error('Error starting remote OTA:', error);
+        showToast('Error starting remote OTA', 'error');
+        if (remoteBtn) setLoadingState(remoteBtn, false);
+      }
+    }
+
+    /**
+     * Poll OTA status for background operations
+     */
+    let otaPollInterval = null;
+    function pollOTAStatus() {
+      if (otaPollInterval) return;
+
+      const progressBar = document.getElementById('ota-progress-bar');
+      const progressPercent = document.getElementById('ota-progress-percent');
+      const uploadStatus = document.getElementById('ota-upload-status');
+
+      otaPollInterval = setInterval(async () => {
+        try {
+          const status = await apiRequest('/api/ota/status', { silentError: true });
+
+          if (!status) return;
+
+          if (progressBar) progressBar.style.width = status.progress + '%';
+          if (progressPercent) progressPercent.textContent = status.progress + '%';
+          if (uploadStatus) uploadStatus.textContent = status.state;
+
+          if (status.state === 'Complete') {
+            clearInterval(otaPollInterval);
+            otaPollInterval = null;
+            showToast('OTA update complete! Rebooting...', 'success');
+            showRestartCountdown();
+          } else if (status.state.toLowerCase().includes('failed') || status.error) {
+            clearInterval(otaPollInterval);
+            otaPollInterval = null;
+            const errorMsg = status.error || 'Update failed';
+            if (uploadStatus) uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ ${errorMsg}</strong>`;
+            showToast('OTA update failed: ' + errorMsg, 'error');
+            const remoteBtn = document.getElementById('ota-remote-btn');
+            if (remoteBtn) setLoadingState(remoteBtn, false);
+          }
+        } catch (error) {
+          console.error('Error polling OTA status:', error);
+        }
+      }, 1000);
     }
 
     /**
