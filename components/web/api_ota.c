@@ -119,9 +119,8 @@ static esp_err_t post_ota_url_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
 
-  cJSON *root = NULL;
-  esp_err_t ret = http_parse_json_body(req, &root);
-  if (ret != ESP_OK) {
+  cJSON *root = http_parse_json_body(req);
+  if (!root) {
     return http_response_json_error(req, HTTPD_400_BAD_REQUEST,
                                     "Invalid JSON body");
   }

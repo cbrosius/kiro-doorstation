@@ -19,6 +19,7 @@
 #include "hardware_test.h"
 #include "led_handler.h"
 #include "ntp_sync.h"
+#include "ota_handler.h"
 #include "sip_client.h"
 #include "web_server.h"
 #include "wifi_manager.h"
@@ -60,6 +61,11 @@ void app_main(void) {
   // Initialize LED Handler as early as possible
   led_handler_init();
   led_handler_set_state(LED_STATE_INIT);
+
+  // Initialize OTA Handler before hardware status (to ensure partition info is
+  // available if needed)
+  ota_handler_init();
+
   hw_status_init();
 
   ESP_LOGI(TAG, "ESP32 SIP Door Station started");
@@ -84,6 +90,9 @@ void app_main(void) {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
+
+  // Initialize Auth Manager early as GPIO and Web depend on it
+  auth_manager_init();
 
   // Initialize GPIO
   gpio_handler_init();
