@@ -538,12 +538,12 @@
         
         const data = await response.json();
         
-        if (response.ok && data.success) {
+        if (response.ok && data.status === 'success') {
           // Login successful - redirect to main interface
           window.location.href = '/';
         } else {
           // Login failed - show error message
-          const errorMsg = data.error || 'Login failed. Please try again.';
+          const errorMsg = data.message || 'Login failed. Please try again.';
           showError(errorMsg);
           setLoading(false);
           

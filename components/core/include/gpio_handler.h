@@ -8,10 +8,10 @@
 
 // Pin-Definitionen
 #define DOORBELL_1_PIN GPIO_NUM_21
-#define DOORBELL_2_PIN GPIO_NUM_22
+#define DOORBELL_2_PIN GPIO_NUM_4
 #define BOOT_BUTTON_PIN GPIO_NUM_0 // ESP32-S3 BOOT button for testing
-#define DOOR_RELAY_PIN GPIO_NUM_13
-#define LIGHT_RELAY_PIN GPIO_NUM_27
+#define DOOR_RELAY_PIN GPIO_NUM_5
+#define LIGHT_RELAY_PIN GPIO_NUM_6
 
 // I2S Audio Pins
 #define I2S_SCK_PIN GPIO_NUM_14

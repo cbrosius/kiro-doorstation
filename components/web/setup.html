@@ -663,7 +663,7 @@
         
         const data = await response.json();
         
-        if (response.ok && data.success) {
+        if (response.ok && data.status === 'success') {
           // Setup successful
           showMessage('Setup complete! Redirecting to login...', 'success');
           
@@ -673,7 +673,7 @@
           }, 2000);
         } else {
           // Setup failed - show error message
-          const errorMsg = data.error || 'Setup failed. Please try again.';
+          const errorMsg = data.message || 'Setup failed. Please try again.';
           showMessage(errorMsg, 'error');
           setLoading(false);
           

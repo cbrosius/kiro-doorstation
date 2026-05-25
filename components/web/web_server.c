@@ -36,7 +36,7 @@ static bool is_public_endpoint(const char *uri) {
   }
 
   const char *public_endpoints[] = {"/api/auth/login",
-                                    "/api/auth/setup", // Match api_auth.c
+                                    "/api/auth/set-password", // Match api_auth.c
                                     "/login.html",     "/setup.html",
                                     "/favicon.ico",    NULL};
 

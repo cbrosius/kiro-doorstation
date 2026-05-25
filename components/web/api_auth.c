@@ -202,7 +202,7 @@ static const httpd_uri_t auth_logout_uri = {.uri = "/api/auth/logout",
                                             .handler = post_auth_logout_handler,
                                             .user_ctx = NULL};
 
-static const httpd_uri_t auth_setup_uri = {.uri = "/api/auth/setup",
+static const httpd_uri_t auth_setup_uri = {.uri = "/api/auth/set-password",
                                            .method = HTTP_POST,
                                            .handler =
                                                post_auth_set_password_handler,
