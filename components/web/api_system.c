@@ -12,6 +12,8 @@
 #include "web_server.h"
 #include "web_utils.h"
 #include "wifi_manager.h"
+#include "sip_client.h"
+#include "ntp_sync.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -193,6 +195,55 @@ static esp_err_t get_system_info_handler(httpd_req_t *req) {
   return http_response_json_data(req, root);
 }
 
+static esp_err_t get_system_health_handler(httpd_req_t *req) {
+  if (auth_filter(req, false) != ESP_OK) {
+    return ESP_FAIL;
+  }
+
+  cJSON *root = cJSON_CreateObject();
+  if (!root)
+    return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                    "Failed to create JSON");
+
+  // Uptime
+  uint32_t uptime_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  uint32_t uptime_seconds = uptime_ms / 1000;
+  uint32_t hours = uptime_seconds / 3600;
+  uint32_t minutes = (uptime_seconds % 3600) / 60;
+  uint32_t seconds = uptime_seconds % 60;
+  cJSON_AddNumberToObject(root, "uptime_seconds", (double)uptime_seconds);
+
+  // Memory
+  uint32_t free_heap = esp_get_free_heap_size();
+  uint32_t min_heap = esp_get_minimum_free_heap_size();
+  cJSON_AddNumberToObject(root, "free_heap_bytes", (double)free_heap);
+  cJSON_AddNumberToObject(root, "min_free_heap_bytes", (double)min_heap);
+  cJSON_AddNumberToObject(root, "heap_usage_percent",
+                          (double)((1.0 - (double)free_heap / (double)esp_get_free_heap_size()) * 100.0));
+
+  // WiFi
+  wifi_connection_info_t wifi_info = wifi_get_connection_info();
+  cJSON_AddStringToObject(root, "wifi_connected", wifi_info.ip_address[0] ? "yes" : "no");
+  cJSON_AddStringToObject(root, "ip_address", wifi_info.ip_address);
+  cJSON_AddStringToObject(root, "ssid", wifi_info.ssid);
+  cJSON_AddNumberToObject(root, "rssi", (double)wifi_info.rssi);
+
+  // SIP
+  sip_state_t sip_state = sip_client_get_state();
+  cJSON_AddStringToObject(root, "sip_state", sip_state_to_str(sip_state));
+  cJSON_AddBoolToObject(root, "sip_registered", sip_is_registered());
+
+  // NTP
+  cJSON_AddBoolToObject(root, "ntp_synced", ntp_is_synced());
+  cJSON_AddNumberToObject(root, "last_ntp_sync", (double)ntp_get_last_sync_time());
+
+  // Overall health
+  bool healthy = (free_heap > 10240) && wifi_info.ip_address[0] && sip_is_registered();
+  cJSON_AddBoolToObject(root, "healthy", healthy);
+
+  return http_response_json_data(req, root);
+}
+
 // ============================================================================
 // URI Handler Structures
 // ============================================================================
@@ -241,6 +292,15 @@ esp_err_t api_system_register(httpd_handle_t server) {
     return ret;
 
   ret = httpd_register_uri_handler(server, &system_info_uri);
+  if (ret != ESP_OK)
+    return ret;
+
+  static const httpd_uri_t system_health_uri = {.uri = "/api/system/health",
+                                                .method = HTTP_GET,
+                                                .handler =
+                                                    get_system_health_handler,
+                                                .user_ctx = NULL};
+  ret = httpd_register_uri_handler(server, &system_health_uri);
   if (ret != ESP_OK)
     return ret;
 

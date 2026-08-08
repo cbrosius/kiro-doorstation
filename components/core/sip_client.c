@@ -19,6 +19,7 @@
 #include "sip_msg.h"
 #include "sip_utils.h"
 #include <inttypes.h>
+#include <errno.h>
 
 // Suppress format-truncation warnings for SIP message construction throughout
 // this file SIP URIs can be long but our buffers (2048-3072 bytes) are sized
@@ -34,6 +35,8 @@ static TaskHandle_t sip_task_handle = NULL;
 static bool registration_requested = false;
 static bool reinit_requested = false;
 static uint32_t auto_register_delay_ms = 5000; // Wait 5 seconds after init
+static uint32_t last_register_timestamp = 0;
+static const uint32_t REGISTER_INTERVAL_MS = 3600000; // Re-register every 1 hour
 static uint32_t init_timestamp = 0;
 static uint32_t call_start_timestamp = 0;
 static uint32_t call_timeout_ms = 30000; // 30 second call timeout
@@ -42,7 +45,9 @@ static uint32_t last_message_timestamp =
 static uint32_t sip_response_timeout_ms =
     3000; // 3 second timeout for SIP responses
 static uint32_t connection_retry_delay_ms =
-    10000; // 10 seconds before retrying connection
+    10000; // Initial retry delay (exponential backoff up to 60s)
+static uint32_t connection_retry_count = 0;
+static const uint32_t MAX_RETRY_DELAY_MS = 60000;
 static uint32_t last_connection_retry_timestamp = 0;
 static uint32_t last_rtp_received_timestamp = 0;
 static const uint32_t rtp_timeout_ms = 5000; // 5 seconds
@@ -121,11 +126,7 @@ void sip_add_log_entry(const char *type, const char *message) {
   // Yield to other tasks after serial logging
   taskYIELD();
 
-  // Add to web log buffer
-  if (!sip_log_mutex) {
-    sip_log_mutex = xSemaphoreCreateMutex();
-  }
-
+  // Add to web log buffer (mutex created once at init)
   if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     sip_log_entry_t *entry = &sip_log_buffer[sip_log_write_index];
 
@@ -236,6 +237,10 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
         // Create new socket
         sip_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sip_socket >= 0) {
+          // Allow address reuse to avoid bind failures after TIME_WAIT
+          int reuse = 1;
+          setsockopt(sip_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
           // Bind socket to port 5060
           struct sockaddr_in local_addr;
           memset(&local_addr, 0, sizeof(local_addr));
@@ -337,10 +342,18 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
         memset(&invite_auth_challenge, 0, sizeof(invite_auth_challenge));
         invite_auth_attempt_count = 0;
 
+        connection_retry_count++;
+        uint32_t backoff = connection_retry_delay_ms * (1 << (connection_retry_count > 6 ? 6 : connection_retry_count));
+        if (backoff > MAX_RETRY_DELAY_MS) backoff = MAX_RETRY_DELAY_MS;
+
         last_connection_retry_timestamp =
             xTaskGetTickCount() * portTICK_PERIOD_MS;
         last_message_timestamp = 0;
-        sip_add_log_entry("info", "Connection retry scheduled in 10 seconds");
+        char retry_msg[128];
+        snprintf(retry_msg, sizeof(retry_msg),
+                 "Connection retry scheduled in %lu seconds (attempt %lu)",
+                 (unsigned long)(backoff / 1000), (unsigned long)(connection_retry_count + 1));
+        sip_add_log_entry("info", retry_msg);
       }
     }
 
@@ -419,11 +432,16 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
       }
     }
 
-    // Auto-registration after delay (if configured and not already registered)
-    if (init_timestamp > 0 && current_state == SIP_STATE_IDLE &&
+    // Auto-registration after delay or periodically (if configured and not already registered)
+    bool periodic_register = (current_state == SIP_STATE_REGISTERED &&
+                              last_register_timestamp > 0 &&
+                              sip_config.configured &&
+                              (xTaskGetTickCount() * portTICK_PERIOD_MS - last_register_timestamp) >=
+                                  REGISTER_INTERVAL_MS);
+    if ((init_timestamp > 0 && current_state == SIP_STATE_IDLE &&
         sip_config.configured &&
         (xTaskGetTickCount() * portTICK_PERIOD_MS - init_timestamp) >=
-            auto_register_delay_ms) {
+            auto_register_delay_ms) || periodic_register) {
 
       char auto_reg_msg[256];
       snprintf(
@@ -435,11 +453,12 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
       init_timestamp = 0; // Clear flag so we only try once
       registration_requested = true;
+      last_register_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
       sip_add_log_entry("info", "registration_requested flag set to true");
     }
 
     // Check if registration was requested (manual or auto)
-    if (registration_requested && current_state != SIP_STATE_REGISTERED) {
+    if (registration_requested && (current_state != SIP_STATE_REGISTERED || periodic_register)) {
       char reg_debug[256];
       snprintf(reg_debug, sizeof(reg_debug),
                "Processing registration: state=%s, socket=%d, configured=%d",
@@ -464,6 +483,10 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
           sip_add_log_entry("error", "State changed to ERROR");
           continue;
         }
+
+        // Allow address reuse to avoid bind failures after TIME_WAIT
+        int reuse = 1;
+        setsockopt(sip_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
         // Bind socket to port 5060
         struct sockaddr_in local_addr;
@@ -528,6 +551,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             has_initial_transaction_ids = false; // Clear stored IDs
             led_handler_set_state(LED_STATE_SIP_REGISTERED);
             sip_add_log_entry("info", "SIP registration successful");
+            connection_retry_count = 0;
           } else if (current_state == SIP_STATE_CALLING ||
                      current_state == SIP_STATE_RINGING) {
             // Clear stored INVITE auth challenge on successful call
@@ -605,9 +629,14 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             struct sockaddr_in server_addr;
             if (resolve_hostname(sip_config.server, &server_addr,
                                  (uint16_t)sip_config.port)) {
-              sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
-                     (struct sockaddr *)&server_addr, sizeof(server_addr));
-              sip_add_log_entry("sent", "ACK sent");
+              int sent = sendto(sip_socket, ack_msg, strlen(ack_msg), 0,
+                             (struct sockaddr *)&server_addr, sizeof(server_addr));
+              if (sent < 0) {
+                  ESP_LOGE(TAG, "Failed to send ACK: errno=%d", errno);
+                  sip_add_log_entry("error", "Failed to send ACK");
+              } else {
+                  sip_add_log_entry("sent", "ACK sent");
+              }
             }
 
             // Extract remote RTP port from SDP (simplified - assumes port 5004)
@@ -1134,6 +1163,16 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             current_state = SIP_STATE_DISCONNECTED;
           } else if (current_state == SIP_STATE_CALLING ||
                      current_state == SIP_STATE_RINGING) {
+            sip_add_log_entry(
+                "error",
+                "500 during call setup - returning to registered");
+            call_start_timestamp = 0;
+            has_invite_auth_challenge = false;
+            invite_auth_attempt_count = 0;
+            current_state = SIP_STATE_REGISTERED;
+            audio_stop_recording();
+            audio_stop_playback();
+            rtp_stop_session();
           } else if (strncmp(buffer, "OPTIONS ", 8) == 0) {
             // Handle OPTIONS request (capability query / keepalive)
             sip_add_log_entry("received", "OPTIONS request received");
@@ -2064,7 +2103,57 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
   vTaskDelete(NULL);
 }
 
+/**
+ * @brief Validate SIP configuration for correctness
+ * @return true if config is valid, false otherwise
+ */
+static bool sip_validate_config(const sip_config_t *config) {
+    if (!config) {
+        return false;
+    }
+
+    // Check server hostname is not empty
+    if (config->server[0] == '\0') {
+        ESP_LOGE(TAG, "Invalid SIP config: server is empty");
+        return false;
+    }
+
+    // Check server hostname length
+    if (strlen(config->server) >= sizeof(config->server)) {
+        ESP_LOGE(TAG, "Invalid SIP config: server hostname too long");
+        return false;
+    }
+
+    // Check port is in valid range
+    if (config->port <= 0 || config->port > 65535) {
+        ESP_LOGE(TAG, "Invalid SIP config: port %d out of range", config->port);
+        return false;
+    }
+
+    // Check username is not empty
+    if (config->username[0] == '\0') {
+        ESP_LOGE(TAG, "Invalid SIP config: username is empty");
+        return false;
+    }
+
+    // Check password is not empty
+    if (config->password[0] == '\0') {
+        ESP_LOGE(TAG, "Invalid SIP config: password is empty");
+        return false;
+    }
+
+    // Check at least one target URI is configured
+    if (config->apartment1_uri[0] == '\0' && config->apartment2_uri[0] == '\0') {
+        ESP_LOGE(TAG, "Invalid SIP config: no target URIs configured");
+        return false;
+    }
+
+    return true;
+}
+
 void sip_client_init(void) {
+  // Create log mutex before any logging can occur
+  sip_log_mutex = xSemaphoreCreateMutex();
   sip_add_log_entry("info", "Initializing SIP client");
 
   // Initialize RTP handler
@@ -2077,10 +2166,16 @@ void sip_client_init(void) {
   sip_config = sip_load_config();
 
   if (sip_config.configured) {
-    char log_msg[128];
-    snprintf(log_msg, sizeof(log_msg), "SIP configuration loaded: %s@%s",
-             sip_config.username, sip_config.server);
-    sip_add_log_entry("info", log_msg);
+    if (sip_validate_config(&sip_config)) {
+      char log_msg[128];
+      snprintf(log_msg, sizeof(log_msg), "SIP configuration loaded: %s@%s",
+               sip_config.username, sip_config.server);
+      sip_add_log_entry("info", log_msg);
+    } else {
+      sip_add_log_entry("error", "SIP configuration invalid - check server, port, username, password, and targets");
+      current_state = SIP_STATE_ERROR;
+      return;
+    }
 
     // Check IP status before creating socket
     char local_ip[16];

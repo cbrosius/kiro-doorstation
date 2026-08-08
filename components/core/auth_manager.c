@@ -8,6 +8,8 @@
 #include "mbedtls/md.h"
 #include "mbedtls/pkcs5.h"
 #include "mbedtls/platform.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "AUTH_MANAGER";
 
@@ -28,7 +30,8 @@ static audit_log_entry_t audit_logs[AUTH_MAX_AUDIT_LOGS];
 static int audit_log_head = 0;
 static int audit_log_count = 0;
 
-// Mutex for thread safety (if needed in future)
+// Mutex for thread safety (protects active_sessions array)
+static SemaphoreHandle_t session_mutex = NULL;
 static bool auth_initialized = false;
 
 /**
@@ -189,18 +192,24 @@ static void add_audit_log(const char* username, const char* ip_address, const ch
 void auth_manager_init(void) {
     ESP_LOGI(TAG, "Initializing authentication manager");
     ESP_LOGI(TAG, "All sessions cleared - RAM-based storage reset on boot");
-    
+
+    // Create session mutex first (before any NVS operations)
+    session_mutex = xSemaphoreCreateMutex();
+    if (session_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create session mutex");
+    }
+
     // Initialize session storage
     memset(active_sessions, 0, sizeof(active_sessions));
-    
+
     // Initialize login attempt tracking
     memset(login_attempts, 0, sizeof(login_attempts));
-    
+
     // Initialize audit logs
     memset(audit_logs, 0, sizeof(audit_logs));
     audit_log_head = 0;
     audit_log_count = 0;
-    
+
     // Open NVS
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open(AUTH_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
@@ -208,7 +217,7 @@ void auth_manager_init(void) {
         ESP_LOGE(TAG, "Failed to open NVS namespace: %s", esp_err_to_name(err));
         return;
     }
-    
+
     // Check if admin password exists
     size_t required_size = 0;
     err = nvs_get_blob(nvs_handle, AUTH_NVS_PASSWORD_KEY, NULL, &required_size);
@@ -501,51 +510,55 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     
     // Find empty session slot
     int session_slot = -1;
-    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-        if (!active_sessions[i].valid) {
-            session_slot = i;
-            break;
-        }
-    }
-    
-    // If no empty slot, use oldest session
-    if (session_slot == -1) {
-        uint32_t oldest_time = current_time;
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-            if (active_sessions[i].created_at < oldest_time) {
-                oldest_time = active_sessions[i].created_at;
+            if (!active_sessions[i].valid) {
                 session_slot = i;
+                break;
             }
         }
+
+        // If no empty slot, use oldest session
+        if (session_slot == -1) {
+            uint32_t oldest_time = current_time;
+            for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+                if (active_sessions[i].created_at < oldest_time) {
+                    oldest_time = active_sessions[i].created_at;
+                    session_slot = i;
+                }
+            }
+        }
+
+        // Create new session
+        session_t* session = &active_sessions[session_slot];
+        generate_session_id(session->session_id);
+        strncpy(session->username, username, AUTH_USERNAME_MAX_LEN - 1);
+        session->username[AUTH_USERNAME_MAX_LEN - 1] = '\0';
+
+        if (client_ip) {
+            strncpy(session->ip_address, client_ip, AUTH_IP_ADDRESS_MAX_LEN - 1);
+            session->ip_address[AUTH_IP_ADDRESS_MAX_LEN - 1] = '\0';
+        }
+
+        session->created_at = current_time;
+        session->last_activity = current_time;
+        session->expires_at = current_time + AUTH_SESSION_TIMEOUT_SECONDS;
+        session->valid = true;
+
+        // Set result
+        result.authenticated = true;
+        strncpy(result.session_id, session->session_id, AUTH_SESSION_ID_SIZE - 1);
+        result.session_id[AUTH_SESSION_ID_SIZE - 1] = '\0';
+        result.expires_at = session->expires_at;
+
+        // Clear failed attempts on successful login
+        if (client_ip) {
+            auth_clear_failed_attempts(client_ip);
+        }
+    
+        xSemaphoreGive(session_mutex);
+    
     }
-    
-    // Create new session
-    session_t* session = &active_sessions[session_slot];
-    generate_session_id(session->session_id);
-    strncpy(session->username, username, AUTH_USERNAME_MAX_LEN - 1);
-    session->username[AUTH_USERNAME_MAX_LEN - 1] = '\0';
-    
-    if (client_ip) {
-        strncpy(session->ip_address, client_ip, AUTH_IP_ADDRESS_MAX_LEN - 1);
-        session->ip_address[AUTH_IP_ADDRESS_MAX_LEN - 1] = '\0';
-    }
-    
-    session->created_at = current_time;
-    session->last_activity = current_time;
-    session->expires_at = current_time + AUTH_SESSION_TIMEOUT_SECONDS;
-    session->valid = true;
-    
-    // Set result
-    result.authenticated = true;
-    strncpy(result.session_id, session->session_id, AUTH_SESSION_ID_SIZE - 1);
-    result.session_id[AUTH_SESSION_ID_SIZE - 1] = '\0';
-    result.expires_at = session->expires_at;
-    
-    // Clear failed attempts on successful login
-    if (client_ip) {
-        auth_clear_failed_attempts(client_ip);
-    }
-    
     // Log successful login
     add_audit_log(username, client_ip, "success", true);
     
@@ -558,42 +571,52 @@ bool auth_validate_session(const char* session_id) {
     if (!session_id) {
         return false;
     }
-    
+
     uint32_t current_time = get_current_time();
-    
-    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-        if (active_sessions[i].valid && 
-            strcmp(active_sessions[i].session_id, session_id) == 0) {
-            
-            // Check if session has expired
-            if (current_time > active_sessions[i].expires_at) {
-                active_sessions[i].valid = false;
-                ESP_LOGI(TAG, "Session expired for user '%s'", active_sessions[i].username);
-                return false;
+
+    bool valid = false;
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+            if (active_sessions[i].valid &&
+                strcmp(active_sessions[i].session_id, session_id) == 0) {
+
+                // Check if session has expired
+                if (current_time > active_sessions[i].expires_at) {
+                    active_sessions[i].valid = false;
+                    ESP_LOGI(TAG, "Session expired for user '%s'", active_sessions[i].username);
+                    xSemaphoreGive(session_mutex);
+                    return false;
+                }
+
+                valid = true;
+                break;
             }
-            
-            return true;
         }
+        xSemaphoreGive(session_mutex);
     }
-    
-    return false;
+
+    return valid;
 }
 
 void auth_extend_session(const char* session_id) {
     if (!session_id) {
         return;
     }
-    
+
     uint32_t current_time = get_current_time();
-    
-    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-        if (active_sessions[i].valid && 
-            strcmp(active_sessions[i].session_id, session_id) == 0) {
-            
-            active_sessions[i].last_activity = current_time;
-            active_sessions[i].expires_at = current_time + AUTH_SESSION_TIMEOUT_SECONDS;
-            return;
+
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+            if (active_sessions[i].valid &&
+                strcmp(active_sessions[i].session_id, session_id) == 0) {
+
+                active_sessions[i].last_activity = current_time;
+                active_sessions[i].expires_at = current_time + AUTH_SESSION_TIMEOUT_SECONDS;
+                xSemaphoreGive(session_mutex);
+                return;
+            }
         }
+        xSemaphoreGive(session_mutex);
     }
 }
 
@@ -601,28 +624,34 @@ void auth_logout(const char* session_id) {
     if (!session_id) {
         return;
     }
-    
-    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-        if (strcmp(active_sessions[i].session_id, session_id) == 0) {
-            ESP_LOGI(TAG, "User '%s' logged out", active_sessions[i].username);
-            memset(&active_sessions[i], 0, sizeof(session_t));
-            return;
+
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+            if (strcmp(active_sessions[i].session_id, session_id) == 0) {
+                ESP_LOGI(TAG, "User '%s' logged out", active_sessions[i].username);
+                memset(&active_sessions[i], 0, sizeof(session_t));
+                break;
+            }
         }
+        xSemaphoreGive(session_mutex);
     }
 }
 
 void auth_cleanup_expired_sessions(void) {
     uint32_t current_time = get_current_time();
     int cleaned = 0;
-    
-    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
-        if (active_sessions[i].valid && current_time > active_sessions[i].expires_at) {
-            ESP_LOGI(TAG, "Cleaning up expired session for user '%s'", active_sessions[i].username);
-            memset(&active_sessions[i], 0, sizeof(session_t));
-            cleaned++;
+
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+            if (active_sessions[i].valid && current_time > active_sessions[i].expires_at) {
+                ESP_LOGI(TAG, "Cleaning up expired session for user '%s'", active_sessions[i].username);
+                memset(&active_sessions[i], 0, sizeof(session_t));
+                cleaned++;
+            }
         }
+        xSemaphoreGive(session_mutex);
     }
-    
+
     if (cleaned > 0) {
         ESP_LOGI(TAG, "Cleaned up %d expired sessions", cleaned);
     }

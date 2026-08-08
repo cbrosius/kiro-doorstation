@@ -69,7 +69,7 @@ size_t audio_read(int16_t *buffer, size_t length)
     if (audio_hardware_present) {
         size_t bytes_read = 0;
         if (rx_handle) {
-            esp_err_t ret = i2s_channel_read(rx_handle, buffer, length * sizeof(int16_t), &bytes_read, portMAX_DELAY);
+            esp_err_t ret = i2s_channel_read(rx_handle, buffer, length * sizeof(int16_t), &bytes_read, pdMS_TO_TICKS(1000));
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "I2S read error: %s", esp_err_to_name(ret));
                 return 0;
@@ -88,7 +88,7 @@ size_t audio_write(const int16_t *buffer, size_t length)
     if (audio_hardware_present) {
         size_t bytes_written = 0;
         if (tx_handle) {
-            esp_err_t ret = i2s_channel_write(tx_handle, buffer, length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+            esp_err_t ret = i2s_channel_write(tx_handle, buffer, length * sizeof(int16_t), &bytes_written, pdMS_TO_TICKS(1000));
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "I2S write error: %s", esp_err_to_name(ret));
                 return 0;

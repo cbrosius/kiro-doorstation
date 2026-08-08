@@ -140,7 +140,18 @@ bool rtp_start_session(const char* remote_ip, uint16_t remote_port, uint16_t loc
     
     // Set socket to non-blocking mode
     int flags = fcntl(rtp_socket, F_GETFL, 0);
-    fcntl(rtp_socket, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0) {
+        ESP_LOGE(TAG, "Failed to get socket flags: errno=%d", errno);
+        close(rtp_socket);
+        rtp_socket = -1;
+        return false;
+    }
+    if (fcntl(rtp_socket, F_SETFL, flags | O_NONBLOCK) < 0) {
+        ESP_LOGE(TAG, "Failed to set non-blocking mode: errno=%d", errno);
+        close(rtp_socket);
+        rtp_socket = -1;
+        return false;
+    }
     
     session_active = true;
     ESP_LOGI(TAG, "RTP session started successfully");

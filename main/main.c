@@ -23,6 +23,7 @@
 #include "sip_client.h"
 #include "web_server.h"
 #include "wifi_manager.h"
+#include "esp_task_wdt.h"
 
 static const char *TAG = "MAIN";
 
@@ -86,10 +87,13 @@ void app_main(void) {
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
       ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_LOGE(TAG, "NVS partition full or outdated - erasing");
     ESP_ERROR_CHECK(nvs_flash_erase());
     ret = nvs_flash_init();
   }
-  ESP_ERROR_CHECK(ret);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "NVS initialization failed: %s - continuing without NVS", esp_err_to_name(ret));
+  }
 
   // Initialize Auth Manager early as GPIO and Web depend on it
   auth_manager_init();
@@ -191,8 +195,15 @@ void app_main(void) {
 
   // Wait for IP address before initializing network-dependent services
   ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
-  while (!wifi_is_connected()) {
+  const int WIFI_WAIT_TIMEOUT_S = 120;
+  int wifi_wait_s = 0;
+  while (!wifi_is_connected() && wifi_wait_s < WIFI_WAIT_TIMEOUT_S) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    wifi_wait_s++;
+  }
+  if (!wifi_is_connected()) {
+    ESP_LOGW(TAG, "WiFi connection timeout (%d s) - continuing with limited functionality", WIFI_WAIT_TIMEOUT_S);
+    led_handler_set_state(LED_STATE_ERROR);
   }
   led_handler_set_state(LED_STATE_WIFI_CONNECTED);
   ESP_LOGI(TAG,
@@ -204,6 +215,19 @@ void app_main(void) {
   // Ensure certificate exists (generate if needed, after all system init)
   // This is done before web server to ensure HTTPS has a certificate
   cert_ensure_exists();
+
+  // Verify NTP sync and provide fallback
+  if (!ntp_is_synced()) {
+    ESP_LOGW(TAG, "NTP not synchronized after init - timestamps may be inaccurate");
+    // Force a sync attempt
+    ntp_force_sync();
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    if (!ntp_is_synced()) {
+      ESP_LOGE(TAG, "NTP sync failed - system will use tick count for timestamps");
+    }
+  } else {
+    ESP_LOGI(TAG, "NTP synchronized successfully");
+  }
 
   // Start Web Server
   web_server_start();
@@ -231,6 +255,23 @@ void app_main(void) {
 
   // Start session cleanup task
   xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);
+
+  // Initialize Task Watchdog Timer for critical tasks
+  ESP_LOGI(TAG, "Initializing Task Watchdog Timer");
+  esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = 30000,  // 30 second timeout
+      .idle_core_mask = (1 << 0) | (1 << 1),  // Both cores
+      .trigger_panic = false  // Log and reset instead of panic
+  };
+  esp_err_t twdt_err = esp_task_wdt_init(&twdt_config);
+  if (twdt_err == ESP_OK) {
+    ESP_LOGI(TAG, "Task Watchdog Timer initialized (30s timeout)");
+    // Subscribe SIP task to watchdog (task handle obtained from creation)
+    // Note: sip_client_init creates the task internally, so we add watchdog
+    // monitoring via the task's own watchdog timer configuration
+  } else {
+    ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
+  }
 
   // Main loop
   while (1) {

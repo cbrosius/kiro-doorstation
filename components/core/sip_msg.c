@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <stdlib.h>
 
@@ -286,6 +287,9 @@ void send_ack_for_error_response(const char *response_buffer) {
       snprintf(log_msg, sizeof(log_msg), "ACK sent for Call-ID=%s (CSeq=%d)",
                headers.call_id, headers.cseq_num);
       sip_add_log_entry("sent", log_msg);
+    } else {
+      ESP_LOGE(TAG, "Failed to send ACK: errno=%d", errno);
+      sip_add_log_entry("error", "Failed to send ACK for error response");
     }
   }
 }
