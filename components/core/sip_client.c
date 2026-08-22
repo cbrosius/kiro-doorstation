@@ -582,7 +582,6 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
         // Log received message (full for debugging)
         char log_msg[SIP_LOG_MAX_MESSAGE_LEN];
-        ESP_LOGI(TAG, "log_msg at line 992: %p", (void *)&log_msg);
         snprintf(log_msg, sizeof(log_msg), "Full received: %s", buffer);
         sip_add_log_entry("received", log_msg);
 
@@ -662,14 +661,14 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             // Build ACK message
             snprintf(ack_msg, sizeof(ack_msg),
                      "ACK sip:%s@%s SIP/2.0\r\n"
-                     "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d\r\n"
+                     "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%lu\r\n"
                      "From: <sip:%s@%s>;tag=%d\r\n"
                      "To: <sip:%s@%s>;tag=%s\r\n"
                      "Call-ID: %s\r\n"
                      "CSeq: %d ACK\r\n"
                      "Max-Forwards: 70\r\n"
                      "Content-Length: 0\r\n\r\n",
-                     sip_config.username, sip_config.server, local_ip, rand(),
+                     sip_config.username, sip_config.server, local_ip, (unsigned long)esp_random(),
                      sip_config.username, sip_config.server,
                      initial_invite_from_tag, sip_config.username,
                      sip_config.server, to_tag, call_id, initial_invite_cseq);
@@ -774,7 +773,6 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
           if (current_state == SIP_STATE_REGISTERING) {
             auth_attempt_count++;
 
-            ESP_LOGI(TAG, "log_msg at line 1171: %p", (void *)&log_msg);
             char auth_log_msg[128];
             snprintf(
                 auth_log_msg, sizeof(auth_log_msg),
@@ -1796,7 +1794,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
           static char sdp[256];
           snprintf(sdp, sizeof(sdp),
                    "v=0\r\n"
-                   "o=- %d 0 IN IP4 %s\r\n"
+                   "o=- %lu 0 IN IP4 %s\r\n"
                    "s=ESP32 Doorbell\r\n"
                    "c=IN IP4 %s\r\n"
                    "t=0 0\r\n"
@@ -1806,13 +1804,13 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
                    "a=rtpmap:101 telephone-event/8000\r\n"
                    "a=fmtp:101 0-15\r\n"
                    "a=sendrecv\r\n",
-                   rand(), local_ip, local_ip);
+                   (unsigned long)esp_random(), local_ip, local_ip);
 
           // Add tag to To header if not present
           char to_with_tag[300];
           if (strstr(to_header, "tag=") == NULL) {
-            snprintf(to_with_tag, sizeof(to_with_tag), "%s;tag=%d", to_header,
-                     rand());
+            snprintf(to_with_tag, sizeof(to_with_tag), "%s;tag=%lu", to_header,
+                     (unsigned long)esp_random());
           } else {
             strncpy(to_with_tag, to_header, sizeof(to_with_tag) - 1);
             to_with_tag[sizeof(to_with_tag) - 1] = '\0';
@@ -2189,9 +2187,9 @@ bool sip_client_register(void) {
 
   // Create REGISTER message (use static to avoid stack allocation)
   static char register_msg[1024];
-  int branch_id = rand();
-  int from_tag = rand();
-  int call_id = rand();
+  int branch_id = esp_random();
+  int from_tag = esp_random();
+  int call_id = esp_random();
 
   // Store Call-ID and From tag for reuse in authenticated REGISTER
   snprintf(initial_call_id, sizeof(initial_call_id), "%d@%s", call_id,
@@ -2317,7 +2315,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t *challenge) {
 
   // Build authenticated REGISTER message (use static to avoid stack allocation)
   static char register_msg[1536];
-  int branch = rand(); // New branch for new transaction
+  int branch = esp_random(); // New branch for new transaction
 
   // Use public IP if available (for NAT traversal), else local IP
   const char *contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
@@ -2463,7 +2461,7 @@ void sip_client_make_call(const char *uri) {
   static char sdp[256];
   snprintf(sdp, sizeof(sdp),
            "v=0\r\n"
-           "o=- %d 0 IN IP4 %s\r\n"
+           "o=- %lu 0 IN IP4 %s\r\n"
            "s=ESP32 Doorbell Call\r\n"
            "c=IN IP4 %s\r\n"
            "t=0 0\r\n"
@@ -2473,7 +2471,7 @@ void sip_client_make_call(const char *uri) {
            "a=rtpmap:101 telephone-event/8000\r\n"
            "a=fmtp:101 0-15\r\n"
            "a=sendrecv\r\n",
-           rand(), sdp_ip, sdp_ip);
+           (unsigned long)esp_random(), sdp_ip, sdp_ip);
 
   // Create INVITE message (large buffer for authenticated INVITE with long
   // URIs)
@@ -2488,9 +2486,9 @@ void sip_client_make_call(const char *uri) {
   // REUSE the stored IDs
   if (!has_invite_auth_challenge) {
     // This is a fresh call - generate new transaction IDs
-    initial_invite_call_id = rand();
-    initial_invite_from_tag = rand();
-    initial_invite_branch = rand();
+    initial_invite_call_id = esp_random();
+    initial_invite_from_tag = esp_random();
+    initial_invite_branch = esp_random();
     auth_invite_branch = 0;  // Will be set when auth retry happens
     initial_invite_cseq = 1; // First INVITE always uses CSeq 1
 
@@ -2504,7 +2502,7 @@ void sip_client_make_call(const char *uri) {
   } else {
     // This is an auth retry - REUSE stored transaction IDs
     // Generate NEW branch for authenticated INVITE (per RFC 3261)
-    auth_invite_branch = rand();
+    auth_invite_branch = esp_random();
 
     char reuse_log[256];
     snprintf(reuse_log, sizeof(reuse_log),
@@ -2742,9 +2740,9 @@ void sip_client_hangup(void) {
       // Use public IP for Contact header if available (for NAT traversal)
       const char *contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
 
-      int call_id = rand();
-      int tag = rand();
-      int branch = rand();
+      int call_id = esp_random();
+      int tag = esp_random();
+      int branch = esp_random();
 
       snprintf(bye_msg, sizeof(bye_msg),
                "BYE sip:%s@%s SIP/2.0\r\n"
@@ -2849,17 +2847,17 @@ void sip_client_send_dtmf(char dtmf_digit) {
     int cseq = 1; // Sequence number for INFO request
     int len = snprintf(info_msg, sizeof(info_msg),
                        "INFO sip:%s@%s SIP/2.0\r\n"
-                       "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+                       "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%lu;rport\r\n"
                        "Max-Forwards: 70\r\n"
-                       "From: <sip:%s@%s>;tag=%d\r\n"
+                       "From: <sip:%s@%s>;tag=%lu\r\n"
                        "To: <sip:%s@%s>\r\n"
-                       "Call-ID: %d@%s\r\n"
+                       "Call-ID: %lu@%s\r\n"
                        "CSeq: %d INFO\r\n"
                        "Content-Type: application/dtmf-relay\r\n"
                        "Content-Length: %d\r\n\r\n%s",
-                       sip_config.username, sip_config.server, local_ip, rand(),
-                       sip_config.username, sip_config.server, rand(),
-                       sip_config.username, sip_config.server, rand(), local_ip,
+                       sip_config.username, sip_config.server, local_ip, (unsigned long)esp_random(),
+                       sip_config.username, sip_config.server, (unsigned long)esp_random(),
+                       sip_config.username, sip_config.server, (unsigned long)esp_random(), local_ip,
                        cseq, info_len, info_body);
 
     struct sockaddr_in server_addr;

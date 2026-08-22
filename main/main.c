@@ -73,15 +73,15 @@ void app_main(void) {
 
   // PSRAM Diagnostic
   ESP_LOGI(TAG, "PSRAM Diagnostic:");
-  ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
-  ESP_LOGI(TAG, "Internal heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "SPIRAM heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  ESP_LOGI(TAG, "Largest internal block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Total heap size: %lu bytes", (unsigned long)esp_get_free_heap_size());
+  ESP_LOGI(TAG, "Internal heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "SPIRAM heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Largest internal block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "Largest SPIRAM block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
@@ -240,15 +240,15 @@ void app_main(void) {
 
   // Final PSRAM Diagnostic after initialization
   ESP_LOGI(TAG, "Post-init PSRAM Diagnostic:");
-  ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
-  ESP_LOGI(TAG, "Internal heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "SPIRAM heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  ESP_LOGI(TAG, "Largest internal block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Total heap size: %lu bytes", (unsigned long)esp_get_free_heap_size());
+  ESP_LOGI(TAG, "Internal heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "SPIRAM heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Largest internal block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "Largest SPIRAM block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
   // Start session cleanup task
   xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);

@@ -20,8 +20,9 @@ static bool session_active = false;
 // Telephone-event callback
 static telephone_event_callback_t telephone_event_callback = NULL;
 
-// Track last processed telephone-event timestamp for deduplication
+// Track last processed telephone-event timestamp and code for deduplication
 static uint32_t last_telephone_event_timestamp = 0;
+static uint8_t last_telephone_event_code = 255;
 
 // Forward declarations
 static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_t* payload, size_t payload_size);
@@ -443,9 +444,11 @@ static void rtp_process_telephone_event(const rtp_header_t* header, const uint8_
     ESP_LOGD(TAG, "Telephone-event: code=%d, end=%d, volume=%d, duration=%d, ts=%u", 
              event->event, end_bit, volume, duration, rtp_timestamp);
     
-    // Only process when end bit is set and timestamp is new (deduplication)
-    if (end_bit && rtp_timestamp != last_telephone_event_timestamp) {
+    // Only process when end bit is set and (timestamp OR event code) is new
+    if (end_bit && (rtp_timestamp != last_telephone_event_timestamp ||
+                    event->event != last_telephone_event_code)) {
         last_telephone_event_timestamp = rtp_timestamp;
+        last_telephone_event_code = event->event;
         
         // Map event code to DTMF character
         char dtmf_char = rtp_map_event_to_char(event->event);
