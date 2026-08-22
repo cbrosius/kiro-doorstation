@@ -2214,11 +2214,11 @@ void sip_client_init(void) {
     // Create SIP task pinned to Core 1 (APP CPU)
     // This isolates SIP from WiFi which runs on Core 0 (PRO CPU)
     // Priority 3 is low enough to not interfere with system tasks
-    // Stack size 8KB to handle DNS resolution and SIP messages
+    // Stack size 16KB to handle deep call chains during registration/auth, DNS resolution, and SIP message processing
     BaseType_t result =
         xTaskCreatePinnedToCore(sip_task,   // Task function
                                 "sip_task", // Task name
-                                8192, // Stack size (8KB - increased for DNS)
+                                16384, // Stack size (16KB - required for registration/auth call chain)
                                 NULL, // Parameters
                                 3,    // Priority (low)
                                 &sip_task_handle, // Task handle
