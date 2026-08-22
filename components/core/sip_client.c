@@ -1925,18 +1925,69 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             sip_add_log_entry("sent", "200 OK response to BYE");
           }
 
-          current_state = SIP_STATE_REGISTERED;
-          call_start_timestamp = 0; // Clear timeout
-          led_handler_set_state(LED_STATE_IDLE);
+          // Check for BYE retransmission (same Call-ID and branch)
+          char bye_call_id[128] = {0};
+          char bye_branch[64] = {0};
+          const char *bye_cid = strstr(buffer, "Call-ID:");
+          if (bye_cid) {
+            bye_cid += 8;
+            while (*bye_cid == ' ') bye_cid++;
+            const char *bye_cid_end = strstr(bye_cid, "\r\n");
+            if (bye_cid_end) {
+              size_t cid_len = bye_cid_end - bye_cid;
+              if (cid_len < sizeof(bye_call_id)) {
+                strncpy(bye_call_id, bye_cid, cid_len);
+                bye_call_id[cid_len] = '\0';
+              }
+            }
+          }
+          const char *bye_via = strstr(buffer, "Via:");
+          if (bye_via) {
+            const char *branch_ptr = strstr(bye_via, "branch=z9hG4bK");
+            if (branch_ptr) {
+              branch_ptr += 14;
+              const char *branch_end = strpbrk(branch_ptr, ";\r\n ");
+              if (branch_end) {
+                size_t branch_len = branch_end - branch_ptr;
+                if (branch_len < sizeof(bye_branch)) {
+                  strncpy(bye_branch, branch_ptr, branch_len);
+                  bye_branch[branch_len] = '\0';
+                }
+              }
+            }
+          }
 
-          // Reset DTMF decoder state when call ends
-          dtmf_reset_call_state();
+          uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+          static char last_bye_call_id[128] = {0};
+          static char last_bye_branch[64] = {0};
+          static uint32_t last_bye_timestamp = 0;
 
-          audio_stop_recording();
-          audio_stop_playback();
-          rtp_stop_session();
-          sip_add_log_entry(
-              "info", "RTP session stopped - State changed to REGISTERED");
+          if (strlen(last_bye_call_id) > 0 &&
+              strcmp(last_bye_call_id, bye_call_id) == 0 &&
+              strcmp(last_bye_branch, bye_branch) == 0 &&
+              (now - last_bye_timestamp) < 10000) {
+            sip_add_log_entry(
+                "info",
+                "BYE retransmission detected - ignoring");
+          } else {
+            // Store this BYE info for retransmission detection
+            strncpy(last_bye_call_id, bye_call_id, sizeof(last_bye_call_id) - 1);
+            strncpy(last_bye_branch, bye_branch, sizeof(last_bye_branch) - 1);
+            last_bye_timestamp = now;
+
+            current_state = SIP_STATE_REGISTERED;
+            call_start_timestamp = 0; // Clear timeout
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
+
+            // Reset DTMF decoder state when call ends
+            dtmf_reset_call_state();
+
+            audio_stop_recording();
+            audio_stop_playback();
+            rtp_stop_session();
+            sip_add_log_entry(
+                "info", "RTP session stopped - State changed to REGISTERED");
+          }
         }
       }
     }
