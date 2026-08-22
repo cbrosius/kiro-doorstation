@@ -7322,29 +7322,36 @@
     /**
      * Task 20: Load and display login audit logs
      */
-    async function refreshLoginLogs() {
+    async function refreshLoginLogs(silent = false) {
       const container = document.getElementById('login-log-container');
+      const btn = document.getElementById('login-log-refresh-btn');
+      if (!silent && btn) btn.classList.add('rotating');
 
       try {
-        console.log('Fetching login logs...');
+        if (!silent) {
+          console.log('Fetching login logs...');
+          apiCache.authLogs.timestamp = 0; // invalidate cache
+        }
         const response = await apiCache.get('authLogs');
-        console.log('Login logs response:', response);
+        if (!silent) console.log('Login logs response:', response);
 
         if (response) {
           // Display logs even if empty array
           displayLoginLogs(response.logs || []);
         } else {
           // No response - show error
-          console.error('No response from login logs API');
+          if (!silent) console.error('No response from login logs API');
           if (container) {
             container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
           }
         }
       } catch (error) {
-        console.error('Error loading login logs:', error);
+        if (!silent) console.error('Error loading login logs:', error);
         if (container) {
           container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
         }
+      } finally {
+        if (!silent && btn) btn.classList.remove('rotating');
       }
     }
 
@@ -7440,8 +7447,7 @@
         clearInterval(loginLogAutoRefreshInterval);
       }
       loginLogAutoRefreshInterval = setInterval(() => {
-        console.log('Auto-refreshing login logs...');
-        refreshLoginLogs();
+        refreshLoginLogs(true);
       }, 10000); // Refresh every 10 seconds
     }
 
@@ -7835,6 +7841,15 @@
      * @param {boolean} silent - If true, don't show loading message
      */
     async function refreshSIPLogs(silent = false) {
+      const btn = document.getElementById('sip-log-refresh-btn');
+      if (!silent && btn) btn.classList.add('rotating');
+
+      if (!silent) {
+        console.log('Fetching SIP logs...');
+        sipLogLastTimestamp = 0;
+        sipLogEntries = [];
+      }
+
       try {
         // Fetch logs since last timestamp (incremental)
         const endpoint = sipLogLastTimestamp > 0
@@ -7842,6 +7857,7 @@
           : '/api/sip/log';
 
         const response = await apiRequest(endpoint, { silentError: silent });
+        if (!silent) console.log('SIP logs response:', response);
 
         if (response && response.entries && Array.isArray(response.entries)) {
           // Append new entries
@@ -7866,8 +7882,10 @@
         if (!silent) {
           console.error('Error refreshing SIP logs:', error);
           const container = document.getElementById('sip-log-container');
-          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
+          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
         }
+      } finally {
+        if (!silent && btn) btn.classList.remove('rotating');
       }
     }
 
@@ -8182,12 +8200,19 @@
       const btn = document.getElementById('hw-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
 
+      if (!silent) {
+        console.log('Fetching hardware logs...');
+        hwLogLastTimestamp = 0;
+        hwLogEntries = [];
+      }
+
       try {
         const endpoint = hwLogLastTimestamp > 0
           ? `/api/hardware/events?since=${hwLogLastTimestamp}`
           : '/api/hardware/events';
 
         const response = await apiRequest(endpoint, { silentError: silent });
+        if (!silent) console.log('Hardware logs response:', response);
 
         if (response && response.events && Array.isArray(response.events)) {
           if (response.events.length > 0) {
@@ -8264,6 +8289,15 @@
      * @param {boolean} silent - If true, don't show loading message
      */
     async function refreshDTMFLogs(silent = false) {
+      const btn = document.getElementById('dtmf-log-refresh-btn');
+      if (!silent && btn) btn.classList.add('rotating');
+
+      if (!silent) {
+        console.log('Fetching DTMF logs...');
+        dtmfLogLastTimestamp = 0;
+        dtmfLogEntries = [];
+      }
+
       try {
         // Fetch logs since last timestamp (incremental)
         const endpoint = dtmfLogLastTimestamp > 0
@@ -8271,6 +8305,7 @@
           : '/api/dtmf/logs';
 
         const response = await apiRequest(endpoint, { silentError: silent });
+        if (!silent) console.log('DTMF logs response:', response);
 
         if (response && response.logs && Array.isArray(response.logs)) {
           // Append new entries
@@ -8295,8 +8330,10 @@
         if (!silent) {
           console.error('Error refreshing DTMF logs:', error);
           const container = document.getElementById('dtmf-log-container');
-          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
+          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
         }
+      } finally {
+        if (!silent && btn) btn.classList.remove('rotating');
       }
     }
 
