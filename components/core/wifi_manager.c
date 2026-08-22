@@ -24,6 +24,7 @@ static wifi_manager_ap_start_callback_t ap_start_cb = NULL;
 
 // Parallel credential testing variables
 static bool is_testing_credentials = false;
+static bool credential_test_handlers_registered = false; // Prevent duplicate handler registration
 static char tested_sta_ip[16] = {0};
 static TaskHandle_t credential_test_task = NULL;
 static const int CREDENTIAL_TEST_TIMEOUT_MS = 30000; // 30 seconds
@@ -684,12 +685,16 @@ static void credential_test_task_func(void *pvParameters) {
   const int TEST_IP_BIT = BIT2;
 
   // Register temporary event handlers for credential testing
-  ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                             &credential_test_event_handler,
-                                             test_event_group));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
-                                             &credential_test_event_handler,
-                                             test_event_group));
+  // Guard against duplicate registration if task is restarted
+  if (!credential_test_handlers_registered) {
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                               &credential_test_event_handler,
+                                               test_event_group));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
+                                               &credential_test_event_handler,
+                                               test_event_group));
+    credential_test_handlers_registered = true;
+  }
 
   // Configure STA interface for testing
   wifi_config_t sta_config = {0};
@@ -749,11 +754,14 @@ static void credential_test_task_func(void *pvParameters) {
   esp_wifi_disconnect();
 
 cleanup:
-  // Unregister temporary event handlers
-  esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                               &credential_test_event_handler);
-  esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID,
-                               &credential_test_event_handler);
+  // Unregister temporary event handlers (only if they were registered)
+  if (credential_test_handlers_registered) {
+    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                  &credential_test_event_handler);
+    esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID,
+                                  &credential_test_event_handler);
+    credential_test_handlers_registered = false;
+  }
 
   // Clean up
   vEventGroupDelete(test_event_group);

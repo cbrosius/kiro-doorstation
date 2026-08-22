@@ -630,7 +630,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             }
 
             // Send ACK to complete call setup
-            static char ack_msg[768]; // Increased buffer size
+            char ack_msg[768]; // Local buffer for ACK message
             if (!get_local_ip(local_ip, sizeof(local_ip))) {
               strcpy(local_ip, "192.168.1.100");
             }

@@ -70,10 +70,12 @@ static void led_control_task(void *pvParameters) {
     led_state_t local_state = LED_STATE_INIT;
 
     while (1) {
-        if (xSemaphoreTake(s_state_mutex, portMAX_DELAY) == pdTRUE) {
+        // Use a short timeout to prevent blocking indefinitely if mutex is held
+        if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             local_state = s_current_state;
             xSemaphoreGive(s_state_mutex);
         }
+        // If mutex not acquired, continue with previous local_state (safe - it's just a display color)
 
         tick_count++;
 

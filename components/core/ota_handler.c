@@ -558,6 +558,12 @@ static void ota_remote_task(void *pvParameters) {
 
   ESP_LOGI(TAG, "Starting remote OTA from URL: %s", url);
 
+  // Initialize context properly (consistent with ota_begin_update)
+  memset(&g_ota_ctx, 0, sizeof(ota_context_t));
+  g_ota_ctx.state = OTA_STATE_BEGIN;
+  strncpy(g_ota_ctx.status_message, "Connecting to update server...",
+          sizeof(g_ota_ctx.status_message) - 1);
+
   esp_http_client_config_t config = {
       .url = url,
       .keep_alive_enable = true,
@@ -569,13 +575,6 @@ static void ota_remote_task(void *pvParameters) {
   esp_https_ota_config_t ota_config = {
       .http_config = &config,
   };
-
-  // Reset context
-  g_ota_ctx.state = OTA_STATE_BEGIN;
-  memset(g_ota_ctx.error_message, 0, sizeof(g_ota_ctx.error_message));
-  strncpy(g_ota_ctx.status_message, "Connecting to update server...",
-          sizeof(g_ota_ctx.status_message) - 1);
-  g_ota_ctx.progress_percent = 0;
 
   esp_https_ota_handle_t https_ota_handle = NULL;
   esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);

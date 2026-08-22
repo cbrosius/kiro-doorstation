@@ -250,22 +250,19 @@ void app_main(void) {
   ESP_LOGI(TAG, "Largest SPIRAM block: %lu bytes",
            (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
-  // Start session cleanup task
-  xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);
+  // Start session cleanup task (4096 bytes stack for mutex operations and looping)
+  xTaskCreate(&session_cleanup_task, "session_cleanup", 4096, NULL, 5, NULL);
 
   // Initialize Task Watchdog Timer for critical tasks
   ESP_LOGI(TAG, "Initializing Task Watchdog Timer");
   esp_task_wdt_config_t twdt_config = {
       .timeout_ms = 30000,  // 30 second timeout
-      .idle_core_mask = (1 << 0) | (1 << 1),  // Both cores
+      .idle_core_mask = 0,  // Don't monitor idle tasks (prevents false resets when system is idle)
       .trigger_panic = false  // Log and reset instead of panic
   };
   esp_err_t twdt_err = esp_task_wdt_init(&twdt_config);
   if (twdt_err == ESP_OK) {
     ESP_LOGI(TAG, "Task Watchdog Timer initialized (30s timeout)");
-    // Subscribe SIP task to watchdog (task handle obtained from creation)
-    // Note: sip_client_init creates the task internally, so we add watchdog
-    // monitoring via the task's own watchdog timer configuration
   } else {
     ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
   }
