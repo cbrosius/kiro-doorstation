@@ -217,14 +217,14 @@ void app_main(void) {
   cert_ensure_exists();
 
   // Verify NTP sync and provide fallback
+  // Note: NTP sync is non-blocking. The system continues to operate using
+  // tick count for timestamps until NTP sync completes in the background.
   if (!ntp_is_synced()) {
-    ESP_LOGW(TAG, "NTP not synchronized after init - timestamps may be inaccurate");
-    // Force a sync attempt
+    ESP_LOGW(TAG, "NTP not synchronized after init - will retry in background");
+    // Force a sync attempt (non-blocking)
     ntp_force_sync();
-    vTaskDelay(pdMS_TO_TICKS(5000));
-    if (!ntp_is_synced()) {
-      ESP_LOGE(TAG, "NTP sync failed - system will use tick count for timestamps");
-    }
+    // Do NOT block here - NTP will sync asynchronously
+    ESP_LOGI(TAG, "NTP sync scheduled - system will use tick count until synced");
   } else {
     ESP_LOGI(TAG, "NTP synchronized successfully");
   }

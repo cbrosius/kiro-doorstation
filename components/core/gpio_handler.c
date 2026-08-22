@@ -2,6 +2,7 @@
 #include "auth_manager.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -11,12 +12,19 @@
 
 static const char *TAG = "GPIO";
 static bool light_state = false;
+static volatile bool relay_active = false;
+static esp_timer_handle_t door_relay_timer = NULL;
 QueueHandle_t doorbell_queue = NULL; // Non-static for hardware test access
 static TaskHandle_t doorbell_task_handle = NULL;
 static TaskHandle_t reset_monitor_task_handle = NULL;
 
-// Reset button monitoring
+// Door relay auto-deactivate after 3 seconds
+#define DOOR_RELAY_ACTIVE_TIME_MS 3000
+// Reset button hold time for password reset
 #define RESET_BUTTON_HOLD_TIME_MS 10000 // 10 seconds
+
+// Forward declaration for timer callback
+static void door_relay_timer_callback(void *arg);
 
 typedef struct {
   doorbell_t bell;
@@ -132,15 +140,51 @@ void gpio_handler_init(void) {
 
   ESP_LOGI(TAG, "GPIO Handler initialized (BOOT button on GPIO 0 configured "
                 "for password reset)");
+
+  // Create one-shot timer for door relay auto-deactivate
+  esp_timer_create_args_t timer_args = {
+      .callback = door_relay_timer_callback,
+      .name = "door_relay_timer",
+  };
+  esp_err_t err = esp_timer_create(&timer_args, &door_relay_timer);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to create door relay timer: %s - falling back to blocking mode",
+             esp_err_to_name(err));
+  }
+}
+
+/**
+ * @brief Timer callback to deactivate door relay after timeout
+ */
+static void door_relay_timer_callback(void *arg) {
+  gpio_set_level(DOOR_RELAY_PIN, 0);
+  relay_active = false;
+  ESP_LOGI(TAG, "Door opener deactivated (timer)");
 }
 
 void door_relay_activate(void) {
+  // Ignore if relay is already active
+  if (relay_active) {
+    ESP_LOGW(TAG, "Door opener already active - ignoring");
+    return;
+  }
+
   ESP_LOGI(TAG, "Door opener activated");
-  hw_status_log_event(HW_EVENT_DOOR_OPEN, 3000, "DTMF/System");
+  hw_status_log_event(HW_EVENT_DOOR_OPEN, DOOR_RELAY_ACTIVE_TIME_MS, "DTMF/System");
   gpio_set_level(DOOR_RELAY_PIN, 1);
-  vTaskDelay(pdMS_TO_TICKS(3000)); // Active for 3 seconds
-  gpio_set_level(DOOR_RELAY_PIN, 0);
-  ESP_LOGI(TAG, "Door opener deactivated");
+  relay_active = true;
+
+  // Start one-shot timer to deactivate relay (non-blocking)
+  if (door_relay_timer != NULL) {
+    esp_timer_start_once(door_relay_timer,
+                         DOOR_RELAY_ACTIVE_TIME_MS * 1000); // microseconds
+  } else {
+    // Fallback: blocking delay if timer not available
+    vTaskDelay(pdMS_TO_TICKS(DOOR_RELAY_ACTIVE_TIME_MS));
+    gpio_set_level(DOOR_RELAY_PIN, 0);
+    relay_active = false;
+    ESP_LOGI(TAG, "Door opener deactivated (blocking fallback)");
+  }
 }
 
 void light_relay_toggle(void) {

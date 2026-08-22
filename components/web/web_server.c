@@ -309,8 +309,11 @@ void web_server_start(void) {
   config.prvtkey_len = key_size;
 
   if (httpd_ssl_start(&server, &config) == ESP_OK) {
+    // Free cert/key after successful server start (SSL server copies them internally)
     free(cert_pem);
     free(key_pem);
+    cert_pem = NULL;
+    key_pem = NULL;
 
     httpd_register_uri_handler(server, &root_uri);
     httpd_register_uri_handler(server, &documentation_uri);
@@ -331,11 +334,20 @@ void web_server_start(void) {
       httpd_register_err_handler(redirect_server, HTTPD_404_NOT_FOUND,
                                  http_redirect_handler);
       ESP_LOGI(TAG, "HTTP redirect server started on port 80");
+    } else {
+      ESP_LOGW(TAG, "Failed to start HTTP redirect server on port 80");
     }
   } else {
     ESP_LOGE(TAG, "Error starting HTTPS server!");
-    free(cert_pem);
-    free(key_pem);
+    // Free cert/key on failure (they were not copied by the server)
+    if (cert_pem) {
+      free(cert_pem);
+      cert_pem = NULL;
+    }
+    if (key_pem) {
+      free(key_pem);
+      key_pem = NULL;
+    }
   }
 }
 

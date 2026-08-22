@@ -109,7 +109,7 @@ static void handle_unexpected_401_in_connected(const char *buffer, bool is_retra
 
 // SIP INVITE template removed - built inline in sip_client_make_call()
 
-// Helper function to add log entry (thread-safe, synchronous with yielding)
+// Helper function to add log entry (thread-safe, synchronous)
 // Logs to both serial console and web interface
 void sip_add_log_entry(const char *type, const char *message) {
   // Log to serial console first
@@ -123,9 +123,6 @@ void sip_add_log_entry(const char *type, const char *message) {
   } else {
     NTP_LOGI(TAG, "[%s] %s", type, message);
   }
-
-  // Yield to other tasks after serial logging
-  taskYIELD();
 
   // Add to web log buffer (mutex created once at init)
   if (xSemaphoreTake(sip_log_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -150,9 +147,6 @@ void sip_add_log_entry(const char *type, const char *message) {
 
     xSemaphoreGive(sip_log_mutex);
   }
-
-  // Yield again after web log update
-  taskYIELD();
 }
 
 const char *sip_state_to_str(sip_state_t state) {
@@ -237,6 +231,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
   char *buffer = malloc(buffer_size);
   if (!buffer) {
     ESP_LOGE(TAG, "Failed to allocate SIP receive buffer");
+    sip_task_handle = NULL; // Clear handle so task appears stopped
     vTaskDelete(NULL);
     return;
   }

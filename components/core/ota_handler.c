@@ -479,6 +479,8 @@ void ota_abort_update(void) {
   g_ota_ctx.written_size = 0;
   g_ota_ctx.progress_percent = 0;
   g_ota_ctx.header_validated = false;
+  memset(g_ota_ctx.error_message, 0, sizeof(g_ota_ctx.error_message));
+  memset(g_ota_ctx.status_message, 0, sizeof(g_ota_ctx.status_message));
 
   ESP_LOGI(TAG, "OTA update aborted, state reset to IDLE");
 }
