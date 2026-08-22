@@ -263,6 +263,8 @@ void app_main(void) {
   esp_err_t twdt_err = esp_task_wdt_init(&twdt_config);
   if (twdt_err == ESP_OK) {
     ESP_LOGI(TAG, "Task Watchdog Timer initialized (30s timeout)");
+  } else if (twdt_err == ESP_ERR_INVALID_STATE) {
+    ESP_LOGI(TAG, "Task Watchdog Timer already initialized");
   } else {
     ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
   }
