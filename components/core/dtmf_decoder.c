@@ -44,6 +44,9 @@ static dtmf_command_state_t command_state = {
     .last_event_ts = 0
 };
 
+// Mutex for protecting command_state (accessed from RTP task context)
+static SemaphoreHandle_t dtmf_command_mutex = NULL;
+
 // Forward declarations
 static void dtmf_add_security_log(dtmf_command_type_t type, bool success, 
                                    const char* command, const char* caller_id, 
@@ -522,9 +525,17 @@ static bool dtmf_check_timeout(void)
 // Process telephone-event from RFC 4733 RTP packets
 void dtmf_process_telephone_event(uint8_t event)
 {
+    // Take mutex to protect command_state from concurrent access
+    if (dtmf_command_mutex == NULL ||
+        xSemaphoreTake(dtmf_command_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGW(TAG, "DTMF: Failed to acquire mutex - ignoring event");
+        return;
+    }
+
     // Check if rate limited
     if (command_state.rate_limited) {
         ESP_LOGW(TAG, "Rate limited - ignoring event");
+        xSemaphoreGive(dtmf_command_mutex);
         return;
     }
 
@@ -532,6 +543,7 @@ void dtmf_process_telephone_event(uint8_t event)
     char dtmf_char = event_to_char(event);
     if (dtmf_char == '\0') {
         ESP_LOGW(TAG, "Invalid event code: %d", event);
+        xSemaphoreGive(dtmf_command_mutex);
         return;
     }
 
@@ -546,6 +558,7 @@ void dtmf_process_telephone_event(uint8_t event)
     // Check for timeout before processing
     if (dtmf_check_timeout()) {
         ESP_LOGW(TAG, "Command timeout - buffer cleared");
+        xSemaphoreGive(dtmf_command_mutex);
         return;
     }
 
@@ -553,17 +566,17 @@ void dtmf_process_telephone_event(uint8_t event)
     if (dtmf_char == '#') {
         command_state.buffer[command_state.buffer_index] = '\0';
         ESP_LOGI(TAG, "Command complete: %s#", command_state.buffer);
-        
+
         // Validate and execute command
         if (dtmf_validate_command(command_state.buffer)) {
             dtmf_execute_command(command_state.buffer);
         }
-        
+
         // Clear buffer after processing
         memset(command_state.buffer, 0, sizeof(command_state.buffer));
         command_state.buffer_index = 0;
         command_state.start_time_ms = 0;
-    } 
+    }
     // Accumulate character in buffer
     else if (command_state.buffer_index < sizeof(command_state.buffer) - 1) {
         command_state.buffer[command_state.buffer_index++] = dtmf_char;
@@ -574,6 +587,8 @@ void dtmf_process_telephone_event(uint8_t event)
         command_state.buffer_index = 0;
         command_state.start_time_ms = 0;
     }
+
+    xSemaphoreGive(dtmf_command_mutex);
 }
 
 // REMOVED: Legacy audio DTMF processing - SECURITY VULNERABILITY
@@ -583,9 +598,9 @@ void dtmf_process_telephone_event(uint8_t event)
 void dtmf_decoder_init(void)
 {
     ESP_LOGI(TAG, "Initializing DTMF Decoder (RFC 4733 secure mode)");
-    
+
     // REMOVED: dtmf_callback assignment - no longer using legacy callback
-    
+
     // Create mutex for security log
     if (security_log_mutex == NULL) {
         security_log_mutex = xSemaphoreCreateMutex();
@@ -593,14 +608,22 @@ void dtmf_decoder_init(void)
             ESP_LOGE(TAG, "Failed to create security log mutex");
         }
     }
-    
+
+    // Create mutex for command state (protects against concurrent access)
+    if (dtmf_command_mutex == NULL) {
+        dtmf_command_mutex = xSemaphoreCreateMutex();
+        if (dtmf_command_mutex == NULL) {
+            ESP_LOGE(TAG, "Failed to create DTMF command mutex");
+        }
+    }
+
     // Load security configuration from NVS
     dtmf_load_security_config();
-    
+
     // Register telephone-event callback with RTP handler (SECURE method)
     rtp_set_telephone_event_callback(dtmf_process_telephone_event);
     ESP_LOGI(TAG, "RFC 4733 telephone-event callback registered");
-    
+
     ESP_LOGI(TAG, "DTMF Decoder initialized (SECURE - audio tones disabled)");
 }
 
@@ -616,24 +639,37 @@ void dtmf_set_callback(dtmf_callback_t callback)
 void dtmf_reset_call_state(void)
 {
     ESP_LOGI(TAG, "Resetting call state");
-    
-    // Clear command buffer
-    memset(command_state.buffer, 0, sizeof(command_state.buffer));
-    command_state.buffer_index = 0;
-    
-    // Reset failed attempts counter
-    command_state.failed_attempts = 0;
-    
-    // Clear rate limit flag
-    command_state.rate_limited = false;
-    
-    // Cancel timeout timer
-    command_state.start_time_ms = 0;
-    
-    // Reset last event timestamp
-    command_state.last_event_ts = 0;
-    
-    ESP_LOGI(TAG, "Call state reset complete");
+
+    if (dtmf_command_mutex &&
+        xSemaphoreTake(dtmf_command_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Clear command buffer
+        memset(command_state.buffer, 0, sizeof(command_state.buffer));
+        command_state.buffer_index = 0;
+
+        // Reset failed attempts counter
+        command_state.failed_attempts = 0;
+
+        // Clear rate limit flag
+        command_state.rate_limited = false;
+
+        // Cancel timeout timer
+        command_state.start_time_ms = 0;
+
+        // Reset last event timestamp
+        command_state.last_event_ts = 0;
+
+        xSemaphoreGive(dtmf_command_mutex);
+        ESP_LOGI(TAG, "Call state reset complete");
+    } else {
+        ESP_LOGW(TAG, "Failed to acquire mutex for reset - clearing without lock");
+        // Fallback: clear anyway (better than leaving stale state)
+        memset(command_state.buffer, 0, sizeof(command_state.buffer));
+        command_state.buffer_index = 0;
+        command_state.failed_attempts = 0;
+        command_state.rate_limited = false;
+        command_state.start_time_ms = 0;
+        command_state.last_event_ts = 0;
+    }
 }
 
 // Get security log entries since timestamp (thread-safe)

@@ -253,7 +253,7 @@ static esp_err_t captive_post_wifi_scan_handler(httpd_req_t *req) {
       cJSON_AddBoolToObject(network, "secure", scan_results[i].secure);
       cJSON_AddItemToArray(networks_array, network);
     }
-    free(scan_results);
+    wifi_free_scan_results(scan_results);
   }
 
   cJSON_AddItemToObject(root, "networks", networks_array);

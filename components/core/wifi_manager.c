@@ -125,14 +125,21 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
            event_base == WIFI_EVENT ? "WIFI_EVENT" : "IP_EVENT", (int)event_id);
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    if (!is_scanning) {
+    if (!is_scanning && !is_testing_credentials) {
       ESP_LOGI(TAG, "WiFi STA started, attempting to connect");
       esp_wifi_connect();
+    } else if (is_testing_credentials) {
+      ESP_LOGI(TAG, "WiFi STA started during credential test, skipping auto-connect");
     } else {
       ESP_LOGI(TAG, "WiFi STA started during scan, skipping auto-connect");
     }
   } else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    // Skip retry logic during credential testing to avoid corrupting state
+    if (is_testing_credentials) {
+      ESP_LOGI(TAG, "WiFi disconnected during credential test - ignoring");
+      return;
+    }
     wifi_event_sta_disconnected_t *disconnected =
         (wifi_event_sta_disconnected_t *)event_data;
     retry_count++;
@@ -162,14 +169,17 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "IP obtained: " IPSTR ", WiFi fully connected",
              IP2STR(&event->ip_info.ip));
-    is_connected = true;
-    retry_count = 0; // Reset retry count on successful connection
+    // Only update connection state if not during credential test
+    if (!is_testing_credentials) {
+      is_connected = true;
+      retry_count = 0; // Reset retry count on successful connection
+    }
 
     // Only stop captive portal and DNS responder if NOT in APSTA mode (normal
     // STA connection)
     wifi_mode_t current_mode;
     esp_wifi_get_mode(&current_mode);
-    if (current_mode == WIFI_MODE_STA) {
+    if (current_mode == WIFI_MODE_STA && !is_testing_credentials) {
       ESP_LOGI(TAG, "WiFi connected in STA mode - stopping captive portal and "
                     "DNS responder");
       captive_portal_stop();
@@ -179,22 +189,24 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                     "for user redirection");
     }
 
-    // Update connection info
-    current_connection.connected = true;
-    snprintf(current_connection.ip_address,
-             sizeof(current_connection.ip_address), IPSTR,
-             IP2STR(&event->ip_info.ip));
+    // Update connection info (only when not testing to avoid overwriting real state)
+    if (!is_testing_credentials) {
+      current_connection.connected = true;
+      snprintf(current_connection.ip_address,
+               sizeof(current_connection.ip_address), IPSTR,
+               IP2STR(&event->ip_info.ip));
 
-    // Get SSID and RSSI
-    wifi_ap_record_t ap_info;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-      strncpy(current_connection.ssid, (char *)ap_info.ssid,
-              sizeof(current_connection.ssid) - 1);
-      current_connection.ssid[sizeof(current_connection.ssid) - 1] = '\0';
-      current_connection.rssi = ap_info.rssi;
+      // Get SSID and RSSI
+      wifi_ap_record_t ap_info;
+      if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        strncpy(current_connection.ssid, (char *)ap_info.ssid,
+                sizeof(current_connection.ssid) - 1);
+        current_connection.ssid[sizeof(current_connection.ssid) - 1] = '\0';
+        current_connection.rssi = ap_info.rssi;
+      }
+
+      xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     }
-
-    xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
     ESP_LOGW(TAG, "IP lost, WiFi connection may be unstable");
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
@@ -370,9 +382,11 @@ void wifi_connect_sta(const char *ssid, const char *password) {
   retry_count = 0; // Reset retry count when starting new connection
 
   wifi_config_t wifi_config = {0};
-  strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+  strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+  wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
   strncpy((char *)wifi_config.sta.password, password,
-          sizeof(wifi_config.sta.password));
+          sizeof(wifi_config.sta.password) - 1);
+  wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0';
 
   // Stop WiFi if it's running
   esp_err_t err = esp_wifi_stop();
@@ -568,6 +582,13 @@ wifi_connection_info_t wifi_get_connection_info(void) {
 int wifi_scan_networks(wifi_scan_result_t **results) {
   ESP_LOGI(TAG, "WiFi scan requested via API");
 
+  if (results == NULL) {
+    ESP_LOGE(TAG, "Invalid results pointer");
+    return 0;
+  }
+
+  *results = NULL; // Initialize to NULL for safety
+
   // Start a new async scan
   wifi_start_background_scan();
 
@@ -589,7 +610,6 @@ int wifi_scan_networks(wifi_scan_result_t **results) {
   // Check if we have valid results
   if (!scan_results_valid || scan_results_count == 0) {
     ESP_LOGW(TAG, "Scan timeout or no results after %d ms", waited_ms);
-    *results = NULL;
     return 0;
   }
 
@@ -597,11 +617,11 @@ int wifi_scan_networks(wifi_scan_result_t **results) {
            scan_results_count, waited_ms);
 
   // Allocate memory for results to return
+  // IMPORTANT: Caller MUST free this memory using wifi_free_scan_results()
   wifi_scan_result_t *scan_results_ptr =
       malloc(sizeof(wifi_scan_result_t) * scan_results_count);
   if (scan_results_ptr == NULL) {
     ESP_LOGE(TAG, "Failed to allocate memory for scan results");
-    *results = NULL;
     return 0;
   }
 
@@ -613,6 +633,16 @@ int wifi_scan_networks(wifi_scan_result_t **results) {
   ESP_LOGI(TAG, "Returning %d scan results to caller", scan_results_count);
 
   return scan_results_count;
+}
+
+/**
+ * @brief Free memory allocated by wifi_scan_networks
+ * @param results Pointer to the scan results allocated by wifi_scan_networks
+ */
+void wifi_free_scan_results(wifi_scan_result_t *results) {
+  if (results) {
+    free(results);
+  }
 }
 
 /**
@@ -663,9 +693,11 @@ static void credential_test_task_func(void *pvParameters) {
 
   // Configure STA interface for testing
   wifi_config_t sta_config = {0};
-  strncpy((char *)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid));
+  strncpy((char *)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid) - 1);
+  sta_config.sta.ssid[sizeof(sta_config.sta.ssid) - 1] = '\0';
   strncpy((char *)sta_config.sta.password, password,
-          sizeof(sta_config.sta.password));
+          sizeof(sta_config.sta.password) - 1);
+  sta_config.sta.password[sizeof(sta_config.sta.password) - 1] = '\0';
 
   // Set STA mode temporarily for testing
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));

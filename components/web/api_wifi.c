@@ -121,8 +121,7 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req) {
 
   cJSON *root = cJSON_CreateObject();
   if (!root) {
-    if (ap_records)
-      free(ap_records);
+    wifi_free_scan_results(ap_records);
     return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "Failed to create JSON");
   }
@@ -130,8 +129,7 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req) {
   cJSON *ap_list = cJSON_CreateArray();
   if (!ap_list) {
     cJSON_Delete(root);
-    if (ap_records)
-      free(ap_records);
+    wifi_free_scan_results(ap_records);
     return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "Failed to create JSON array");
   }
@@ -146,7 +144,7 @@ static esp_err_t post_wifi_scan_handler(httpd_req_t *req) {
         cJSON_AddItemToArray(ap_list, ap);
       }
     }
-    free(ap_records);
+    wifi_free_scan_results(ap_records);
   }
 
   cJSON_AddItemToObject(root, "access_points", ap_list);

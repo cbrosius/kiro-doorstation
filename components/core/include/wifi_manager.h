@@ -55,6 +55,7 @@ wifi_connection_info_t wifi_get_connection_info(void);
 void wifi_start_background_scan(void);
 int wifi_get_scan_results(wifi_scan_result_t *results, int max_results);
 int wifi_scan_networks(wifi_scan_result_t **results);
+void wifi_free_scan_results(wifi_scan_result_t *results);
 void wifi_manager_connect(void);
 
 // Parallel credential testing functions
