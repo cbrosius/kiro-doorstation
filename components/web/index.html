@@ -4561,6 +4561,28 @@
         ]);
 
         if (!response.ok) {
+          // Handle 401 Unauthorized - session expired or invalid
+          if (response.status === 401) {
+            console.warn('Session expired or invalid (401 response), redirecting to login');
+            showToast('Session expired. Redirecting to login...', 'warning', 3000);
+            // Small delay to allow toast to show before redirect
+            setTimeout(() => {
+              window.location.href = '/login.html';
+            }, 2000);
+            throw new Error('Session expired');
+          }
+          
+          // Handle 403 Forbidden - may indicate setup required or blocked
+          if (response.status === 403) {
+            console.warn('Access forbidden (403 response), checking if setup required');
+            const errorData = await response.json().catch(() => ({}));
+            if (errorData.message && errorData.message.includes('setup')) {
+              console.log('Setup required, redirecting to setup page');
+              window.location.href = '/setup.html';
+            }
+            throw new Error(errorData.message || 'Access forbidden');
+          }
+          
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
         }
@@ -4591,7 +4613,8 @@
           } else if (error.message.includes('Empty response')) {
             // Don't show toast for empty responses - handle gracefully in calling code
             console.warn('Empty response from server:', endpoint);
-          } else {
+          } else if (error.message !== 'Session expired') {
+            // Don't show toast for session expired - redirect handles it
             showToast(error.message, 'error');
           }
         }
@@ -10133,7 +10156,7 @@
      * Start session monitoring
      */
     function startSessionMonitoring() {
-      // Check session every 2 minutes
+      // Check session every 30 seconds (more frequent for proactive detection)
       sessionManager.checkInterval = setInterval(async () => {
         // First check if session cookie still exists
         if (!hasSessionCookie()) {
@@ -10153,12 +10176,12 @@
             showSessionWarning(minutesRemaining);
           }
         }
-      }, 120000); // Check every 2 minutes
+      }, 30000); // Check every 30 seconds for more responsive session validation
 
       // Set initial session expiration time (30 minutes from now)
       sessionManager.sessionExpiresAt = Date.now() + (30 * 60 * 1000);
 
-      console.log('Session monitoring started');
+      console.log('Session monitoring started (30s interval)');
     }
 
     /**
