@@ -120,6 +120,17 @@ esp_err_t auth_filter(httpd_req_t *req, bool extend_session) {
     return ESP_FAIL;
   }
 
+  // For GET requests (extend_session == false), check for user-initified flag
+  if (!extend_session) {
+    char hdr_val[16] = {0};
+    size_t hdr_len = httpd_req_get_hdr_value_len(req, "X-Session-Extend");
+    if (hdr_len > 0 && hdr_len < sizeof(hdr_val)) {
+      if (httpd_req_get_hdr_value_str(req, "X-Session-Extend", hdr_val, sizeof(hdr_val)) == ESP_OK) {
+        extend_session = (strcmp(hdr_val, "true") == 0);
+      }
+    }
+  }
+
   if (extend_session) {
     auth_extend_session(session_id);
   }
