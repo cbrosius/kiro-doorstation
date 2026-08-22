@@ -754,6 +754,18 @@
       margin-top: var(--spacing-xs);
     }
 
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .form-actions {
       display: flex;
       gap: var(--spacing-md);
@@ -1399,15 +1411,15 @@
 
   <!-- Header -->
   <header class="app-header">
-    <button class="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+    <button type="button" class="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
       ☰
     </button>
     <h1 class="app-title">ESP32 SIP Door Station</h1>
     <div class="header-actions">
-      <button class="theme-toggle" aria-label="Toggle theme" id="theme-toggle">
+      <button type="button" class="theme-toggle" aria-label="Toggle theme" id="theme-toggle">
         🌙
       </button>
-      <button class="logout-btn" id="logout-btn" aria-label="Logout">
+      <button type="button" class="logout-btn" id="logout-btn" aria-label="Logout">
         <span>🚪</span>
         <span>Logout</span>
       </button>
@@ -1421,7 +1433,7 @@
       <input type="search" class="global-search" id="global-search" placeholder="Search settings... (Ctrl+K)"
         autocomplete="off" aria-label="Search settings">
       <!-- Search Results Dropdown -->
-      <div class="search-results" id="search-results" hidden role="listbox"></div>
+      <div class="search-results" id="search-results" hidden role="listbox" aria-label="Search results"></div>
     </div>
     <ul class="nav-menu">
       <li class="nav-item active" data-section="dashboard">
@@ -1482,45 +1494,45 @@
 
     <!-- Status Panel (Collapsible) -->
     <div class="status-panel" id="status-panel">
-      <button class="status-toggle" aria-label="Toggle status panel" aria-expanded="true"
+      <button type="button" class="status-toggle" aria-label="Toggle status panel" aria-expanded="true"
         aria-controls="status-content">
         <span>Status</span>
         <span class="toggle-icon">▼</span>
       </button>
       <div class="status-content" id="status-content">
         <div class="status-grid">
-          <div class="status-card" id="wifi-status" data-status="unknown" role="status" aria-live="polite"
+          <output class="status-card" id="wifi-status" data-status="unknown" aria-live="polite"
             aria-label="WiFi connection status">
             <span class="status-icon">📶</span>
             <div class="status-info">
               <span class="status-label">WiFi</span>
               <span class="status-value">Unknown</span>
             </div>
-          </div>
-          <div class="status-card" id="sip-status" data-status="unknown" role="status" aria-live="polite"
+          </output>
+          <output class="status-card" id="sip-status" data-status="unknown" aria-live="polite"
             aria-label="SIP connection status">
             <span class="status-icon">📞</span>
             <div class="status-info">
               <span class="status-label">SIP</span>
               <span class="status-value">Unknown</span>
             </div>
-          </div>
-          <div class="status-card" id="door-status" data-status="unknown" role="status" aria-live="polite"
+          </output>
+          <output class="status-card" id="door-status" data-status="unknown" aria-live="polite"
             aria-label="Door status">
             <span class="status-icon">🚪</span>
             <div class="status-info">
               <span class="status-label">Door</span>
               <span class="status-value">Checking...</span>
             </div>
-          </div>
-          <div class="status-card" id="light-status" data-status="unknown" role="status" aria-live="polite"
+          </output>
+          <output class="status-card" id="light-status" data-status="unknown" aria-live="polite"
             aria-label="Light status">
             <span class="status-icon">💡</span>
             <div class="status-info">
               <span class="status-label">Light</span>
               <span class="status-value">Checking...</span>
             </div>
-          </div>
+          </output>
         </div>
       </div>
     </div>
@@ -1542,8 +1554,7 @@
               Your TLS certificate will expire soon. Please renew or generate a new certificate to maintain secure
               access.
             </p>
-            <button class="btn btn-sm btn-warning"
-              onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+            <button type="button" class="btn btn-sm btn-warning" data-action="navigate-security-manage-cert">
               <span>🔐</span>
               <span>Manage Certificate</span>
             </button>
@@ -1566,12 +1577,12 @@
               access.
             </p>
             <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
-              <button class="btn btn-sm btn-danger"
-                onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+              <button type="button" class="btn btn-sm btn-danger"
+                data-action="navigate-security-manage-cert">
                 <span>🔐</span>
                 <span>Manage Certificate Now</span>
               </button>
-              <button class="btn btn-sm btn-secondary" onclick="generateSelfSignedCertificateQuick()">
+              <button type="button" class="btn btn-sm btn-secondary" data-action="generate-cert-quick">
                 <span>⚡</span>
                 <span>Quick Generate New Certificate</span>
               </button>
@@ -1595,12 +1606,11 @@
               immediately.
             </p>
             <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
-              <button class="btn btn-sm btn-danger" onclick="generateSelfSignedCertificateQuick()">
+              <button type="button" class="btn btn-sm btn-danger" data-action="generate-cert-quick">
                 <span>🔐</span>
                 <span>Generate New Certificate</span>
               </button>
-              <button class="btn btn-sm btn-secondary"
-                onclick="navigateToSection('security'); scrollToElement('cert-info-panel');">
+              <button type="button" class="btn btn-sm btn-secondary" data-action="navigate-security-manage-cert">
                 <span>⚙️</span>
                 <span>Certificate Settings</span>
               </button>
@@ -1676,7 +1686,7 @@
           </div>
         </div>
         <div style="margin-top: var(--spacing-md);">
-          <button class="btn btn-info btn-sm" onclick="handleForceNTPSync()" id="force-ntp-sync-btn">
+          <button type="button" class="btn btn-info btn-sm" data-action="force-ntp-sync" id="force-ntp-sync-btn">
             <span class="btn-text">
               <span>🔄</span>
               <span>Force Sync Now</span>
@@ -1694,19 +1704,19 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button class="btn btn-success" onclick="handleSIPConnect()" id="quick-sip-connect">
+          <button type="button" class="btn btn-success" data-action="sip-connect" id="quick-sip-connect">
             <span>📞</span>
             <span>Connect SIP</span>
           </button>
-          <button class="btn btn-warning" onclick="handleSIPDisconnect()" id="quick-sip-disconnect">
+          <button type="button" class="btn btn-warning" data-action="sip-disconnect" id="quick-sip-disconnect">
             <span>📴</span>
             <span>Disconnect SIP</span>
           </button>
-          <button class="btn btn-warning" onclick="handleSystemRestart()" id="system-restart-btn">
+          <button type="button" class="btn btn-warning" data-action="system-restart" id="system-restart-btn">
             <span>🔄</span>
             <span>Restart System</span>
           </button>
-          <button class="btn btn-danger" onclick="handleFactoryReset()" id="factory-reset-btn">
+          <button type="button" class="btn btn-danger" data-action="factory-reset" id="factory-reset-btn">
             <span>⚠️</span>
             <span>Factory Reset</span>
           </button>
@@ -1731,21 +1741,21 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg);">
-          <button class="btn btn-primary" onclick="handleBackupConfig()">
+          <button type="button" class="btn btn-primary" data-action="backup-config">
             <span>💾</span>
             <span>Download Backup</span>
           </button>
-          <button class="btn btn-info" onclick="document.getElementById('restore-file-input').click()">
+          <button type="button" class="btn btn-info" data-action="trigger-restore-file">
             <span>📂</span>
             <span>Restore from File</span>
           </button>
-          <input type="file" id="restore-file-input" accept=".json" style="display: none;"
-            onchange="handleRestoreFileSelected(event)">
+          <input type="file" id="restore-file-input" aria-label="Select backup file to restore" accept=".json" style="display: none;"
+            data-action="restore-file-selected">
         </div>
 
         <div class="form-group" style="margin-bottom: 0;">
           <label>
-            <input type="checkbox" id="backup-include-passwords" checked>
+            <input type="checkbox" id="backup-include-passwords" aria-label="Include passwords in backup" checked>
             Include passwords in backup (recommended for security: uncheck)
           </label>
           <span class="form-help">Unchecking this will exclude sensitive passwords from the backup file</span>
@@ -1839,14 +1849,14 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button class="btn btn-info" onclick="handleTestCall(1)" id="test-call-target1">
+          <button type="button" class="btn btn-info" data-action="test-call-1" id="test-call-target1">
             <span class="btn-text">
               <span>📞</span>
               <span>Test Call Target 1</span>
             </span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button class="btn btn-info" onclick="handleTestCall(2)" id="test-call-target2">
+          <button type="button" class="btn btn-info" data-action="test-call-2" id="test-call-target2">
             <span class="btn-text">
               <span>📞</span>
               <span>Test Call Target 2</span>
@@ -1872,21 +1882,21 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg);">
-          <button class="btn btn-success" onclick="handleSIPConnectEnhanced()" id="sip-connect-btn">
+          <button type="button" class="btn btn-success" data-action="sip-connect" id="sip-connect-btn">
             <span class="btn-text">
               <span>📞</span>
               <span>Connect to SIP</span>
             </span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button class="btn btn-warning" onclick="handleSIPDisconnectEnhanced()" id="sip-disconnect-btn">
+          <button type="button" class="btn btn-warning" data-action="sip-disconnect" id="sip-disconnect-btn">
             <span class="btn-text">
               <span>📴</span>
               <span>Disconnect</span>
             </span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button class="btn btn-info" onclick="handleSIPTestEnhanced()" id="sip-test-btn">
+          <button type="button" class="btn btn-info" data-action="sip-test" id="sip-test-btn">
             <span class="btn-text">
               <span>🧪</span>
               <span>Test Configuration</span>
@@ -1923,7 +1933,7 @@
 
         <!-- WiFi Scan -->
         <div style="margin-bottom: var(--spacing-lg);">
-          <button class="btn btn-info" onclick="handleWiFiScan()" id="wifi-scan-btn">
+          <button type="button" class="btn btn-info" data-action="wifi-scan" id="wifi-scan-btn">
             <span class="btn-text">
               <span>🔍</span>
               <span>Scan for Networks</span>
@@ -1984,14 +1994,14 @@
         <form class="config-form" id="ip-config-form" data-api="/api/network/ip">
           <!-- DHCP/Static Toggle -->
           <div class="form-group">
-            <label>IP Address Mode</label>
+            <span style="display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">IP Address Mode</span>
             <div style="display: flex; gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
               <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
-                <input type="radio" name="mode" value="dhcp" id="ip-mode-dhcp" checked onchange="toggleIPMode()">
+                <input type="radio" name="mode" value="dhcp" id="ip-mode-dhcp" aria-label="Use DHCP for automatic IP configuration" checked data-action="toggle-ip-mode">
                 <span>DHCP (Automatic)</span>
               </label>
               <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
-                <input type="radio" name="mode" value="static" id="ip-mode-static" onchange="toggleIPMode()">
+                <input type="radio" name="mode" value="static" id="ip-mode-static" aria-label="Use static IP for manual configuration" data-action="toggle-ip-mode">
                 <span>Static IP (Manual)</span>
               </label>
             </div>
@@ -2001,7 +2011,7 @@
 
           <!-- Current IP Display -->
           <div class="form-group">
-            <label>Current IP Configuration</label>
+            <span style="display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">Current IP Configuration</span>
             <div
               style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
               <div
@@ -2166,7 +2176,7 @@
 
           <!-- Current NTP Status -->
           <div class="form-group">
-            <label>Current Sync Status</label>
+            <span style="display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">Current Sync Status</span>
             <div
               style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
               <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
@@ -2196,7 +2206,7 @@
               <span class="btn-text">Save NTP Configuration</span>
               <span class="btn-spinner" hidden>⏳</span>
             </button>
-            <button type="button" class="btn btn-info" onclick="handleNTPForceSync()">
+            <button type="button" class="btn btn-info" data-action="ntp-force-sync">
               <span class="btn-text">
                 <span>🔄</span>
                 <span>Force Sync Now</span>
@@ -2584,8 +2594,9 @@
         <p class="form-help">Change the administrator password for web interface access.</p>
 
         <!-- Hidden username field for accessibility -->
-        <input type="text" name="username" value="admin" autocomplete="username" style="display: none;"
-          aria-hidden="true">
+        <label for="admin-username" class="visually-hidden">Username</label>
+        <input type="text" id="admin-username" name="username" value="admin" autocomplete="username"
+          class="visually-hidden">
 
         <div class="form-group">
           <label for="current-password">
@@ -2636,7 +2647,7 @@
 
         <div class="form-group">
           <label>
-            <input type="checkbox" id="security-pin-enable" name="pin_enabled">
+            <input type="checkbox" id="security-pin-enable" aria-label="Enable PIN protection" name="pin_enabled">
             Enable PIN Protection
           </label>
           <span class="form-help">When enabled, DTMF commands will require PIN authentication</span>
@@ -2718,7 +2729,7 @@
               <div>
                 <strong style="color: var(--color-warning);">Certificate Expiring Soon</strong>
                 <p style="margin: var(--spacing-xs) 0 0 0; font-size: var(--font-size-sm); color: var(--color-text-secondary);"
-                  id="cert-expiry-warning-text">
+                  id="cert-expiry-warning-detail-text">
                   Your certificate will expire soon. Please renew or generate a new certificate.
                 </p>
               </div>
@@ -2779,7 +2790,7 @@
 
           <!-- Download Certificate Button (Task 18: Add download button for current certificate) -->
           <div style="margin-top: var(--spacing-md);">
-            <button class="btn btn-sm btn-secondary" onclick="downloadCertificate()">
+            <button type="button" class="btn btn-sm btn-secondary" data-action="download-cert">
               <span>💾</span>
               <span>Download Certificate</span>
             </button>
@@ -2806,7 +2817,7 @@
             <span class="form-help">Hostname or domain name for the certificate</span>
           </div>
 
-          <button class="btn btn-primary" onclick="generateSelfSignedCertificate()" id="generate-cert-btn">
+          <button type="button" class="btn btn-primary" data-action="generate-cert" id="generate-cert-btn">
             <span class="btn-text">
               <span>🔐</span>
               <span>Generate Certificate</span>
@@ -2854,7 +2865,7 @@
             <span class="form-help">Optional: Certificate chain for intermediate CAs</span>
           </div>
 
-          <button class="btn btn-primary" onclick="uploadCustomCertificate()" id="upload-cert-btn">
+          <button type="button" class="btn btn-primary" data-action="upload-cert" id="upload-cert-btn">
             <span class="btn-text">
               <span>📤</span>
               <span>Upload Certificate</span>
@@ -2895,14 +2906,14 @@
           <h3 style="margin: 0;">SIP Connection Logs</h3>
           <div style="display: flex; gap: var(--spacing-sm);">
             <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
-              <input type="checkbox" id="sip-log-auto-refresh" checked>
+              <input type="checkbox" id="sip-log-auto-refresh" aria-label="Automatically refresh SIP logs" checked>
               <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
             </label>
-            <button class="btn btn-sm btn-info" onclick="refreshSIPLogs()" id="sip-log-refresh-btn">
+            <button type="button" class="btn btn-sm btn-info" data-action="refresh-sip-logs" id="sip-log-refresh-btn">
               <span>🔄</span>
               <span>Refresh</span>
             </button>
-            <button class="btn btn-sm btn-secondary" onclick="clearSIPLogDisplay()">
+            <button type="button" class="btn btn-sm btn-secondary" data-action="clear-sip-logs">
               <span>🗑️</span>
               <span>Clear Display</span>
             </button>
@@ -2912,18 +2923,18 @@
         <!-- Task 11.3: Log Search and Filtering for SIP Logs -->
         <div style="margin-bottom: var(--spacing-md);">
           <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); flex-wrap: wrap;">
-            <input type="search" id="sip-log-search" placeholder="Search SIP logs..."
+            <input type="search" id="sip-log-search" aria-label="Search SIP logs" placeholder="Search SIP logs..."
               style="flex: 1; min-width: 200px; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-bg); color: var(--color-text);">
             <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
-              <button class="btn btn-sm" onclick="filterSIPLogs('all')" data-filter="all"
+              <button type="button" class="btn btn-sm" data-action="filter-sip-logs" data-filter="all"
                 style="background-color: var(--color-text-secondary);">All</button>
-              <button class="btn btn-sm" onclick="filterSIPLogs('error')" data-filter="error"
+              <button type="button" class="btn btn-sm" data-action="filter-sip-logs" data-filter="error"
                 style="background-color: var(--color-danger);">Errors</button>
-              <button class="btn btn-sm" onclick="filterSIPLogs('info')" data-filter="info"
+              <button type="button" class="btn btn-sm" data-action="filter-sip-logs" data-filter="info"
                 style="background-color: var(--color-info);">Info</button>
-              <button class="btn btn-sm" onclick="filterSIPLogs('sent')" data-filter="sent"
+              <button type="button" class="btn btn-sm" data-action="filter-sip-logs" data-filter="sent"
                 style="background-color: var(--color-primary);">Sent</button>
-              <button class="btn btn-sm" onclick="filterSIPLogs('received')" data-filter="received"
+              <button type="button" class="btn btn-sm" data-action="filter-sip-logs" data-filter="received"
                 style="background-color: var(--color-warning);">Received</button>
             </div>
           </div>
@@ -2940,7 +2951,7 @@
         </div>
 
         <!-- Task 11.5: Jump to Bottom Button -->
-        <button id="sip-log-jump-bottom" class="btn btn-sm btn-info" onclick="jumpToBottomSIPLog()"
+        <button type="button" id="sip-log-jump-bottom" class="btn btn-sm btn-info" data-action="jump-sip-log-bottom"
           style="position: absolute; bottom: var(--spacing-lg); right: var(--spacing-lg); display: none; box-shadow: var(--shadow-lg);">
           <span>⬇️</span>
           <span>Jump to Bottom</span>
@@ -2948,7 +2959,7 @@
 
         <!-- Task 11.4: Log Export Functionality -->
         <div style="margin-top: var(--spacing-md); display: flex; justify-content: flex-end;">
-          <button class="btn btn-sm btn-secondary" onclick="exportSIPLogs()">
+          <button type="button" class="btn btn-sm btn-secondary" data-action="export-sip-logs">
             <span>💾</span>
             <span>Export to File</span>
           </button>
@@ -2962,14 +2973,14 @@
           <h3 style="margin: 0;">DTMF Security Logs</h3>
           <div style="display: flex; gap: var(--spacing-sm);">
             <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
-              <input type="checkbox" id="dtmf-log-auto-refresh" checked>
+              <input type="checkbox" id="dtmf-log-auto-refresh" aria-label="Automatically refresh DTMF logs" checked>
               <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
             </label>
-            <button class="btn btn-sm btn-info" onclick="refreshDTMFLogs()" id="dtmf-log-refresh-btn">
+            <button type="button" class="btn btn-sm btn-info" data-action="refresh-dtmf-logs" id="dtmf-log-refresh-btn">
               <span>🔄</span>
               <span>Refresh</span>
             </button>
-            <button class="btn btn-sm btn-secondary" onclick="clearDTMFLogDisplay()">
+            <button type="button" class="btn btn-sm btn-secondary" data-action="clear-dtmf-logs">
               <span>🗑️</span>
               <span>Clear Display</span>
             </button>
@@ -2979,14 +2990,14 @@
         <!-- Task 11.3: Log Search and Filtering for DTMF Logs -->
         <div style="margin-bottom: var(--spacing-md);">
           <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); flex-wrap: wrap;">
-            <input type="search" id="dtmf-log-search" placeholder="Search DTMF logs..."
+            <input type="search" id="dtmf-log-search" aria-label="Search DTMF logs" placeholder="Search DTMF logs..."
               style="flex: 1; min-width: 200px; padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); background-color: var(--color-bg); color: var(--color-text);">
             <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
-              <button class="btn btn-sm" onclick="filterDTMFLogs('all')" data-filter="all"
+              <button type="button" class="btn btn-sm" data-action="filter-dtmf-logs" data-filter="all"
                 style="background-color: var(--color-text-secondary);">All</button>
-              <button class="btn btn-sm" onclick="filterDTMFLogs('success')" data-filter="success"
+              <button type="button" class="btn btn-sm" data-action="filter-dtmf-logs" data-filter="success"
                 style="background-color: var(--color-success);">Success</button>
-              <button class="btn btn-sm" onclick="filterDTMFLogs('failed')" data-filter="failed"
+              <button type="button" class="btn btn-sm" data-action="filter-dtmf-logs" data-filter="failed"
                 style="background-color: var(--color-danger);">Failed</button>
             </div>
           </div>
@@ -3003,7 +3014,7 @@
         </div>
 
         <!-- Task 11.5: Jump to Bottom Button -->
-        <button id="dtmf-log-jump-bottom" class="btn btn-sm btn-info" onclick="jumpToBottomDTMFLog()"
+        <button type="button" id="dtmf-log-jump-bottom" class="btn btn-sm btn-info" data-action="jump-dtmf-log-bottom"
           style="position: absolute; bottom: var(--spacing-lg); right: var(--spacing-lg); display: none; box-shadow: var(--shadow-lg);">
           <span>⬇️</span>
           <span>Jump to Bottom</span>
@@ -3011,7 +3022,7 @@
 
         <!-- Task 11.4: Log Export Functionality -->
         <div style="margin-top: var(--spacing-md); display: flex; justify-content: flex-end;">
-          <button class="btn btn-sm btn-secondary" onclick="exportDTMFLogs()">
+          <button type="button" class="btn btn-sm btn-secondary" data-action="export-dtmf-logs">
             <span>💾</span>
             <span>Export to File</span>
           </button>
@@ -3025,10 +3036,10 @@
           <h3 style="margin: 0;">Login Audit Logs</h3>
           <div style="display: flex; gap: var(--spacing-sm);">
             <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
-              <input type="checkbox" id="login-log-auto-refresh" checked>
+              <input type="checkbox" id="login-log-auto-refresh" aria-label="Automatically refresh login logs" checked>
               <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
             </label>
-            <button class="btn btn-sm btn-info" onclick="refreshLoginLogs()" id="login-log-refresh-btn">
+            <button type="button" class="btn btn-sm btn-info" data-action="refresh-login-logs" id="login-log-refresh-btn">
               <span>🔄</span>
               <span>Refresh</span>
             </button>
@@ -3053,10 +3064,10 @@
           <h3 style="margin: 0;">Hardware Event Logs</h3>
           <div style="display: flex; gap: var(--spacing-sm);">
             <label style="display: flex; align-items: center; gap: var(--spacing-xs); cursor: pointer;">
-              <input type="checkbox" id="hw-log-auto-refresh" checked>
+              <input type="checkbox" id="hw-log-auto-refresh" aria-label="Automatically refresh hardware logs" checked>
               <span style="font-size: var(--font-size-sm);">Auto-refresh</span>
             </label>
-            <button class="btn btn-sm btn-info" onclick="refreshHWLogs()" id="hw-log-refresh-btn">
+            <button type="button" class="btn btn-sm btn-info" data-action="refresh-hw-logs" id="hw-log-refresh-btn">
               <span>🔄</span>
               <span>Refresh</span>
             </button>
@@ -3184,12 +3195,12 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary test-btn" id="test-bell1-btn" onclick="testDoorbell(1)">
+          <button type="button" class="btn btn-primary test-btn" id="test-bell1-btn" data-action="test-doorbell-1">
             <span class="btn-text">🔔 Test Doorbell 1</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
 
-          <button type="button" class="btn btn-primary test-btn" id="test-bell2-btn" onclick="testDoorbell(2)">
+          <button type="button" class="btn btn-primary test-btn" id="test-bell2-btn" data-action="test-doorbell-2">
             <span class="btn-text">🔔 Test Doorbell 2</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
@@ -3209,12 +3220,12 @@
             Duration: <span id="door-duration-value">5</span> seconds
           </label>
           <input type="range" id="door-duration" name="duration" min="1" max="10" value="5"
-            oninput="updateDurationDisplay(this.value)" style="width: 100%; max-width: 400px;">
+            data-action="update-duration-display" style="width: 100%; max-width: 400px;">
           <span class="form-help">Adjust the duration the relay will remain active (1-10 seconds)</span>
         </div>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-warning test-btn" id="test-door-btn" onclick="testDoorOpener()">
+          <button type="button" class="btn btn-warning test-btn" id="test-door-btn" data-action="test-door-opener">
             <span class="btn-text">🚪 Activate Door Opener</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
@@ -3230,7 +3241,7 @@
         </p>
 
         <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
-          <button type="button" class="btn btn-info test-btn" id="test-light-btn" onclick="testLightToggle()">
+          <button type="button" class="btn btn-info test-btn" id="test-light-btn" data-action="test-light-toggle">
             <span class="btn-text">💡 Toggle Light</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
@@ -3245,7 +3256,7 @@
           Immediately deactivate all active hardware tests and relays. Use this if something goes wrong during testing.
         </p>
 
-        <button type="button" class="btn btn-danger emergency-btn" id="emergency-stop-btn" onclick="emergencyStop()">
+        <button type="button" class="btn btn-danger emergency-btn" id="emergency-stop-btn" data-action="emergency-stop">
           <span class="btn-text">🛑 Emergency Stop All Tests</span>
           <span class="btn-spinner" hidden>⏳</span>
         </button>
@@ -3332,7 +3343,7 @@
         </div>
 
         <div class="form-actions">
-          <button type="button" class="btn btn-info" id="test-email-btn" onclick="handleTestEmail()">
+          <button type="button" class="btn btn-info" id="test-email-btn" data-action="test-email">
             <span class="btn-text">Send Test Email</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
@@ -3350,7 +3361,7 @@
 
         <div class="form-group">
           <label>
-            <input type="checkbox" id="reports-enabled" name="reports_enabled" checked>
+            <input type="checkbox" id="reports-enabled" name="reports_enabled" aria-label="Enable automated email reports" checked>
             Enable Automated Reports
           </label>
           <span class="form-help">Automatically send scheduled reports via email</span>
@@ -3410,15 +3421,15 @@
               Content</label>
             <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
               <label>
-                <input type="checkbox" id="include-status" name="include_status" checked>
+                <input type="checkbox" id="include-status" name="include_status" aria-label="Include system status summary" checked>
                 Include System Status Summary
               </label>
               <label>
-                <input type="checkbox" id="include-logs" name="include_logs" checked>
+                <input type="checkbox" id="include-logs" name="include_logs" aria-label="Include activity logs" checked>
                 Include Activity Logs
               </label>
               <label>
-                <input type="checkbox" id="include-backup" name="include_backup" checked>
+                <input type="checkbox" id="include-backup" name="include_backup" aria-label="Include configuration backup" checked>
                 Include Configuration Backup
               </label>
             </div>
@@ -3427,7 +3438,7 @@
         </div>
 
         <div class="form-actions">
-          <button type="button" class="btn btn-success" id="send-report-now-btn" onclick="handleSendReportNow()">
+          <button type="button" class="btn btn-success" id="send-report-now-btn" data-action="send-report-now">
             <span class="btn-text">Send Report Now</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
@@ -3499,11 +3510,11 @@
             style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-md);">
             or click to browse
           </div>
-          <button type="button" class="btn btn-primary" onclick="document.getElementById('ota-file-input').click()">
+          <button type="button" class="btn btn-primary" data-action="trigger-ota-file">
             <span>📂</span>
             <span>Select File</span>
           </button>
-          <input type="file" id="ota-file-input" accept=".bin" style="display: none;">
+          <input type="file" id="ota-file-input" aria-label="Select firmware file" accept=".bin" style="display: none;">
         </div>
 
         <!-- Selected File Display -->
@@ -3521,7 +3532,7 @@
                 style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-top: var(--spacing-xs);">
               </div>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="clearOTAFile()">
+            <button type="button" class="btn btn-secondary btn-sm" data-action="clear-ota-file">
               <span>✕</span>
               <span>Clear</span>
             </button>
@@ -3556,7 +3567,7 @@
 
         <!-- Action Buttons -->
         <div style="margin-top: var(--spacing-xl); text-align: right;">
-          <button id="ota-upload-btn" class="btn btn-lg btn-success" disabled onclick="uploadFirmware()">
+          <button type="button" id="ota-upload-btn" class="btn btn-lg btn-success" disabled data-action="upload-firmware">
             <span>🚀</span>
             <span>Apply Update</span>
           </button>
@@ -3575,32 +3586,13 @@
           <div style="display: flex; gap: var(--spacing-sm);">
             <input type="url" id="ota-remote-url" class="form-control" placeholder="https://example.com/firmware.bin"
               style="flex: 1;">
-            <button type="button" class="btn btn-primary" id="ota-remote-btn" onclick="startRemoteOTA()">
+            <button type="button" class="btn btn-primary" id="ota-remote-btn" data-action="start-remote-ota">
               <span>☁️</span>
               <span>Start Remote Update</span>
             </button>
           </div>
           <p class="form-help">Enter the full URL including http:// or https://</p>
         </div>
-      </div>
-      <span id="ota-upload-speed">Speed: --</span>
-      <span id="ota-time-remaining">Time remaining: --</span>
-      </div>
-      <div id="ota-upload-status"
-        style="margin-top: var(--spacing-md); padding: var(--spacing-sm); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border); font-size: var(--font-size-sm); color: var(--color-text);">
-      </div>
-      </div>
-
-      <!-- Upload Button -->
-      <div style="margin-top: var(--spacing-lg);">
-        <button type="button" class="btn btn-success btn-lg" id="ota-upload-btn" onclick="uploadFirmware()" disabled>
-          <span class="btn-text">
-            <span>⬆️</span>
-            <span>Upload Firmware</span>
-          </span>
-          <span class="btn-spinner" hidden>⏳</span>
-        </button>
-      </div>
       </div>
 
       <!-- Task 14.4: Update Confirmation and Warnings -->
@@ -3628,7 +3620,7 @@
           </div>
         </div>
 
-        <button type="button" class="btn btn-danger btn-lg" onclick="handleOTAApply()">
+        <button type="button" class="btn btn-danger btn-lg" data-action="ota-apply">
           <span>🔄</span>
           <span>Apply Update and Restart</span>
         </button>
@@ -3685,7 +3677,7 @@
         </div>
 
         <div style="margin-top: var(--spacing-lg); text-align: center;">
-          <button type="button" class="btn btn-primary" onclick="location.reload()">
+          <button type="button" class="btn btn-primary" data-action="reload-page">
             <span>🔄</span>
             <span>Reload Now</span>
           </button>
@@ -3699,7 +3691,7 @@
           If you experience issues with the current firmware, you can rollback to the previous version.
         </p>
 
-        <button type="button" class="btn btn-warning" id="ota-rollback-btn" onclick="handleOTARollback()" disabled>
+        <button type="button" class="btn btn-warning" id="ota-rollback-btn" data-action="ota-rollback" disabled>
           <span class="btn-text">
             <span>↩️</span>
             <span>Rollback to Previous Version</span>
@@ -4381,12 +4373,8 @@
         if (doorStatus === 'open') {
           card.dataset.status = 'open';
           valueSpan.textContent = 'Open';
-        } else if (doorStatus === 'closed' || doorStatus === undefined) {
-          // Default to 'Closed' if status is undefined (not an error condition)
-          card.dataset.status = 'closed';
-          valueSpan.textContent = 'Closed';
         } else {
-          // Unknown status
+          // Default to 'Closed' for undefined, 'closed', or unknown status
           card.dataset.status = 'closed';
           valueSpan.textContent = 'Closed';
         }
@@ -4420,12 +4408,8 @@
         if (lightStatus === 'on') {
           card.dataset.status = 'on';
           valueSpan.textContent = 'On';
-        } else if (lightStatus === 'off' || lightStatus === undefined) {
-          // Default to 'Off' if status is undefined (not an error condition)
-          card.dataset.status = 'off';
-          valueSpan.textContent = 'Off';
         } else {
-          // Unknown status
+          // Default to 'Off' for undefined, 'off', or unknown status
           card.dataset.status = 'off';
           valueSpan.textContent = 'Off';
         }
@@ -4462,7 +4446,7 @@
       toast.innerHTML = `
         <span class="toast-icon">${icon}</span>
         <span class="toast-message">${message}</span>
-        <button class="toast-close" aria-label="Close notification">×</button>
+        <button type="button" class="toast-close" aria-label="Close notification">×</button>
       `;
 
       const container = document.getElementById('toast-container');
@@ -4492,7 +4476,7 @@
       toast.classList.remove('show');
       setTimeout(() => {
         if (toast.parentNode) {
-          toast.parentNode.removeChild(toast);
+          toast.remove();
         }
       }, 300);
     }
@@ -4964,8 +4948,7 @@
         }
 
       } catch (error) {
-        // Error already shown by apiRequest
-        console.error('Form submission error:', error);
+        console.error('SIP connect error:', error);
       } finally {
         // Reset button state
         setLoadingState(submitBtn, false);
@@ -5052,14 +5035,14 @@
         dialog.innerHTML = `
           <div class="dialog-header">
             <span class="dialog-icon">${icon}</span>
-            <h3 class="dialog-title" id="dialog-title">${title}</h3>
+            <h3 class="dialog-title">${title}</h3>
           </div>
           <div class="dialog-body">
-            <p class="dialog-message" id="dialog-message">${message}</p>
+            <p class="dialog-message">${message}</p>
           </div>
           <div class="dialog-footer">
-            <button class="btn btn-secondary dialog-cancel">${cancelText}</button>
-            <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
+            <button type="button" class="btn btn-secondary dialog-cancel">${cancelText}</button>
+            <button type="button" class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
           </div>
         `;
 
@@ -5113,9 +5096,7 @@
     function closeDialog(overlay) {
       overlay.classList.remove('show');
       setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.parentNode.removeChild(overlay);
-        }
+        overlay.remove();
       }, 300);
     }
 
@@ -5338,9 +5319,9 @@
         const resultElement = document.createElement('div');
         resultElement.className = 'search-result';
         resultElement.setAttribute('role', 'option');
-        resultElement.setAttribute('data-index', index);
-        resultElement.setAttribute('data-section', result.section);
-        resultElement.setAttribute('data-field', result.field);
+        resultElement.dataset.index = index;
+        resultElement.dataset.section = result.section;
+        resultElement.dataset.field = result.field;
 
         // Get section display name
         const sectionNames = {
@@ -5548,7 +5529,7 @@
         // Invalidate SIP state cache to force immediate refresh
         apiCache.invalidate('sipState');
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('SIP connect error:', error);
       }
     }
 
@@ -5567,7 +5548,7 @@
         // Invalidate SIP state cache to force immediate refresh
         apiCache.invalidate('sipState');
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('SIP disconnect error:', error);
       }
     }
 
@@ -5580,7 +5561,7 @@
         const response = await apiRequest('/api/sip/test', { method: 'POST' });
         showToast(response.message || 'SIP configuration test successful!', 'success');
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('SIP test error:', error);
       }
     }
 
@@ -5606,7 +5587,7 @@
         // Show restart countdown and redirect to login
         showRestartCountdown();
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('System restart error:', error);
       }
     }
 
@@ -5627,7 +5608,7 @@
           window.location.reload();
         }, 5000);
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('Factory reset error:', error);
       }
     }
 
@@ -5959,7 +5940,7 @@
         a.download = `esp32-doorstation-backup-${timestamp}.json`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
+        a.remove();
         URL.revokeObjectURL(url);
 
         showToast('Configuration backup downloaded successfully!', 'success');
@@ -6077,14 +6058,14 @@
         dialog.innerHTML = `
           <div class="dialog-header">
             <span class="dialog-icon">${icon}</span>
-            <h3 class="dialog-title" id="dialog-title">${title}</h3>
+            <h3 class="dialog-title">${title}</h3>
           </div>
           <div class="dialog-body">
             ${htmlContent}
           </div>
           <div class="dialog-footer">
-            <button class="btn btn-secondary dialog-cancel">${cancelText}</button>
-            <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
+            <button type="button" class="btn btn-secondary dialog-cancel">${cancelText}</button>
+            <button type="button" class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
           </div>
         `;
 
@@ -6134,7 +6115,7 @@
         showToast('Restoring configuration...', 'info');
 
         // Send restore request
-        const response = await apiRequest('/api/config/restore', {
+        await apiRequest('/api/config/restore', {
           method: 'POST',
           body: JSON.stringify({
             config: backup.config,
@@ -6219,7 +6200,7 @@
       try {
         showToast('Generating new self-signed certificate...', 'info');
 
-        const response = await apiRequest('/api/cert/generate', {
+        await apiRequest('/api/cert/generate', {
           method: 'POST',
           body: JSON.stringify({
             common_name: 'doorstation.local',
@@ -6416,14 +6397,14 @@
         await updateSIPConnectionStatus();
 
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('NPT force sync error:', error);
       } finally {
         if (button) setLoadingState(button, false);
       }
     }
 
     /**
-     * Enhanced SIP disconnect handler with status update
+     * Load existing NTP configuration
      */
     async function handleSIPDisconnectEnhanced() {
       const confirmed = await confirmSIPDisconnect();
@@ -6444,7 +6425,7 @@
         await updateSIPConnectionStatus();
 
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('SIP disconnect error:', error);
       } finally {
         if (button) setLoadingState(button, false);
       }
@@ -6462,7 +6443,7 @@
         const response = await apiRequest('/api/sip/test', { method: 'POST' });
         showToast(response.message || 'SIP configuration test successful!', 'success');
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('SIP test error:', error);
       } finally {
         if (button) setLoadingState(button, false);
       }
@@ -6551,7 +6532,7 @@
         }
 
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('WiFi scan error:', error);
         document.getElementById('wifi-network-list').style.display = 'none';
       } finally {
         if (button) setLoadingState(button, false);
@@ -6580,8 +6561,8 @@
 
         html += `
           <div style="display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border-bottom: 1px solid var(--color-border-light); cursor: pointer; transition: background-color var(--transition-fast);" 
-               onmouseover="this.style.backgroundColor='var(--color-hover)'" 
-               onmouseout="this.style.backgroundColor='transparent'"
+               data-action="hover-highlight" 
+               data-action="hover-reset"
                onclick="selectWiFiNetwork('${escapeHtml(network.ssid)}')">
             <span style="font-size: var(--font-size-xl);">${signalIcon}</span>
             <div style="flex: 1;">
@@ -6960,7 +6941,7 @@
         }, 2000);
 
       } catch (error) {
-        // Error already shown by apiRequest
+        console.error('NTP force sync error:', error);
       } finally {
         if (button) setLoadingState(button, false);
       }
@@ -7725,7 +7706,7 @@
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
+          a.remove();
 
           showToast('Certificate downloaded successfully', 'success');
         } else {
@@ -8090,7 +8071,7 @@
       a.download = `sip-logs-${Date.now()}.txt`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
 
       showToast(`Exported ${filtered.length} log entries`, 'success');
@@ -8525,7 +8506,7 @@
       a.download = `dtmf-logs-${Date.now()}.txt`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
 
       showToast(`Exported ${filtered.length} log entries`, 'success');
@@ -8731,7 +8712,7 @@
       if (!btn || !durationInput) return;
 
       // Get duration in seconds from slider
-      const durationSeconds = parseInt(durationInput.value);
+      const durationSeconds = Number.parseInt(durationInput.value, 10);
 
       // Validate duration
       if (isNaN(durationSeconds) || durationSeconds < 1 || durationSeconds > 10) {
@@ -9032,7 +9013,7 @@
         const smtpConfig = {
           smtp: {
             server: formData.get('smtp_server'),
-            port: parseInt(formData.get('smtp_port')),
+            port: Number.parseInt(formData.get('smtp_port'), 10),
             username: formData.get('smtp_username'),
             password: formData.get('smtp_password'),
             sender: formData.get('smtp_sender')
@@ -9122,7 +9103,7 @@
       const config = {
         smtp: {
           server: smtpData.get('smtp_server'),
-          port: parseInt(smtpData.get('smtp_port')),
+          port: Number.parseInt(smtpData.get('smtp_port'), 10),
           username: smtpData.get('smtp_username'),
           password: smtpData.get('smtp_password'),
           sender: smtpData.get('smtp_sender')
@@ -9132,8 +9113,8 @@
           recipient: reportData.get('report_recipient'),
           schedule: reportData.get('report_schedule'),
           time: reportData.get('report_time'),
-          day: parseInt(reportData.get('report_day')),
-          day_of_month: parseInt(reportData.get('report_day_of_month')),
+          day: Number.parseInt(reportData.get('report_day'), 10),
+          day_of_month: Number.parseInt(reportData.get('report_day_of_month'), 10),
           include_status: reportData.get('include_status') === 'on',
           include_logs: reportData.get('include_logs') === 'on',
           include_backup: reportData.get('include_backup') === 'on'
@@ -9326,64 +9307,6 @@
     }
 
     /**
-     * Task 14.2: Handle file selection and validation
-     */
-    function handleOTAFileSelected(file) {
-      // Validate file format
-      if (!file.name.endsWith('.bin')) {
-        showToast('Invalid file format. Please select a .bin file.', 'error');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-      if (file.size > maxSize) {
-        showToast('File too large. Maximum size is 5MB.', 'error');
-        return;
-      }
-
-      // Store selected file
-      otaSelectedFile = file;
-
-      // Display file info
-      document.getElementById('ota-file-name').textContent = file.name;
-      document.getElementById('ota-file-size').textContent = formatFileSize(file.size);
-      document.getElementById('ota-file-info').style.display = 'block';
-
-      // Enable upload button
-      document.getElementById('ota-upload-btn').disabled = false;
-
-      // Hide other sections
-      document.getElementById('ota-apply-section').style.display = 'none';
-      document.getElementById('ota-status-section').style.display = 'none';
-      document.getElementById('ota-reload-section').style.display = 'none';
-
-      showToast('Firmware file selected successfully', 'success');
-    }
-
-    /**
-     * Clear selected OTA file
-     */
-    function clearOTAFile() {
-      otaSelectedFile = null;
-      document.getElementById('ota-file-input').value = '';
-      document.getElementById('ota-file-info').style.display = 'none';
-      document.getElementById('ota-upload-btn').disabled = true;
-      document.getElementById('ota-progress-container').style.display = 'none';
-    }
-
-    /**
-     * Format file size for display
-     */
-    function formatFileSize(bytes) {
-      if (bytes === 0) return '0 Bytes';
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-    }
-
-    /**
      * Format upload speed for display
      */
     function formatSpeed(bytesPerSecond) {
@@ -9471,7 +9394,7 @@
               }, 500);
 
             } catch (error) {
-              throw new Error('Invalid response from server');
+              throw new Error('Invalid response from server', { cause: error });
             }
           } else {
             throw new Error(`Upload failed with status ${xhr.status}`);
@@ -9649,7 +9572,7 @@
       try {
         // Apply the update
         addOTALogEntry('Sending apply command to device...');
-        const response = await apiRequest('/api/ota/apply', { method: 'POST' });
+        await apiRequest('/api/ota/apply', { method: 'POST' });
 
         addOTALogEntry('Apply command sent successfully');
         updateOTAStatus('🔄', 'Applying Update', 'Device is restarting and applying firmware...');
@@ -9725,6 +9648,7 @@
         }
       } catch (error) {
         // Device not available yet, continue polling
+        console.debug('Device not ready during polling:', error.message);
       }
 
       if (pollAttempts < maxPollAttempts) {
@@ -9974,7 +9898,7 @@
           console.error('Failed to copy:', err);
           showToast('Failed to copy to clipboard', 'error');
         }
-        document.body.removeChild(textArea);
+        textArea.remove();
       }
     }
 
@@ -10896,15 +10820,6 @@
     }
 
     /**
-     * Initialize OTA section
-     */
-    function initOTASection() {
-      loadOTAInfo();
-      setupOTAFileHandlers();
-      console.log('OTA section initialized');
-    }
-
-    /**
      * Show certificate restart countdown and handle reconnection
      * Similar to OTA restart but specifically for certificate uploads
      */
@@ -11077,7 +10992,7 @@
           }
         } catch (error) {
           // Device not ready yet, continue polling
-          console.log(`Certificate reconnect attempt ${attempts}/${maxAttempts}...`);
+          console.log(`Certificate reconnect attempt ${attempts}/${maxAttempts}...`, error.message);
         }
 
         // Give up after max attempts
@@ -11097,7 +11012,7 @@
                 <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
                   Device is taking longer than expected to restart.
                 </p>
-                <button class="btn btn-primary" onclick="window.location.href='/login.html'">
+                <button type="button" class="btn btn-primary" data-action="go-to-login">
                   <span>🔐</span>
                   <span>Go to Login Page</span>
                 </button>
@@ -11106,6 +11021,108 @@
           }
         }
       }, 500); // Poll every 500ms
+    }
+
+    /**
+     * Setup delegated event handler for data-action buttons
+     */
+    function setupDataActionHandlers() {
+      document.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-action]');
+        if (!button) return;
+
+        const action = button.dataset.action;
+        switch (action) {
+          case 'force-ntp-sync': handleForceNTPSync(); break;
+          case 'sip-connect': handleSIPConnectEnhanced(); break;
+          case 'sip-disconnect': handleSIPDisconnectEnhanced(); break;
+          case 'sip-test': handleSIPTestEnhanced(); break;
+          case 'system-restart': handleSystemRestart(); break;
+          case 'factory-reset': handleFactoryReset(); break;
+          case 'backup-config': handleBackupConfig(); break;
+          case 'test-call-1': handleTestCall(1); break;
+          case 'test-call-2': handleTestCall(2); break;
+          case 'wifi-scan': handleWiFiScan(); break;
+          case 'ntp-force-sync': handleNTPForceSync(); break;
+          case 'download-cert': downloadCertificate(); break;
+          case 'generate-cert': generateSelfSignedCertificate(); break;
+          case 'upload-cert': uploadCustomCertificate(); break;
+          case 'generate-cert-quick': generateSelfSignedCertificateQuick(); break;
+          case 'refresh-sip-logs': refreshSIPLogs(); break;
+          case 'clear-sip-logs': clearSIPLogDisplay(); break;
+          case 'export-sip-logs': exportSIPLogs(); break;
+          case 'refresh-dtmf-logs': refreshDTMFLogs(); break;
+          case 'clear-dtmf-logs': clearDTMFLogDisplay(); break;
+          case 'export-dtmf-logs': exportDTMFLogs(); break;
+          case 'refresh-login-logs': refreshLoginLogs(); break;
+          case 'refresh-hw-logs': refreshHWLogs(); break;
+          case 'jump-sip-log-bottom': jumpToBottomSIPLog(); break;
+          case 'jump-dtmf-log-bottom': jumpToBottomDTMFLog(); break;
+          case 'test-doorbell-1': testDoorbell(1); break;
+          case 'test-doorbell-2': testDoorbell(2); break;
+          case 'test-door-opener': testDoorOpener(); break;
+          case 'test-light-toggle': testLightToggle(); break;
+          case 'emergency-stop': emergencyStop(); break;
+          case 'test-email': handleTestEmail(); break;
+          case 'send-report-now': handleSendReportNow(); break;
+          case 'trigger-ota-file': document.getElementById('ota-file-input')?.click(); break;
+          case 'clear-ota-file': clearOTAFile(); break;
+          case 'upload-firmware': uploadFirmware(); break;
+          case 'start-remote-ota': startRemoteOTA(); break;
+          case 'ota-apply': handleOTAApply(); break;
+          case 'ota-rollback': handleOTARollback(); break;
+          case 'reload-page': location.reload(); break;
+          case 'go-to-login': window.location.href = '/login.html'; break;
+          case 'trigger-restore-file': document.getElementById('restore-file-input')?.click(); break;
+          case 'navigate-security-manage-cert':
+            navigateToSection('security');
+            scrollToElement('cert-info-panel');
+            break;
+          case 'filter-sip-logs': filterSIPLogs(button.dataset.filter); break;
+          case 'filter-dtmf-logs': filterDTMFLogs(button.dataset.filter); break;
+          default: break;
+        }
+      });
+    }
+
+    /**
+     * Setup delegated event handler for data-action inputs
+     */
+    function setupDataActionInputHandlers() {
+      // Handle onchange/oninput for elements with data-action
+      document.addEventListener('change', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+
+        const action = target.dataset.action;
+        switch (action) {
+          case 'restore-file-selected': handleRestoreFileSelected(e); break;
+          case 'toggle-ip-mode': toggleIPMode(); break;
+          default: break;
+        }
+      });
+
+      document.addEventListener('input', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+
+        const action = target.dataset.action;
+        switch (action) {
+          case 'update-duration-display': updateDurationDisplay(target.value); break;
+          default: break;
+        }
+      });
+
+      // Handle hover effects via CSS classes instead of inline JS
+      document.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-action="hover-highlight"]');
+        if (target) target.style.backgroundColor = 'var(--color-hover)';
+      });
+
+      document.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('[data-action="hover-reset"]');
+        if (target) target.style.backgroundColor = 'transparent';
+      });
     }
 
     /**
@@ -11156,6 +11173,10 @@
 
       // Initialize Hardware Logs (Phase 9)
       initHardwareLogs();
+
+      // Setup delegated event handlers for data-action buttons
+      setupDataActionHandlers();
+      setupDataActionInputHandlers();
 
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
