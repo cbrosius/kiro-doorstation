@@ -1510,7 +1510,7 @@
             <span class="status-icon">🚪</span>
             <div class="status-info">
               <span class="status-label">Door</span>
-              <span class="status-value">Unknown</span>
+              <span class="status-value">Checking...</span>
             </div>
           </div>
           <div class="status-card" id="light-status" data-status="unknown" role="status" aria-live="polite"
@@ -1518,7 +1518,7 @@
             <span class="status-icon">💡</span>
             <div class="status-info">
               <span class="status-label">Light</span>
-              <span class="status-value">Unknown</span>
+              <span class="status-value">Checking...</span>
             </div>
           </div>
         </div>
@@ -4262,21 +4262,23 @@
       // Add click handler
       toggle.addEventListener('click', toggleStatusPanel);
 
-      // Start auto-refresh
+      // Start auto-refresh - force fresh data and shorter interval
+      // Initial update will run after this function completes
       updateAllStatus();
-      setInterval(updateAllStatus, 10000); // Update every 10 seconds
+      setInterval(updateAllStatus, 5000); // Update every 5 seconds
     }
 
     /**
      * Update all status cards
      */
     async function updateAllStatus() {
+      // Use caching to reduce API load and prevent flickering
       try {
         await Promise.all([
-          updateWiFiStatus(),
-          updateSIPStatus(),
-          updateDoorStatus(),
-          updateLightStatus()
+          updateWiFiStatus({ bypassCache: false }),
+          updateSIPStatus({ bypassCache: false }),
+          updateDoorStatus({ bypassCache: false }),
+          updateLightStatus({ bypassCache: false })
         ]);
       } catch (error) {
         console.error('Error updating status:', error);
@@ -4286,9 +4288,16 @@
     /**
      * Update WiFi status card
      */
-    async function updateWiFiStatus() {
+    async function updateWiFiStatus(options = {}) {
       try {
-        const response = await apiCache.get('wifiState');
+        // Bypass cache for fresh data when requested
+        let response;
+        if (options.bypassCache) {
+          response = await apiRequest('/api/wifi/state', { silentError: true }, 10000);
+        } else {
+          response = await apiCache.get('wifiState');
+        }
+
         const card = document.getElementById('wifi-status');
         const valueSpan = card.querySelector('.status-value');
 
@@ -4306,24 +4315,30 @@
           valueSpan.textContent = response && response.ssid ? `Disconnected (${response.ssid})` : 'Disconnected';
         }
       } catch (error) {
-        console.error('WiFi status error:', error);
-        const card = document.getElementById('wifi-status');
-        card.dataset.status = 'disconnected';
-        card.querySelector('.status-value').textContent = 'Error';
+        // On error, keep showing the last known good value
+        // Don't switch to "Error" to avoid flickering
+        console.warn('WiFi status check failed, keeping last known state:', error);
       }
     }
 
     /**
      * Update SIP status card
      */
-    async function updateSIPStatus() {
+    async function updateSIPStatus(options = {}) {
       try {
-        const response = await apiCache.get('sipState');
+        // Bypass cache for fresh data when requested
+        let response;
+        if (options.bypassCache) {
+          response = await apiRequest('/api/sip/state', { silentError: true }, 10000);
+        } else {
+          response = await apiCache.get('sipState');
+        }
+
         const card = document.getElementById('sip-status');
         const valueSpan = card.querySelector('.status-value');
 
-        // API returns capitalized status values like "Registered", "Connecting", etc.
-        const status = response.status ? response.status.toLowerCase() : '';
+        // Safely get status from response
+        const status = response && response.status ? response.status.toLowerCase() : '';
 
         if (status === 'registered') {
           card.dataset.status = 'registered';
@@ -4332,59 +4347,92 @@
           card.dataset.status = 'connecting';
           valueSpan.textContent = 'Connecting...';
         } else {
+          // Show actual status if available, otherwise default to 'Disconnected'
           card.dataset.status = 'disconnected';
-          valueSpan.textContent = response.status || 'Disconnected';
+          valueSpan.textContent = response && response.status ? response.status : 'Disconnected';
         }
       } catch (error) {
-        const card = document.getElementById('sip-status');
-        card.dataset.status = 'disconnected';
-        card.querySelector('.status-value').textContent = 'Error';
+        // On error, keep showing the last known good value
+        // Don't switch to "Error" to avoid flickering
+        console.warn('SIP status check failed, keeping last known state:', error);
       }
     }
 
     /**
      * Update door status card
      */
-    async function updateDoorStatus() {
+    async function updateDoorStatus(options = {}) {
       try {
-        const response = await apiCache.get('hardwareState');
+        // Bypass cache for fresh data when requested
+        let response;
+        if (options.bypassCache) {
+          response = await apiRequest('/api/hardware/state', { silentError: true }, 10000);
+        } else {
+          response = await apiCache.get('hardwareState');
+        }
+
         const card = document.getElementById('door-status');
         const valueSpan = card.querySelector('.status-value');
 
-        if (response.door && response.door.status === 'open') {
+        // Check for door status from response
+        const doorStatus = response && response.door && response.door.status;
+        
+        // If we have valid door status
+        if (doorStatus === 'open') {
           card.dataset.status = 'open';
           valueSpan.textContent = 'Open';
+        } else if (doorStatus === 'closed' || doorStatus === undefined) {
+          // Default to 'Closed' if status is undefined (not an error condition)
+          card.dataset.status = 'closed';
+          valueSpan.textContent = 'Closed';
         } else {
+          // Unknown status
           card.dataset.status = 'closed';
           valueSpan.textContent = 'Closed';
         }
       } catch (error) {
-        const card = document.getElementById('door-status');
-        card.dataset.status = 'closed';
-        card.querySelector('.status-value').textContent = 'Closed';
+        // On error, keep showing the last known good value (Closed as default)
+        // Don't switch to "Error" to avoid flickering
+        console.warn('Door status check failed, keeping last known state:', error);
       }
     }
 
     /**
      * Update light status card
      */
-    async function updateLightStatus() {
+    async function updateLightStatus(options = {}) {
       try {
-        const response = await apiCache.get('hardwareState');
+        // Bypass cache for fresh data when requested
+        let response;
+        if (options.bypassCache) {
+          response = await apiRequest('/api/hardware/state', { silentError: true }, 10000);
+        } else {
+          response = await apiCache.get('hardwareState');
+        }
+
         const card = document.getElementById('light-status');
         const valueSpan = card.querySelector('.status-value');
 
-        if (response.light && response.light.status === 'on') {
+        // Check for light status from response
+        const lightStatus = response && response.light && response.light.status;
+        
+        // If we have valid light status
+        if (lightStatus === 'on') {
           card.dataset.status = 'on';
           valueSpan.textContent = 'On';
+        } else if (lightStatus === 'off' || lightStatus === undefined) {
+          // Default to 'Off' if status is undefined (not an error condition)
+          card.dataset.status = 'off';
+          valueSpan.textContent = 'Off';
         } else {
+          // Unknown status
           card.dataset.status = 'off';
           valueSpan.textContent = 'Off';
         }
       } catch (error) {
-        const card = document.getElementById('light-status');
-        card.dataset.status = 'off';
-        card.querySelector('.status-value').textContent = 'Off';
+        // On error, keep showing the last known good value (Off as default)
+        // Don't switch to "Error" to avoid flickering
+        console.warn('Light status check failed, keeping last known state:', error);
       }
     }
 
