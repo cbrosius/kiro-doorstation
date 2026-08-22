@@ -4522,7 +4522,9 @@
     async function apiRequest(endpoint, options = {}, timeout = 10000) {
       return requestQueue.add(async () => {
         const silentError = options.silentError || false;
-        delete options.silentError; // Remove custom option before fetch
+        delete options.silentError;
+        const extendSession = options.extendSession !== false;
+        delete options.extendSession;
 
         const defaultOptions = {
           method: 'GET',
@@ -4530,6 +4532,10 @@
             'Content-Type': 'application/json'
           }
         };
+
+        if (extendSession) {
+          defaultOptions.headers['X-Session-Extend'] = 'true';
+        }
 
         const config = { ...defaultOptions, ...options };
 
