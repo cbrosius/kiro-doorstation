@@ -360,8 +360,10 @@ esp_err_t auth_change_password(const char* current_password, const char* new_pas
     
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Password changed successfully");
-        // Invalidate all sessions
-        memset(active_sessions, 0, sizeof(active_sessions));
+        if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            memset(active_sessions, 0, sizeof(active_sessions));
+            xSemaphoreGive(session_mutex);
+        }
     }
     
     return err;
@@ -743,7 +745,10 @@ esp_err_t auth_reset_password(void) {
     }
     
     // Invalidate all sessions
-    memset(active_sessions, 0, sizeof(active_sessions));
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        memset(active_sessions, 0, sizeof(active_sessions));
+        xSemaphoreGive(session_mutex);
+    }
     
     // Log password reset event
     add_audit_log("admin", "physical-reset", "password deleted - setup required", true);

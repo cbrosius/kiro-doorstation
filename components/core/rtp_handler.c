@@ -242,12 +242,6 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
         return 0; // No data available
     }
 
-    // Log packet reception for debugging
-    char log_msg[128];
-    snprintf(log_msg, sizeof(log_msg), "RTP packet received: %d bytes from %s:%d", received,
-             inet_ntoa(from_addr.sin_addr), ntohs(from_addr.sin_port));
-    ESP_LOGI(TAG, "%s", log_msg);
-    
     if (received < sizeof(rtp_header_t)) {
         ESP_LOGW(TAG, "Received packet too small");
         return 0;
@@ -260,10 +254,6 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     
     // Extract payload type from RTP header
     uint8_t payload_type = header->payload_type;
-    
-    char rtp_log[128];
-    snprintf(rtp_log, sizeof(rtp_log), "RTP packet received: payload_type=%d, payload_size=%zu", payload_type, payload_size);
-    ESP_LOGI(TAG, "%s", rtp_log);
     
     // Route by payload type
     if (payload_type == 101) {

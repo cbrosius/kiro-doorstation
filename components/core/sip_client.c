@@ -105,6 +105,7 @@ static uint32_t last_error_timestamp = 0;
 
 // Forward declarations
 static bool sip_client_register_auth(sip_auth_challenge_t *challenge);
+static void handle_unexpected_401_in_connected(const char *buffer, bool is_retransmission);
 
 // SIP INVITE template removed - built inline in sip_client_make_call()
 
@@ -161,6 +162,53 @@ const char *sip_state_to_str(sip_state_t state) {
   return state_names[state];
 }
 
+static void handle_unexpected_401_in_connected(const char *buffer, bool is_retransmission) {
+  if (is_retransmission) {
+    sip_request_headers_t headers = extract_request_headers(buffer);
+    char debug_log[256];
+    snprintf(debug_log, sizeof(debug_log),
+             "401 retransmission Call-ID: %s, Expected: %s",
+             headers.call_id, invite_call_id_str);
+    sip_add_log_entry("info", debug_log);
+    sip_add_log_entry("info",
+                      "401 in CONNECTED is retransmission of "
+                      "initial challenge - ignoring");
+    return;
+  }
+
+  char ignore_msg[128];
+  snprintf(ignore_msg, sizeof(ignore_msg),
+           "Ignoring unexpected 401 in state %s (not retransmission)",
+           (current_state < sizeof(state_names) / sizeof(state_names[0]))
+               ? state_names[current_state]
+               : "UNKNOWN");
+  sip_add_log_entry("info", ignore_msg);
+
+  sip_request_headers_t headers = extract_request_headers(buffer);
+  if (headers.valid) {
+    char debug_log[512];
+    snprintf(debug_log, sizeof(debug_log),
+             "Unexpected 401 in CONNECTED: Call-ID=%s, Expected: "
+             "%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
+             headers.call_id, invite_call_id_str,
+             headers.via_header, headers.cseq_num,
+             headers.cseq_method, headers.from_header,
+             headers.to_header);
+    sip_add_log_entry("info", debug_log);
+
+    snprintf(debug_log, sizeof(debug_log),
+             "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, "
+             "CSeq=%d",
+             initial_invite_call_id, initial_invite_branch,
+             initial_invite_cseq);
+    sip_add_log_entry("info", debug_log);
+  } else {
+    sip_add_log_entry("error",
+                      "Failed to extract headers from "
+                      "unexpected 401 in CONNECTED state");
+  }
+}
+
 void sip_get_config(sip_config_t *config) {
   if (config) {
     *config = sip_config;
@@ -200,9 +248,10 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
   sip_add_log_entry("info", "SIP task started on Core 1");
 
   while (1) {
-    // Longer delay to minimize CPU usage - SIP doesn't need fast polling
-    // 1000ms (1 second) reduces system load significantly
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    // 100ms polling interval balances responsiveness with CPU usage.
+    // SIP retransmission timers (Timer A = 500ms) and RTP packet handling
+    // require faster than 1 Hz processing.
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     // Yield to WiFi and other high-priority tasks
     taskYIELD();
@@ -913,6 +962,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
           } else {
             // Received 401 but not in REGISTERING or CALLING state
             // Check if this is a retransmission of the initial INVITE 401
+            bool is_retransmission = false;
             const char *via_ptr = strstr(buffer, "Via:");
 
             if (via_ptr && initial_invite_branch != 0) {
@@ -928,133 +978,12 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
                     received_branch, initial_invite_branch, auth_invite_branch);
                 sip_add_log_entry("info", branch_log);
 
-                // If this 401 is for the initial INVITE (before auth), it's a
-                // retransmission
-                if (received_branch == initial_invite_branch &&
-                    received_branch != auth_invite_branch) {
-                  // Extract headers for debugging
-                  sip_request_headers_t headers =
-                      extract_request_headers(buffer);
-                  char debug_log[256];
-                  snprintf(debug_log, sizeof(debug_log),
-                           "401 retransmission Call-ID: %s, Expected: %s",
-                           headers.call_id, invite_call_id_str);
-                  sip_add_log_entry("info", debug_log);
-                  sip_add_log_entry("info",
-                                    "401 in CONNECTED is retransmission of "
-                                    "initial challenge - ignoring");
-                } else {
-                  // Not a retransmission - log details for further
-                  // investigation
-                  char ignore_msg[128];
-                  snprintf(ignore_msg, sizeof(ignore_msg),
-                           "Ignoring unexpected 401 in state %s (not "
-                           "retransmission)",
-                           (current_state <
-                            sizeof(state_names) / sizeof(state_names[0]))
-                               ? state_names[current_state]
-                               : "UNKNOWN");
-                  sip_add_log_entry("info", ignore_msg);
-
-                  // Enhanced logging for debugging
-                  sip_request_headers_t headers =
-                      extract_request_headers(buffer);
-                  if (headers.valid) {
-                    char debug_log[512];
-                    snprintf(debug_log, sizeof(debug_log),
-                             "Unexpected 401 in CONNECTED: Call-ID=%s, "
-                             "Branch=%s, CSeq=%d %s, From=%s, To=%s",
-                             headers.call_id, headers.via_header,
-                             headers.cseq_num, headers.cseq_method,
-                             headers.from_header, headers.to_header);
-                    sip_add_log_entry("info", debug_log);
-
-                    // Compare with stored INVITE transaction IDs
-                    snprintf(debug_log, sizeof(debug_log),
-                             "Stored INVITE IDs: Call-ID=%d@local_ip, "
-                             "Branch=%d, CSeq=%d",
-                             initial_invite_call_id, initial_invite_branch,
-                             initial_invite_cseq);
-                    sip_add_log_entry("info", debug_log);
-                  } else {
-                    sip_add_log_entry("error",
-                                      "Failed to extract headers from "
-                                      "unexpected 401 in CONNECTED state");
-                  }
-                }
-              } else {
-                // Not a retransmission - log details for further investigation
-                char ignore_msg[128];
-                snprintf(
-                    ignore_msg, sizeof(ignore_msg),
-                    "Ignoring unexpected 401 in state %s (not retransmission)",
-                    (current_state <
-                     sizeof(state_names) / sizeof(state_names[0]))
-                        ? state_names[current_state]
-                        : "UNKNOWN");
-                sip_add_log_entry("info", ignore_msg);
-
-                // Enhanced logging for debugging
-                sip_request_headers_t headers = extract_request_headers(buffer);
-                if (headers.valid) {
-                  char debug_log[512];
-                  snprintf(debug_log, sizeof(debug_log),
-                           "Unexpected 401 in CONNECTED: Call-ID=%s, "
-                           "Branch=%s, CSeq=%d %s, From=%s, To=%s",
-                           headers.call_id, headers.via_header,
-                           headers.cseq_num, headers.cseq_method,
-                           headers.from_header, headers.to_header);
-                  sip_add_log_entry("info", debug_log);
-
-                  // Compare with stored INVITE transaction IDs
-                  snprintf(debug_log, sizeof(debug_log),
-                           "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, "
-                           "CSeq=%d",
-                           initial_invite_call_id, initial_invite_branch,
-                           initial_invite_cseq);
-                  sip_add_log_entry("info", debug_log);
-                } else {
-                  sip_add_log_entry("error",
-                                    "Failed to extract headers from unexpected "
-                                    "401 in CONNECTED state");
-                }
-              }
-            } else {
-              // Not a retransmission - log details for further investigation
-              char ignore_msg[128];
-              snprintf(
-                  ignore_msg, sizeof(ignore_msg),
-                  "Ignoring unexpected 401 in state %s (not retransmission)",
-                  (current_state < sizeof(state_names) / sizeof(state_names[0]))
-                      ? state_names[current_state]
-                      : "UNKNOWN");
-              sip_add_log_entry("info", ignore_msg);
-
-              // Enhanced logging for debugging
-              sip_request_headers_t headers = extract_request_headers(buffer);
-              if (headers.valid) {
-                char debug_log[512];
-                snprintf(debug_log, sizeof(debug_log),
-                         "Unexpected 401 in CONNECTED: Call-ID=%s, Expected: "
-                         "%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
-                         headers.call_id, invite_call_id_str,
-                         headers.via_header, headers.cseq_num,
-                         headers.cseq_method, headers.from_header,
-                         headers.to_header);
-                sip_add_log_entry("info", debug_log);
-
-                // Compare with stored INVITE transaction IDs
-                snprintf(debug_log, sizeof(debug_log),
-                         "Stored INVITE IDs: Call-ID=%d@local_ip, Branch=%d, "
-                         "CSeq=%d",
-                         initial_invite_call_id, initial_invite_branch,
-                         initial_invite_cseq);
-                sip_add_log_entry("info", debug_log);
-              } else {
-                sip_add_log_entry("error", "Failed to extract headers from "
-                                           "unexpected 401 in CONNECTED state");
+                is_retransmission = (received_branch == initial_invite_branch &&
+                                     received_branch != auth_invite_branch);
               }
             }
+
+            handle_unexpected_401_in_connected(buffer, is_retransmission);
           }
         } else if (strstr(buffer, "SIP/2.0 100 Trying")) {
           // Provisional response, just log it
@@ -2033,20 +1962,9 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
       if (samples_read > 0) {
         // Send audio via RTP
         int sent = rtp_send_audio(tx_buffer, samples_read);
-        if (sent > 0) {
-          char rtp_log[128];
-          snprintf(rtp_log, sizeof(rtp_log),
-                   "RTP audio sent: %d samples (%d bytes)", samples_read, sent);
-          sip_add_log_entry("info", rtp_log);
-        } else {
-          char rtp_log[128];
-          snprintf(rtp_log, sizeof(rtp_log), "RTP send failed: %d", sent);
-          sip_add_log_entry("error", rtp_log);
+        if (sent < 0) {
+          sip_add_log_entry("error", "RTP send failed");
         }
-      } else {
-        char rtp_log[128];
-        snprintf(rtp_log, sizeof(rtp_log), "Audio read returned 0 samples");
-        sip_add_log_entry("info", rtp_log);
       }
 
       // Receive audio
@@ -2055,23 +1973,9 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
       if (samples_received > 0) {
         // Update RTP timestamp on packet receive for timeout tracking
         last_rtp_received_timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
-        char rtp_log[128];
-        snprintf(rtp_log, sizeof(rtp_log),
-                 "RTP audio packet received: %d samples, timestamp updated",
-                 samples_received);
-        sip_add_log_entry("info", rtp_log);
-        // Play received audio
         audio_write(rx_buffer, samples_received);
-      } else if (samples_received == 0) {
-        char rtp_log[128];
-        snprintf(rtp_log, sizeof(rtp_log),
-                 "RTP receive: No packets received (samples_received=0)");
-        sip_add_log_entry("info", rtp_log);
-      } else {
-        char rtp_log[128];
-        snprintf(rtp_log, sizeof(rtp_log),
-                 "RTP receive: Error (samples_received=%d)", samples_received);
-        sip_add_log_entry("error", rtp_log);
+      } else if (samples_received < 0) {
+        sip_add_log_entry("error", "RTP receive error");
       }
     }
   }
