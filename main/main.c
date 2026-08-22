@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 #include "audio_handler.h"
 #include "auth_manager.h"
 #include "captive_portal.h"
@@ -16,13 +15,15 @@
 #include "dns_responder.h"
 #include "dtmf_decoder.h"
 #include "gpio_handler.h"
+#include "hardware_status.h"
 #include "hardware_test.h"
 #include "led_handler.h"
 #include "ntp_sync.h"
+#include "ota_handler.h"
 #include "sip_client.h"
 #include "web_server.h"
 #include "wifi_manager.h"
-
+#include "esp_task_wdt.h"
 
 static const char *TAG = "MAIN";
 
@@ -62,28 +63,40 @@ void app_main(void) {
   led_handler_init();
   led_handler_set_state(LED_STATE_INIT);
 
+  // Initialize OTA Handler before hardware status (to ensure partition info is
+  // available if needed)
+  ota_handler_init();
+
+  hw_status_init();
+
   ESP_LOGI(TAG, "ESP32 SIP Door Station started");
 
   // PSRAM Diagnostic
   ESP_LOGI(TAG, "PSRAM Diagnostic:");
-  ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
-  ESP_LOGI(TAG, "Internal heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "SPIRAM heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  ESP_LOGI(TAG, "Largest internal block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Total heap size: %lu bytes", (unsigned long)esp_get_free_heap_size());
+  ESP_LOGI(TAG, "Internal heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "SPIRAM heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Largest internal block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "Largest SPIRAM block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
       ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_LOGE(TAG, "NVS partition full or outdated - erasing");
     ESP_ERROR_CHECK(nvs_flash_erase());
     ret = nvs_flash_init();
   }
-  ESP_ERROR_CHECK(ret);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "NVS initialization failed: %s - continuing without NVS", esp_err_to_name(ret));
+  }
+
+  // Initialize Auth Manager early as GPIO and Web depend on it
+  auth_manager_init();
 
   // Initialize GPIO
   gpio_handler_init();
@@ -182,8 +195,15 @@ void app_main(void) {
 
   // Wait for IP address before initializing network-dependent services
   ESP_LOGI(TAG, "Waiting for IP address before initializing NTP and SIP...");
-  while (!wifi_is_connected()) {
+  const int WIFI_WAIT_TIMEOUT_S = 120;
+  int wifi_wait_s = 0;
+  while (!wifi_is_connected() && wifi_wait_s < WIFI_WAIT_TIMEOUT_S) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    wifi_wait_s++;
+  }
+  if (!wifi_is_connected()) {
+    ESP_LOGW(TAG, "WiFi connection timeout (%d s) - continuing with limited functionality", WIFI_WAIT_TIMEOUT_S);
+    led_handler_set_state(LED_STATE_ERROR);
   }
   led_handler_set_state(LED_STATE_WIFI_CONNECTED);
   ESP_LOGI(TAG,
@@ -196,6 +216,19 @@ void app_main(void) {
   // This is done before web server to ensure HTTPS has a certificate
   cert_ensure_exists();
 
+  // Verify NTP sync and provide fallback
+  // Note: NTP sync is non-blocking. The system continues to operate using
+  // tick count for timestamps until NTP sync completes in the background.
+  if (!ntp_is_synced()) {
+    ESP_LOGW(TAG, "NTP not synchronized after init - will retry in background");
+    // Force a sync attempt (non-blocking)
+    ntp_force_sync();
+    // Do NOT block here - NTP will sync asynchronously
+    ESP_LOGI(TAG, "NTP sync scheduled - system will use tick count until synced");
+  } else {
+    ESP_LOGI(TAG, "NTP synchronized successfully");
+  }
+
   // Start Web Server
   web_server_start();
 
@@ -203,28 +236,52 @@ void app_main(void) {
   led_handler_set_state(LED_STATE_SIP_CONNECTING);
   sip_client_init();
 
-  // Initialize authentication manager (for session cleanup)
-  auth_manager_init();
-
   ESP_LOGI(TAG, "All components initialized");
 
   // Final PSRAM Diagnostic after initialization
   ESP_LOGI(TAG, "Post-init PSRAM Diagnostic:");
-  ESP_LOGI(TAG, "Total heap size: %d bytes", esp_get_free_heap_size());
-  ESP_LOGI(TAG, "Internal heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "SPIRAM heap free: %d bytes",
-           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  ESP_LOGI(TAG, "Largest internal block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-  ESP_LOGI(TAG, "Largest SPIRAM block: %d bytes",
-           heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Total heap size: %lu bytes", (unsigned long)esp_get_free_heap_size());
+  ESP_LOGI(TAG, "Internal heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "SPIRAM heap free: %lu bytes",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  ESP_LOGI(TAG, "Largest internal block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  ESP_LOGI(TAG, "Largest SPIRAM block: %lu bytes",
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
-  // Start session cleanup task
-  xTaskCreate(&session_cleanup_task, "session_cleanup", 2048, NULL, 5, NULL);
+  // Start session cleanup task (4096 bytes stack for mutex operations and looping)
+  xTaskCreate(&session_cleanup_task, "session_cleanup", 4096, NULL, 5, NULL);
 
-  // Main loop
+  // Initialize Task Watchdog Timer for critical tasks
+  ESP_LOGI(TAG, "Initializing Task Watchdog Timer");
+  esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = 30000,  // 30 second timeout
+      .idle_core_mask = 0,  // Don't monitor idle tasks (prevents false resets when system is idle)
+      .trigger_panic = false  // Log and reset instead of panic
+  };
+  esp_err_t twdt_err = esp_task_wdt_init(&twdt_config);
+  if (twdt_err == ESP_OK) {
+    ESP_LOGI(TAG, "Task Watchdog Timer initialized (30s timeout)");
+  } else if (twdt_err == ESP_ERR_INVALID_STATE) {
+    ESP_LOGI(TAG, "Task Watchdog Timer already initialized");
+  } else {
+    ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
+  }
+
+  // Main loop - monitor system health
+  uint32_t health_check_counter = 0;
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    health_check_counter++;
+
+    // Every 60 seconds, print a heap health diagnostic
+    if (health_check_counter >= 60) {
+      health_check_counter = 0;
+      ESP_LOGI(TAG, "Health: free heap=%lu, internal=%lu, spiram=%lu",
+               (unsigned long)esp_get_free_heap_size(),
+               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    }
   }
 }

@@ -1,0 +1,16 @@
+menu "Door Station Configuration"
+
+    config DOOR_STATION_AP_SSID
+        string "SoftAP SSID"
+        default "ESP32-Doorbell"
+        help
+            SSID of the SoftAP created by the device for configuration.
+
+    config DOOR_STATION_AP_PASSWORD
+        string "SoftAP Password"
+        default "doorstation123"
+        help
+            Password of the SoftAP created by the device for configuration.
+            Must be at least 8 characters long.
+
+endmenu
