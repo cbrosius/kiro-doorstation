@@ -7770,6 +7770,8 @@
     let loginLogInitialized = false;
     let sipLogCurrentFilter = 'all';
     let dtmfLogCurrentFilter = 'all';
+    let isRefreshingSIPLogs = false;
+    let isRefreshingDTMFLogs = false;
 
     // ===== Task 11.1: SIP Connection Log Display =====
 
@@ -7841,6 +7843,8 @@
      * @param {boolean} silent - If true, don't show loading message
      */
     async function refreshSIPLogs(silent = false) {
+      if (isRefreshingSIPLogs) return;
+      isRefreshingSIPLogs = true;
       const btn = document.getElementById('sip-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
 
@@ -8172,6 +8176,7 @@
     let hwLogEntries = [];
     let hwLogLastTimestamp = 0;
     let hwLogAutoRefreshInterval = null;
+    let isRefreshingHWLogs = false;
 
     /**
      * Start/Stop hardware log auto-refresh
@@ -8197,6 +8202,8 @@
      * @param {boolean} silent - If true, don't show loading message
      */
     async function refreshHWLogs(silent = false) {
+      if (isRefreshingHWLogs) return;
+      isRefreshingHWLogs = true;
       const btn = document.getElementById('hw-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
 
@@ -8289,6 +8296,8 @@
      * @param {boolean} silent - If true, don't show loading message
      */
     async function refreshDTMFLogs(silent = false) {
+      if (isRefreshingDTMFLogs) return;
+      isRefreshingDTMFLogs = true;
       const btn = document.getElementById('dtmf-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
 
