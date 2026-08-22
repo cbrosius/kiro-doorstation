@@ -1173,82 +1173,6 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             audio_stop_recording();
             audio_stop_playback();
             rtp_stop_session();
-          } else if (strncmp(buffer, "OPTIONS ", 8) == 0) {
-            // Handle OPTIONS request (capability query / keepalive)
-            sip_add_log_entry("received", "OPTIONS request received");
-
-            // Extract headers using helper function
-            sip_request_headers_t headers = extract_request_headers(buffer);
-
-            if (!headers.valid) {
-              sip_add_log_entry("error", "Failed to parse OPTIONS headers");
-              continue;
-            }
-
-            // Build Allow header with supported methods
-            char extra_headers[256];
-            snprintf(extra_headers, sizeof(extra_headers),
-                     "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, INFO\r\n"
-                     "Accept: application/sdp, application/dtmf-relay\r\n"
-                     "Accept-Encoding: identity\r\n"
-                     "Accept-Language: en\r\n"
-                     "Supported: \r\n");
-
-            // Send 200 OK response using helper function
-            send_sip_response(200, "OK", &headers, extra_headers, NULL);
-
-            sip_add_log_entry("info", "OPTIONS response sent - capabilities "
-                                      "advertised (INFO method supported)");
-          } else if (strncmp(buffer, "CANCEL ", 7) == 0) {
-            // Handle CANCEL request (call cancellation before answer)
-            sip_add_log_entry("received", "CANCEL request received");
-
-            // Extract headers using helper function
-            sip_request_headers_t headers = extract_request_headers(buffer);
-
-            if (!headers.valid) {
-              sip_add_log_entry("error", "Failed to parse CANCEL headers");
-              continue;
-            }
-
-            // CANCEL is only valid if we have an ongoing INVITE transaction
-            if (current_state == SIP_STATE_CALLING ||
-                current_state == SIP_STATE_RINGING) {
-              // Send 200 OK to CANCEL
-              send_sip_response(200, "OK", &headers, NULL, NULL);
-
-              // TODO: Also send 487 Request Terminated to original INVITE
-              // (Would require storing INVITE transaction details)
-
-              // Clear call state
-              current_state = SIP_STATE_REGISTERED;
-              call_start_timestamp = 0;
-
-              // Stop any audio/RTP that might have started
-              audio_stop_recording();
-              audio_stop_playback();
-              rtp_stop_session();
-
-              sip_add_log_entry(
-                  "info",
-                  "Call cancelled by remote party - returned to REGISTERED");
-            } else {
-              // No matching transaction - send 481 Call/Transaction Does Not
-              // Exist
-              sip_add_log_entry("info",
-                                "CANCEL for unknown transaction - sending 481");
-              send_sip_response(481, "Call/Transaction Does Not Exist",
-                                &headers, NULL, NULL);
-            }
-            sip_add_log_entry(
-                "error", "500 during call setup - returning to registered");
-            call_start_timestamp = 0;
-            has_invite_auth_challenge = false;
-            invite_auth_attempt_count = 0;
-            current_state = SIP_STATE_REGISTERED;
-            audio_stop_recording();
-            audio_stop_playback();
-            rtp_stop_session();
           } else {
             sip_add_log_entry("error",
                               "500 in other state - entering error state");
@@ -1360,6 +1284,60 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             sip_add_log_entry(
                 "error", "Failed to parse 603 headers - sending ACK anyway");
             send_ack_for_error_response(buffer);
+          }
+        } else if (strncmp(buffer, "OPTIONS ", 8) == 0) {
+          // Handle OPTIONS request (capability query / keepalive)
+          sip_add_log_entry("received", "OPTIONS request received");
+
+          sip_request_headers_t headers = extract_request_headers(buffer);
+
+          if (!headers.valid) {
+            sip_add_log_entry("error", "Failed to parse OPTIONS headers");
+            continue;
+          }
+
+          char extra_headers[256];
+          snprintf(extra_headers, sizeof(extra_headers),
+                   "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, INFO\r\n"
+                   "Accept: application/sdp, application/dtmf-relay\r\n"
+                   "Accept-Encoding: identity\r\n"
+                   "Accept-Language: en\r\n"
+                   "Supported: \r\n");
+
+          send_sip_response(200, "OK", &headers, extra_headers, NULL);
+
+          sip_add_log_entry("info", "OPTIONS response sent - capabilities "
+                                    "advertised (INFO method supported)");
+        } else if (strncmp(buffer, "CANCEL ", 7) == 0) {
+          // Handle CANCEL request (call cancellation before answer)
+          sip_add_log_entry("received", "CANCEL request received");
+
+          sip_request_headers_t headers = extract_request_headers(buffer);
+
+          if (!headers.valid) {
+            sip_add_log_entry("error", "Failed to parse CANCEL headers");
+            continue;
+          }
+
+          if (current_state == SIP_STATE_CALLING ||
+              current_state == SIP_STATE_RINGING) {
+            send_sip_response(200, "OK", &headers, NULL, NULL);
+
+            current_state = SIP_STATE_REGISTERED;
+            call_start_timestamp = 0;
+
+            audio_stop_recording();
+            audio_stop_playback();
+            rtp_stop_session();
+
+            sip_add_log_entry(
+                "info",
+                "Call cancelled by remote party - returned to REGISTERED");
+          } else {
+            sip_add_log_entry("info",
+                              "CANCEL for unknown transaction - sending 481");
+            send_sip_response(481, "Call/Transaction Does Not Exist",
+                              &headers, NULL, NULL);
           }
         } else if (strncmp(buffer, "INFO ", 5) == 0) {
           // Handle INFO request (DTMF signaling, keepalive, etc.)

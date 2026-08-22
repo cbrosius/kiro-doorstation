@@ -236,9 +236,6 @@ void app_main(void) {
   led_handler_set_state(LED_STATE_SIP_CONNECTING);
   sip_client_init();
 
-  // Initialize authentication manager (for session cleanup)
-  auth_manager_init();
-
   ESP_LOGI(TAG, "All components initialized");
 
   // Final PSRAM Diagnostic after initialization

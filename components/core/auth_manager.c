@@ -13,6 +13,14 @@
 
 static const char *TAG = "AUTH_MANAGER";
 
+static bool constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t result = 0;
+    for (size_t i = 0; i < len; i++) {
+        result |= a[i] ^ b[i];
+    }
+    return result == 0;
+}
+
 // NVS namespace for authentication data
 #define AUTH_NVS_NAMESPACE "auth"
 #define AUTH_NVS_PASSWORD_KEY "admin_pwd"
@@ -159,8 +167,8 @@ bool auth_verify_password(const char* password, const password_hash_t* stored_ha
         return false;
     }
     
-    // Compare hashes using constant-time comparison
-    return memcmp(computed_hash, stored_hash->hash, AUTH_HASH_SIZE) == 0;
+    // Compare hashes using constant-time comparison to prevent timing attacks
+    return constant_time_compare(computed_hash, stored_hash->hash, AUTH_HASH_SIZE);
 }
 
 /**
