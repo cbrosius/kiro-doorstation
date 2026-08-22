@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "esp_err.h"
 
 typedef enum {
     DTMF_0 = '0',
@@ -64,7 +65,7 @@ typedef struct {
 typedef void (*dtmf_callback_t)(dtmf_tone_t tone);
 
 void dtmf_decoder_init(void);
-void dtmf_set_callback(dtmf_callback_t callback);
+esp_err_t dtmf_set_callback(dtmf_callback_t callback); // DEPRECATED - returns ESP_FAIL
 
 // RFC 4733 telephone-event processing functions
 void dtmf_process_telephone_event(uint8_t event);

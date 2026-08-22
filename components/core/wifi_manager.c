@@ -305,7 +305,7 @@ void wifi_manager_init(void) {
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
                                              &wifi_event_handler, NULL));
 
-  // Gespeicherte WiFi-Konfiguration laden
+  // Load saved WiFi configuration
   wifi_manager_config_t saved_config = wifi_load_config();
 
   if (saved_config.configured) {

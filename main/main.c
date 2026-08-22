@@ -267,8 +267,19 @@ void app_main(void) {
     ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
   }
 
-  // Main loop
+  // Main loop - monitor system health
+  uint32_t health_check_counter = 0;
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    health_check_counter++;
+
+    // Every 60 seconds, print a heap health diagnostic
+    if (health_check_counter >= 60) {
+      health_check_counter = 0;
+      ESP_LOGI(TAG, "Health: free heap=%lu, internal=%lu, spiram=%lu",
+               (unsigned long)esp_get_free_heap_size(),
+               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    }
   }
 }

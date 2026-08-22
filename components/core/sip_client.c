@@ -21,12 +21,6 @@
 #include <inttypes.h>
 #include <errno.h>
 
-// Suppress format-truncation warnings for SIP message construction throughout
-// this file SIP URIs can be long but our buffers (2048-3072 bytes) are sized
-// appropriately
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-truncation"
-
 static const char *TAG = "SIP";
 static sip_state_t current_state = SIP_STATE_IDLE;
 sip_config_t sip_config = {0};
@@ -159,7 +153,7 @@ const char *sip_state_to_str(sip_state_t state) {
 static void handle_unexpected_401_in_connected(const char *buffer, bool is_retransmission) {
   if (is_retransmission) {
     sip_request_headers_t headers = extract_request_headers(buffer);
-    char debug_log[256];
+    char debug_log[512];
     snprintf(debug_log, sizeof(debug_log),
              "401 retransmission Call-ID: %s, Expected: %s",
              headers.call_id, invite_call_id_str);
@@ -180,7 +174,7 @@ static void handle_unexpected_401_in_connected(const char *buffer, bool is_retra
 
   sip_request_headers_t headers = extract_request_headers(buffer);
   if (headers.valid) {
-    char debug_log[512];
+    char debug_log[2048];
     snprintf(debug_log, sizeof(debug_log),
              "Unexpected 401 in CONNECTED: Call-ID=%s, Expected: "
              "%s, Branch=%s, CSeq=%d %s, From=%s, To=%s",
@@ -860,7 +854,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
             // Extract headers to check Call-ID for debugging
             sip_request_headers_t headers = extract_request_headers(buffer);
-            char debug_log[256];
+            char debug_log[512];
             snprintf(debug_log, sizeof(debug_log),
                      "401 Call-ID: %s, Expected: %s", headers.call_id,
                      invite_call_id_str);
@@ -1465,7 +1459,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
                 strncpy(required_ext, require_hdr, len);
                 required_ext[len] = '\0';
 
-                char log_msg[256];
+                char log_msg[512];
                 snprintf(log_msg, sizeof(log_msg),
                          "INVITE requires unsupported extension: %s - "
                          "rejecting with 420",
@@ -2183,6 +2177,11 @@ bool sip_client_register(void) {
   // Create REGISTER message (use static to avoid stack allocation)
   static char register_msg[1024];
   int branch_id = esp_random();
+
+  // Suppress format-truncation warning for SIP REGISTER construction
+  // Buffer is 1024 bytes, SIP URIs are max ~100 bytes, so truncation is benign
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wformat-truncation"
   int from_tag = esp_random();
   int call_id = esp_random();
 
@@ -2388,6 +2387,7 @@ static bool sip_client_register_auth(sip_auth_challenge_t *challenge) {
            sent);
   sip_add_log_entry("info", log_msg);
   return true;
+#pragma GCC diagnostic pop
 }
 
 void sip_client_make_call(const char *uri) {
@@ -2420,6 +2420,9 @@ void sip_client_make_call(const char *uri) {
 
   // Format URI if needed (add sip: prefix if missing)
   static char formatted_uri[128];
+  // Suppress format-truncation warning for SIP INVITE URI formatting
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wformat-truncation"
   if (strncmp(uri, "sip:", 4) != 0) {
     // URI doesn't have sip: prefix, add it
     if (strchr(uri, '@') != NULL) {
@@ -2702,6 +2705,7 @@ void sip_client_make_call(const char *uri) {
   // Reuse log_msg buffer for INVITE sent message
   snprintf(log_msg, sizeof(log_msg), "INVITE sent to %s (%d bytes)", uri, sent);
   sip_add_log_entry("sent", log_msg);
+#pragma GCC diagnostic pop
 }
 
 void sip_client_hangup(void) {
@@ -2726,7 +2730,7 @@ void sip_client_hangup(void) {
 
     // Send BYE message if we have an active call
     if (current_state == SIP_STATE_CONNECTED && sip_socket >= 0) {
-      static char bye_msg[512];
+      static char bye_msg[1024];
       char local_ip[16];
       if (!get_local_ip(local_ip, sizeof(local_ip))) {
         strcpy(local_ip, "192.168.1.100");

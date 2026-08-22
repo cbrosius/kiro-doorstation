@@ -627,12 +627,13 @@ void dtmf_decoder_init(void)
     ESP_LOGI(TAG, "DTMF Decoder initialized (SECURE - audio tones disabled)");
 }
 
-void dtmf_set_callback(dtmf_callback_t callback)
+esp_err_t dtmf_set_callback(dtmf_callback_t callback)
 {
     // LEGACY FUNCTION - DEPRECATED
     // Audio DTMF processing has been removed for security
     ESP_LOGE(TAG, "WARNING: dtmf_set_callback() is deprecated - audio DTMF disabled for security");
     ESP_LOGI(TAG, "Only RFC 4733 telephone-events are now supported");
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 // Reset call state for new call
