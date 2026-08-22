@@ -4520,91 +4520,93 @@
      * @returns {Promise<Object>} Response data
      */
     async function apiRequest(endpoint, options = {}, timeout = 10000) {
-      const silentError = options.silentError || false;
-      delete options.silentError; // Remove custom option before fetch
+      return requestQueue.add(async () => {
+        const silentError = options.silentError || false;
+        delete options.silentError; // Remove custom option before fetch
 
-      const defaultOptions = {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      };
-
-      const config = { ...defaultOptions, ...options };
-
-      try {
-        // Create timeout promise
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), timeout);
-        });
-
-        // Race between fetch and timeout
-        const response = await Promise.race([
-          fetch(endpoint, config),
-          timeoutPromise
-        ]);
-
-        if (!response.ok) {
-          // Handle 401 Unauthorized - session expired or invalid
-          if (response.status === 401) {
-            console.warn('Session expired or invalid (401 response), redirecting to login');
-            showToast('Session expired. Redirecting to login...', 'warning', 3000);
-            // Small delay to allow toast to show before redirect
-            setTimeout(() => {
-              window.location.href = '/login.html';
-            }, 2000);
-            throw new Error('Session expired');
+        const defaultOptions = {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
           }
-          
-          // Handle 403 Forbidden - may indicate setup required or blocked
-          if (response.status === 403) {
-            console.warn('Access forbidden (403 response), checking if setup required');
-            const errorData = await response.json().catch(() => ({}));
-            if (errorData.message && errorData.message.includes('setup')) {
-              console.log('Setup required, redirecting to setup page');
-              window.location.href = '/setup.html';
+        };
+
+        const config = { ...defaultOptions, ...options };
+
+        try {
+          // Create timeout promise
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout')), timeout);
+          });
+
+          // Race between fetch and timeout
+          const response = await Promise.race([
+            fetch(endpoint, config),
+            timeoutPromise
+          ]);
+
+          if (!response.ok) {
+            // Handle 401 Unauthorized - session expired or invalid
+            if (response.status === 401) {
+              console.warn('Session expired or invalid (401 response), redirecting to login');
+              showToast('Session expired. Redirecting to login...', 'warning', 3000);
+              // Small delay to allow toast to show before redirect
+              setTimeout(() => {
+                window.location.href = '/login.html';
+              }, 2000);
+              throw new Error('Session expired');
             }
-            throw new Error(errorData.message || 'Access forbidden');
+            
+            // Handle 403 Forbidden - may indicate setup required or blocked
+            if (response.status === 403) {
+              console.warn('Access forbidden (403 response), checking if setup required');
+              const errorData = await response.json().catch(() => ({}));
+              if (errorData.message && errorData.message.includes('setup')) {
+                console.log('Setup required, redirecting to setup page');
+                window.location.href = '/setup.html';
+              }
+              throw new Error(errorData.message || 'Access forbidden');
+            }
+            
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
           }
-          
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-        }
 
-        // Handle empty responses gracefully
-        const contentLength = response.headers.get('content-length');
-        if (contentLength === '0') {
-          throw new Error('Empty response from server');
-        }
-
-        const data = await response.json();
-
-        // Handle empty JSON responses
-        if (data === null || data === undefined) {
-          throw new Error('Empty response from server');
-        }
-
-        return data;
-      } catch (error) {
-        console.error(`API Error [${endpoint}]:`, error);
-
-        // Show user-friendly error messages (unless silentError is true)
-        if (!silentError) {
-          if (error.message === 'Request timeout') {
-            showToast('Request timed out. Please try again.', 'error');
-          } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            showToast('Connection error. Please check your network.', 'error');
-          } else if (error.message.includes('Empty response')) {
-            // Don't show toast for empty responses - handle gracefully in calling code
-            console.warn('Empty response from server:', endpoint);
-          } else if (error.message !== 'Session expired') {
-            // Don't show toast for session expired - redirect handles it
-            showToast(error.message, 'error');
+          // Handle empty responses gracefully
+          const contentLength = response.headers.get('content-length');
+          if (contentLength === '0') {
+            throw new Error('Empty response from server');
           }
-        }
 
-        throw error;
-      }
+          const data = await response.json();
+
+          // Handle empty JSON responses
+          if (data === null || data === undefined) {
+            throw new Error('Empty response from server');
+          }
+
+          return data;
+        } catch (error) {
+          console.error(`API Error [${endpoint}]:`, error);
+
+          // Show user-friendly error messages (unless silentError is true)
+          if (!silentError) {
+            if (error.message === 'Request timeout') {
+              showToast('Request timed out. Please try again.', 'error');
+            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+              showToast('Connection error. Please check your network.', 'error');
+            } else if (error.message.includes('Empty response')) {
+              // Don't show toast for empty responses - handle gracefully in calling code
+              console.warn('Empty response from server:', endpoint);
+            } else if (error.message !== 'Session expired') {
+              // Don't show toast for session expired - redirect handles it
+              showToast(error.message, 'error');
+            }
+          }
+
+          throw error;
+        }
+      });
     }
 
     /**
@@ -5807,14 +5809,14 @@
         const activityContainer = document.getElementById('recent-activity');
         if (!activityContainer) return;
 
-        if (!response.entries || response.entries.length === 0) {
+        if (!response.logs || response.logs.length === 0) {
           activityContainer.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No recent activity</div>';
           return;
         }
 
         // Build activity list
         let html = '';
-        response.entries.forEach(entry => {
+        response.logs.forEach(entry => {
           const typeColor = getLogTypeColor(entry.type);
           const timestamp = formatTimestamp(entry.timestamp);
 
@@ -9213,7 +9215,7 @@
      */
     async function loadOTAFirmwareInfo() {
       try {
-        const response = await apiRequest('/api/ota/version');
+        const response = await apiRequest('/api/ota/info');
 
         const currentVersionElement = document.getElementById('ota-current-version');
         const buildDateElement = document.getElementById('ota-build-date');
@@ -9226,7 +9228,7 @@
           buildDateElement.textContent = response.build_date || 'Unknown';
         }
         if (chipModelElement) {
-          chipModelElement.textContent = response.chip_model || 'Unknown';
+          chipModelElement.textContent = response.idf_version || 'Unknown';
         }
 
       } catch (error) {

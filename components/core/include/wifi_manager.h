@@ -28,6 +28,8 @@ typedef struct {
   char ip_address[16];
   char gateway[16];
   char netmask[16];
+  char dns1[16];
+  char dns2[16];
   int rssi;
   bool connected;
 } wifi_connection_info_t;
