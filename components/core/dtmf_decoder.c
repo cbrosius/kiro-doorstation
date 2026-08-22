@@ -319,7 +319,7 @@ static void dtmf_execute_command(const char* command)
         // Legacy mode - accept "*1"
         if (!security_config.pin_enabled && strcmp(command, "*1") == 0) {
             ESP_LOGI(TAG, "Activating door opener (legacy mode)");
-            xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
+            door_relay_activate();
             
             // Log successful execution
             dtmf_add_security_log(CMD_DOOR_OPEN, true, "*1#", NULL, NULL);
@@ -334,7 +334,7 @@ static void dtmf_execute_command(const char* command)
         // PIN mode - accept "*[PIN]"
         if (security_config.pin_enabled) {
             ESP_LOGI(TAG, "Activating door opener (PIN authenticated)");
-            xTaskCreate((TaskFunction_t)door_relay_activate, "door_task", 2048, NULL, 5, NULL);
+            door_relay_activate();
             
             // Log successful execution (don't log actual PIN)
             char log_command[16];
