@@ -7574,11 +7574,15 @@
     /**
      * Task 18: Load certificate information and display
      */
+    let cachedCertInfo = null;
+
     async function loadCertificateInfo() {
       try {
         const response = await apiRequest('/api/cert/info', { silentError: true });
 
         if (response) {
+          cachedCertInfo = response;
+
           // Update certificate type
           const certTypeElement = document.getElementById('cert-type');
           if (certTypeElement) {
@@ -7839,10 +7843,14 @@
       try {
         showToast('Downloading certificate...', 'info');
 
-        const infoResponse = await apiRequest('/api/cert/info', { silentError: true });
         let filename = 'certificate.pem';
-        if (infoResponse && infoResponse.common_name) {
-          filename = infoResponse.common_name.replace(/[^a-zA-Z0-9._-]/g, '_') + '.pem';
+        if (cachedCertInfo && cachedCertInfo.common_name) {
+          filename = cachedCertInfo.common_name.replace(/[^a-zA-Z0-9._-]/g, '_') + '.pem';
+        } else {
+          const infoResponse = await apiRequest('/api/cert/info', { silentError: true });
+          if (infoResponse && infoResponse.common_name) {
+            filename = infoResponse.common_name.replace(/[^a-zA-Z0-9._-]/g, '_') + '.pem';
+          }
         }
 
         const response = await fetch('/api/cert/download', {
