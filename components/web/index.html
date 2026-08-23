@@ -7421,47 +7421,16 @@
       const certFileInput = document.getElementById('cert-file-input');
       const keyFileInput = document.getElementById('key-file-input');
       const chainFileInput = document.getElementById('chain-file-input');
-
-      if (!certFileInput || !certFileInput.files || certFileInput.files.length === 0) {
-        showToast('Please select a certificate file', 'error');
-        return;
-      }
-
-      if (!keyFileInput || !keyFileInput.files || keyFileInput.files.length === 0) {
-        showToast('Please select a private key file', 'error');
-        return;
-      }
-
-      // Confirm action with detailed warning
-      const confirmed = await showConfirmDialog(
-        'Upload Custom Certificate',
-        `<strong>⚠️ Certificate Upload Warning:</strong><br><br>` +
-        `• This will replace the current certificate<br>` +
-        `• The web server will restart automatically<br>` +
-        `• You will lose connection temporarily<br>` +
-        `• All active sessions will be invalidated<br>` +
-        `• You will need to log in again after restart<br><br>` +
-        `<strong>File:</strong> ${certFileInput.files[0].name}<br>` +
-        `<strong>Key:</strong> ${keyFileInput.files[0].name}<br><br>` +
-        `Do you want to proceed?`,
-        'Upload and Restart',
-        'Cancel',
-        'warning'
-      );
-
+      if (!certFileInput?.files?.length) { showToast('Please select a certificate file', 'error'); return; }
+      if (!keyFileInput?.files?.length) { showToast('Please select a private key file', 'error'); return; }
+      const confirmed = await showConfirmDialog('Upload Custom Certificate', `<strong>⚠️ Certificate Upload Warning:</strong><br><br>• This will replace the current certificate<br>• The web server will restart automatically<br>• You will lose connection temporarily<br>• All active sessions will be invalidated<br>• You will need to log in again after restart<br><br><strong>File:</strong> ${certFileInput.files[0].name}<br><strong>Key:</strong> ${keyFileInput.files[0].name}<br><br>Do you want to proceed?`, 'Upload and Restart', 'Cancel', 'warning');
       if (!confirmed) return;
-
       if (button) setLoadingState(button, true);
-
       try {
         showToast('Uploading certificate...', 'info');
-
-        // Read files as text
         const certPem = await readFileAsText(certFileInput.files[0]);
         const keyPem = await readFileAsText(keyFileInput.files[0]);
-        const chainPem = chainFileInput && chainFileInput.files && chainFileInput.files.length > 0
-          ? await readFileAsText(chainFileInput.files[0])
-          : null;
+        const chainPem = chainFileInput?.files?.length > 0 ? await readFileAsText(chainFileInput.files[0]) : null;
 
         // Validate PEM format
         if (!certPem.includes('-----BEGIN CERTIFICATE-----')) {
