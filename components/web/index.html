@@ -6780,43 +6780,28 @@
     /**
      * Update NTP status display in Network Settings section
      */
+    function setNTPStatus(icon, text, color) {
+      const iconEl = document.getElementById('ntp-status-icon');
+      const textEl = document.getElementById('ntp-status-text');
+      if (iconEl) iconEl.textContent = icon;
+      if (textEl) { textEl.textContent = text; textEl.style.color = color; }
+    }
+
     async function updateNTPStatusInNetworkSection() {
       try {
         const response = await apiCache.get('ntpState');
-
-        const iconElement = document.getElementById('ntp-status-icon');
-        const textElement = document.getElementById('ntp-status-text');
+        const states = {
+          true: ['✅', 'Synchronized', 'var(--color-success)'],
+          false: ['❌', 'Not Synchronized', 'var(--color-danger)'],
+        };
+        const s = states[response.synced] || states.false;
+        setNTPStatus(...s);
         const timeElement = document.getElementById('ntp-status-time');
-
-        if (response.synced) {
-          if (iconElement) iconElement.textContent = '✅';
-          if (textElement) {
-            textElement.textContent = 'Synchronized';
-            textElement.style.color = 'var(--color-success)';
-          }
-        } else {
-          if (iconElement) iconElement.textContent = '❌';
-          if (textElement) {
-            textElement.textContent = 'Not Synchronized';
-            textElement.style.color = 'var(--color-danger)';
-          }
-        }
-
-        if (timeElement && response.current_time) {
-          timeElement.textContent = response.current_time;
-        }
-
+        if (timeElement && response.current_time) timeElement.textContent = response.current_time;
       } catch (error) {
         console.error('Error updating NTP status:', error);
-        const iconElement = document.getElementById('ntp-status-icon');
-        const textElement = document.getElementById('ntp-status-text');
+        setNTPStatus('⏳', 'NTP Service Unavailable', 'var(--color-warning)');
         const timeElement = document.getElementById('ntp-status-time');
-
-        if (iconElement) iconElement.textContent = '⏳';
-        if (textElement) {
-          textElement.textContent = 'NTP Service Unavailable';
-          textElement.style.color = 'var(--color-warning)';
-        }
         if (timeElement) timeElement.textContent = 'N/A';
       }
     }
@@ -7007,41 +6992,30 @@
           const maxAttemptsInput = document.getElementById('security-max-attempts-input');
 
           if (pinEnableCheckbox) pinEnableCheckbox.checked = response.pin_enabled || false;
-          if (pinInput && response.pin_code) pinInput.value = response.pin_code;
-          if (timeoutInput && response.timeout_ms) timeoutInput.value = response.timeout_ms;
-          if (maxAttemptsInput && response.max_attempts) maxAttemptsInput.value = response.max_attempts;
-
-          // Update status display (Task 10.2)
+          const secFields = [
+            ['security-pin-input', 'pin_code'],
+            ['security-timeout-input', 'timeout_ms'],
+            ['security-max-attempts-input', 'max_attempts'],
+          ];
+          secFields.forEach(([id, key]) => {
+            const input = document.getElementById(id);
+            if (input && response[key]) input.value = response[key];
+          });
           updateSecurityStatus(response);
-
-          // Save initial state for change tracking
           const form = document.getElementById('security-form');
-          if (form) {
-            saveFormInitialState(form);
-            trackFormChanges(form);
-          }
-
+          if (form) { saveFormInitialState(form); trackFormChanges(form); }
           console.log('Security configuration loaded successfully');
-          // Sync PIN required state with loaded config
           updatePinRequiredState();
         }
       } catch (error) {
         console.error('Error loading security configuration:', error);
-        // Set default values if config doesn't exist
-        const pinInput = document.getElementById('security-pin-input');
-        const timeoutInput = document.getElementById('security-timeout-input');
-        const maxAttemptsInput = document.getElementById('security-max-attempts-input');
-
-        if (pinInput && !pinInput.value) pinInput.value = '1234';
-        if (timeoutInput && !timeoutInput.value) timeoutInput.value = '10000';
-        if (maxAttemptsInput && !maxAttemptsInput.value) maxAttemptsInput.value = '3';
-
-        // Save initial state
+        const defaults = [['security-pin-input', '1234'], ['security-timeout-input', '10000'], ['security-max-attempts-input', '3']];
+        defaults.forEach(([id, val]) => {
+          const input = document.getElementById(id);
+          if (input && !input.value) input.value = val;
+        });
         const form = document.getElementById('security-form');
-        if (form) {
-          saveFormInitialState(form);
-          trackFormChanges(form);
-        }
+        if (form) { saveFormInitialState(form); trackFormChanges(form); }
       }
     }
 
