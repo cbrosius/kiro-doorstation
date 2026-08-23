@@ -5066,6 +5066,17 @@
 
     // ===== Task 4.4: Confirmation Dialogs for Destructive Actions =====
 
+    function handleDialogEscape(overlay, resolve) {
+      const handleEscape = (e) => {
+        if (e.key === 'Escape') {
+          closeDialog(overlay);
+          resolve(false);
+          document.removeEventListener('keydown', handleEscape);
+        }
+      };
+      document.addEventListener('keydown', handleEscape);
+    }
+
     /**
      * Show a confirmation dialog
      * @param {string} title - Dialog title
@@ -5133,14 +5144,7 @@
         });
 
         // Handle escape key
-        const handleEscape = (e) => {
-          if (e.key === 'Escape') {
-            closeDialog(overlay);
-            resolve(false);
-            document.removeEventListener('keydown', handleEscape);
-          }
-        };
-        document.addEventListener('keydown', handleEscape);
+        handleDialogEscape(overlay, resolve);
 
         // Handle overlay click
         overlay.addEventListener('click', (e) => {
@@ -6141,14 +6145,7 @@
           resolve(false);
         });
 
-        const handleEscape = (e) => {
-          if (e.key === 'Escape') {
-            closeDialog(overlay);
-            resolve(false);
-            document.removeEventListener('keydown', handleEscape);
-          }
-        };
-        document.addEventListener('keydown', handleEscape);
+        handleDialogEscape(overlay, resolve);
 
         overlay.addEventListener('click', (e) => {
           if (e.target === overlay) {
