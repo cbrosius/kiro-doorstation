@@ -63,6 +63,9 @@ void hardware_test_init(void) {
   test_ctx.door_test_start_time = 0;
   test_ctx.door_test_duration = 0;
 
+  // Ensure light relay GPIO starts in OFF state (LOW)
+  gpio_set_level(LIGHT_RELAY_PIN, 0);
+
   // Create mutex for thread safety
   test_ctx.test_mutex = xSemaphoreCreateMutex();
   if (test_ctx.test_mutex == NULL) {
