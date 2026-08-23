@@ -6,6 +6,7 @@
 // Include extracted API modules
 #include "api_auth.h"
 #include "api_cert.h"
+#include "api_config.h"
 #include "api_dtmf.h"
 #include "api_email.h"
 #include "api_hardware.h"
@@ -27,6 +28,7 @@ esp_err_t web_api_register_handlers(httpd_handle_t server) {
   }
 
   // Register all modules
+  api_config_register(server);
   api_sip_register(server);
   api_wifi_register(server);
   api_network_register(server);

@@ -1,6 +1,7 @@
 set(web_srcs
     "api_auth.c"
     "api_cert.c"
+    "api_config.c"
     "api_dtmf.c"
     "api_email.c"
     "api_hardware.c"
