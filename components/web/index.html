@@ -6018,7 +6018,7 @@
      * Handle restore file selection
      * @param {Event} event - File input change event
      */
-    function handleRestoreFileSelected(event) {
+    async function handleRestoreFileSelected(event) {
       const file = event.target.files[0];
       if (!file) return;
 
@@ -6030,35 +6030,25 @@
       }
 
       // Read file
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const jsonString = e.target.result;
-          const backup = JSON.parse(jsonString);
+      try {
+        const jsonString = await file.text();
+        const backup = JSON.parse(jsonString);
 
-          // Validate backup format
-          if (!backup.config) {
-            throw new Error('Invalid backup file format: missing config data');
-          }
-
-          // Show preview and confirmation
-          await showRestorePreview(backup);
-
-        } catch (error) {
-          console.error('Error reading backup file:', error);
-          showToast('Invalid backup file: ' + error.message, 'error');
+        // Validate backup format
+        if (!backup.config) {
+          throw new Error('Invalid backup file format: missing config data');
         }
 
+        // Show preview and confirmation
+        await showRestorePreview(backup);
+
+      } catch (error) {
+        console.error('Error reading backup file:', error);
+        showToast('Invalid backup file: ' + error.message, 'error');
+      } finally {
         // Reset file input
         event.target.value = '';
-      };
-
-      reader.onerror = () => {
-        showToast('Error reading file', 'error');
-        event.target.value = '';
-      };
-
-      reader.readAsText(file);
+      }
     }
 
     /**
