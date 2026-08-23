@@ -8917,7 +8917,7 @@
       const durationSeconds = Number.parseInt(durationInput.value, 10);
 
       // Validate duration
-      if (isNaN(durationSeconds) || durationSeconds < 1 || durationSeconds > 10) {
+        if (Number.isNaN(durationSeconds) || durationSeconds < 1 || durationSeconds > 10) {
         showFeedback('error', 'Duration must be between 1 and 10 seconds');
         return;
       }
