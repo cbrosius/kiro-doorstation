@@ -8073,9 +8073,8 @@
       }
 
       try {
-        // Fetch logs since last timestamp (incremental)
         const endpoint = dtmfLogLastTimestamp > 0
-          ? `/api/dtmf/logs?since=${dtmfLogLastTimestamp}`
+          ? '/api/dtmf/logs?since=' + dtmfLogLastTimestamp
           : '/api/dtmf/logs';
 
         const response = await apiRequest(endpoint, { silentError: silent });
