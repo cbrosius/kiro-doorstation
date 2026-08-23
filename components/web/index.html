@@ -10153,7 +10153,7 @@
       document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 
       // Clear any cached session data
-      if (typeof apiCache !== 'undefined') {
+      if (apiCache !== undefined) {
         // Clear all cached data that might contain sensitive information
         Object.keys(apiCache).forEach(key => {
           if (apiCache[key] && typeof apiCache[key] === 'object') {
