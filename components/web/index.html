@@ -4825,66 +4825,27 @@
      * Handle form submission with loading states and error handling
      * @param {Event} event - The submit event
      */
+    const endpointCacheMap = {
+      '/api/wifi/': 'wifiState',
+      '/api/sip/': 'sipState',
+      '/api/ntp/': 'ntpState',
+      '/api/system/': 'systemState'
+    };
+
     async function handleFormSubmit(event) {
       event.preventDefault();
       const form = event.target;
 
-      console.log('Form submit handler called for:', form.id);
-
-      // Validate form
       if (!validateForm(form)) {
-        console.log('Form validation failed for:', form.id);
         showToast('Please fix the errors in the form', 'error');
-        // Focus on first invalid input
-        const firstInvalid = form.querySelector('.invalid');
-        if (firstInvalid) {
-          firstInvalid.focus();
-        }
+        form.querySelector('.invalid')?.focus();
         return;
       }
 
-      console.log('Form validation passed for:', form.id);
-
-      // Special confirmation for WiFi form
-      if (form.id === 'wifi-form') {
-        // Check if password is empty
-        const passwordInput = document.getElementById('wifi-password');
-        const password = passwordInput ? passwordInput.value : '';
-
-        if (!password || password.trim() === '') {
-          console.log('Empty password detected, asking for confirmation...');
-          const openNetworkConfirmed = await showConfirmDialog(
-            'Open Network Warning',
-            'You are about to connect to a network without a password. This means the network is open and unencrypted. Anyone within range can intercept your data. Are you sure you want to connect to an open network?',
-            'Yes, Connect',
-            'Cancel',
-            'warning'
-          );
-
-          if (!openNetworkConfirmed) {
-            console.log('User cancelled open network connection');
-            return;
-          }
-        }
-
-        console.log('WiFi form detected, showing confirmation dialog...');
-        const confirmed = await showConfirmDialog(
-          'Network Connection Warning',
-          'Changing WiFi settings will disconnect the device from the current network. You may need to reconnect to the new network to access the web interface. The device will attempt to connect to the new network and may take up to 30 seconds. Continue?',
-          'Continue',
-          'Cancel',
-          'warning'
-        );
-
-        console.log('User confirmation result:', confirmed);
-        if (!confirmed) {
-          console.log('User cancelled WiFi connection');
-          return;
-        }
-        console.log('User confirmed, proceeding with WiFi connection...');
+      if (form.id === 'wifi-form' && !(await handleWifiConfirmation(form))) {
+        return;
       }
 
-      // Get API endpoint from form data attribute
       const endpoint = form.dataset.api;
       if (!endpoint) {
         console.error('Form missing data-api attribute');
@@ -4892,60 +4853,69 @@
         return;
       }
 
-      // Get submit button
       const submitBtn = form.querySelector('button[type="submit"]');
       if (!submitBtn) return;
 
-      // Show loading state
       setLoadingState(submitBtn, true);
 
       try {
-        // Get form data
         const formData = getFormData(form);
 
-        // Debug logging for WiFi form (without sensitive data)
         if (form.id === 'wifi-form') {
           console.log('WiFi form submitting - SSID:', formData.ssid);
         }
 
-        // Make API request
         const response = await apiRequest(endpoint, {
           method: 'POST',
           body: JSON.stringify(formData)
         });
 
-        // Show success message
         showToast(response.message || 'Configuration saved successfully!', 'success');
 
-        // Invalidate relevant caches based on endpoint
-        if (endpoint.includes('/api/wifi/')) {
-          apiCache.invalidate('wifiState');
-        } else if (endpoint.includes('/api/sip/')) {
-          apiCache.invalidate('sipState');
-        } else if (endpoint.includes('/api/ntp/')) {
-          apiCache.invalidate('ntpState');
-        } else if (endpoint.includes('/api/system/')) {
-          apiCache.invalidate('systemState');
-        }
-
-        // Update initial state to current state
-        saveFormInitialState(form);
-        trackFormChanges(form);
-
-        // Call custom success handler if defined
-        if (form.dataset.onSuccess) {
-          const handlerName = form.dataset.onSuccess;
-          if (typeof window[handlerName] === 'function') {
-            window[handlerName](response);
+        for (const [prefix, cacheKey] of Object.entries(endpointCacheMap)) {
+          if (endpoint.includes(prefix)) {
+            apiCache.invalidate(cacheKey);
+            break;
           }
         }
 
+        saveFormInitialState(form);
+        trackFormChanges(form);
+
+        const handlerName = form.dataset.onSuccess;
+        if (handlerName && typeof window[handlerName] === 'function') {
+          window[handlerName](response);
+        }
+
       } catch (error) {
-        console.error('SIP connect error:', error);
+        console.error('Form submit error:', error);
       } finally {
-        // Reset button state
         setLoadingState(submitBtn, false);
       }
+    }
+
+    async function handleWifiConfirmation(form) {
+      const password = document.getElementById('wifi-password')?.value?.trim() || '';
+
+      if (!password) {
+        const confirmed = await showConfirmDialog(
+          'Open Network Warning',
+          'You are about to connect to a network without a password. This means the network is open and unencrypted. Anyone within range can intercept your data. Are you sure you want to connect to an open network?',
+          'Yes, Connect',
+          'Cancel',
+          'warning'
+        );
+        if (!confirmed) return false;
+      }
+
+      const confirmed = await showConfirmDialog(
+        'Network Connection Warning',
+        'Changing WiFi settings will disconnect the device from the current network. You may need to reconnect to the new network to access the web interface. The device will attempt to connect to the new network and may take up to 30 seconds. Continue?',
+        'Continue',
+        'Cancel',
+        'warning'
+      );
+      return confirmed;
     }
 
     /**
