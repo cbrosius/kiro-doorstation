@@ -5048,67 +5048,49 @@
      * @param {string} type - Dialog type: 'warning', 'danger' (default: 'warning')
      * @returns {Promise<boolean>} True if confirmed, false if cancelled
      */
+    function confirmDialogHtml(title, message, confirmText, cancelText, type) {
+      const icons = { warning: '⚠️', danger: '🚨' };
+      const btnClass = type === 'danger' ? 'danger' : 'primary';
+      return `
+        <div class="dialog-header">
+          <span class="dialog-icon">${icons[type] || icons.warning}</span>
+          <h3 class="dialog-title">${title}</h3>
+        </div>
+        <div class="dialog-body">
+          <p class="dialog-message">${message}</p>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="btn btn-secondary dialog-cancel">${cancelText}</button>
+          <button type="button" class="btn btn-${btnClass} dialog-confirm">${confirmText}</button>
+        </div>
+      `;
+    }
+
     function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
       return new Promise((resolve) => {
-        // Create dialog overlay
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
         overlay.setAttribute('aria-labelledby', 'dialog-title');
         overlay.setAttribute('aria-describedby', 'dialog-message');
-
-        // Create dialog
         const dialog = document.createElement('div');
         dialog.className = `dialog dialog-${type}`;
-
-        const iconMap = {
-          warning: '⚠️',
-          danger: '🚨'
-        };
-        const icon = iconMap[type] || iconMap.warning;
-
-        dialog.innerHTML = `
-          <div class="dialog-header">
-            <span class="dialog-icon">${icon}</span>
-            <h3 class="dialog-title">${title}</h3>
-          </div>
-          <div class="dialog-body">
-            <p class="dialog-message">${message}</p>
-          </div>
-          <div class="dialog-footer">
-            <button type="button" class="btn btn-secondary dialog-cancel">${cancelText}</button>
-            <button type="button" class="btn btn-${type === 'danger' ? 'danger' : 'primary'} dialog-confirm">${confirmText}</button>
-          </div>
-        `;
-
+        dialog.innerHTML = confirmDialogHtml(title, message, confirmText, cancelText, type);
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
-
-        // Animate in
         setTimeout(() => overlay.classList.add('show'), 10);
-
-        // Focus confirm button
         const confirmBtn = dialog.querySelector('.dialog-confirm');
         setTimeout(() => confirmBtn.focus(), 100);
-
-        // Handle confirm
-        confirmBtn.addEventListener('click', () => {
-          closeDialog(overlay);
-          resolve(true);
-        });
-
-        // Handle cancel
+        confirmBtn.addEventListener('click', () => { closeDialog(overlay); resolve(true); });
         const cancelBtn = dialog.querySelector('.dialog-cancel');
-        cancelBtn.addEventListener('click', () => {
-          closeDialog(overlay);
-          resolve(false);
-        });
-
-        // Handle escape key
+        cancelBtn.addEventListener('click', () => { closeDialog(overlay); resolve(false); });
         handleDialogEscape(overlay, resolve);
-
-        // Handle overlay click
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) { closeDialog(overlay); resolve(false); }
+        });
+      });
+    }
         overlay.addEventListener('click', (e) => {
           if (e.target === overlay) {
             closeDialog(overlay);
