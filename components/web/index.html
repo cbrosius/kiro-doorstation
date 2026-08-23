@@ -6628,58 +6628,39 @@
     /**
      * Toggle IP mode between DHCP and Static
      */
+    function populateStaticFieldsIfEmpty() {
+      const fields = [
+        ['static-ip', 'ip'],
+        ['subnet-mask', 'subnet'],
+        ['gateway', 'gateway'],
+        ['dns1', 'dns1'],
+        ['dns2', 'dns2'],
+      ];
+      fields.forEach(([fieldId, dhcpKey]) => {
+        const input = document.getElementById(fieldId);
+        const currentVal = currentDHCPValues[dhcpKey];
+        if (input && !input.value && currentVal) input.value = currentVal;
+      });
+    }
+
     function toggleIPMode() {
       const dhcpRadio = document.getElementById('ip-mode-dhcp');
       const staticFields = document.getElementById('static-ip-fields');
-      const staticInputs = staticFields.querySelectorAll('input');
+      const staticInputs = staticFields ? staticFields.querySelectorAll('input') : [];
 
       if (dhcpRadio.checked) {
-        // Hide static IP fields
         staticFields.style.display = 'none';
-        // Remove required attribute from static IP inputs
-        staticInputs.forEach(input => {
-          input.removeAttribute('required');
-        });
+        staticInputs.forEach(input => input.removeAttribute('required'));
       } else {
-        // Show static IP fields
         staticFields.style.display = 'block';
-
-        // Prefill static fields with current DHCP values if fields are empty
-        const ipInput = document.getElementById('static-ip');
-        const subnetInput = document.getElementById('subnet-mask');
-        const gatewayInput = document.getElementById('gateway');
-        const dns1Input = document.getElementById('dns1');
-        const dns2Input = document.getElementById('dns2');
-
-        if (ipInput && !ipInput.value && currentDHCPValues.ip) {
-          ipInput.value = currentDHCPValues.ip;
-        }
-        if (subnetInput && !subnetInput.value && currentDHCPValues.subnet) {
-          subnetInput.value = currentDHCPValues.subnet;
-        }
-        if (gatewayInput && !gatewayInput.value && currentDHCPValues.gateway) {
-          gatewayInput.value = currentDHCPValues.gateway;
-        }
-        if (dns1Input && !dns1Input.value && currentDHCPValues.dns1) {
-          dns1Input.value = currentDHCPValues.dns1;
-        }
-        if (dns2Input && !dns2Input.value && currentDHCPValues.dns2) {
-          dns2Input.value = currentDHCPValues.dns2;
-        }
-
-        // Add required attribute to static IP inputs (except dns2)
+        populateStaticFieldsIfEmpty();
         staticInputs.forEach(input => {
-          if (input.id !== 'dns2') {
-            input.setAttribute('required', 'required');
-          }
+          if (input.id !== 'dns2') input.setAttribute('required', 'required');
         });
       }
 
-      // Trigger form change tracking
       const form = document.getElementById('ip-config-form');
-      if (form) {
-        trackFormChanges(form);
-      }
+      if (form) trackFormChanges(form);
     }
 
     /**
@@ -6699,58 +6680,40 @@
         };
 
         // Update current IP display - all fields
-        const currentIPElement = document.getElementById('current-ip');
-        const currentModeElement = document.getElementById('current-mode');
-        const currentSubnetElement = document.getElementById('current-subnet');
-        const currentGatewayElement = document.getElementById('current-gateway');
-        const currentDns1Element = document.getElementById('current-dns1');
-        const currentDns2Element = document.getElementById('current-dns2');
+        const currentFields = [
+          ['current-mode', response.mode ? response.mode.toUpperCase() : ''],
+          ['current-ip', response.ip || 'Not connected'],
+          ['current-subnet', response.subnet || 'N/A'],
+          ['current-gateway', response.gateway || 'N/A'],
+          ['current-dns1', response.dns1 || 'N/A'],
+          ['current-dns2', response.dns2 || 'N/A'],
+        ];
+        currentFields.forEach(([id, val]) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+        });
 
-        if (currentModeElement && response.mode) {
-          currentModeElement.textContent = response.mode.toUpperCase();
-        }
-        if (currentIPElement) {
-          currentIPElement.textContent = response.ip || 'Not connected';
-        }
-        if (currentSubnetElement) {
-          currentSubnetElement.textContent = response.subnet || 'N/A';
-        }
-        if (currentGatewayElement) {
-          currentGatewayElement.textContent = response.gateway || 'N/A';
-        }
-        if (currentDns1Element) {
-          currentDns1Element.textContent = response.dns1 || 'N/A';
-        }
-        if (currentDns2Element) {
-          currentDns2Element.textContent = response.dns2 || 'N/A';
-        }
-
-        // Set mode radio buttons
-        const dhcpRadio = document.getElementById('ip-mode-dhcp');
-        const staticRadio = document.getElementById('ip-mode-static');
+        const staticFields = [
+          ['static-ip', 'ip'],
+          ['subnet-mask', 'subnet'],
+          ['gateway', 'gateway'],
+          ['dns1', 'dns1'],
+          ['dns2', 'dns2'],
+        ];
+        staticFields.forEach(([fieldId, key]) => {
+          const input = document.getElementById(fieldId);
+          if (input && response[key]) input.value = response[key];
+        });
 
         if (response.mode === 'static') {
+          const staticRadio = document.getElementById('ip-mode-static');
           if (staticRadio) staticRadio.checked = true;
-          toggleIPMode();
-
-          // Populate static IP fields
-          const ipInput = document.getElementById('static-ip');
-          const subnetInput = document.getElementById('subnet-mask');
-          const gatewayInput = document.getElementById('gateway');
-          const dns1Input = document.getElementById('dns1');
-          const dns2Input = document.getElementById('dns2');
-
-          if (ipInput && response.ip) ipInput.value = response.ip;
-          if (subnetInput && response.subnet) subnetInput.value = response.subnet;
-          if (gatewayInput && response.gateway) gatewayInput.value = response.gateway;
-          if (dns1Input && response.dns1) dns1Input.value = response.dns1;
-          if (dns2Input && response.dns2) dns2Input.value = response.dns2;
         } else {
+          const dhcpRadio = document.getElementById('ip-mode-dhcp');
           if (dhcpRadio) dhcpRadio.checked = true;
-          toggleIPMode();
         }
+        toggleIPMode();
 
-        // Save initial state for change tracking
         const form = document.getElementById('ip-config-form');
         if (form) {
           saveFormInitialState(form);
