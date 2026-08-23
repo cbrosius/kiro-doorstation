@@ -7977,41 +7977,50 @@
       }
 
       try {
-        const endpoint = dtmfLogLastTimestamp > 0
-          ? '/api/dtmf/logs?since=' + dtmfLogLastTimestamp
-          : '/api/dtmf/logs';
-
-        const response = await apiRequest(endpoint, { silentError: silent });
-        if (!silent) console.log('DTMF logs response:', response);
-
-        if (response && response.logs && Array.isArray(response.logs)) {
-          // Append new entries
-          if (response.logs.length > 0) {
-            dtmfLogEntries = dtmfLogEntries.concat(response.logs);
-
-            // Update last timestamp
-            const timestamps = response.logs.map(e => e.timestamp || 0);
-            dtmfLogLastTimestamp = Math.max(...timestamps, dtmfLogLastTimestamp);
-
-            // Keep only last 1000 entries to prevent memory issues
-            if (dtmfLogEntries.length > 1000) {
-              dtmfLogEntries = dtmfLogEntries.slice(-1000);
-            }
-          }
+        const response = await fetchDTMFLogs(silent);
+        if (response) {
+          appendDTMFLogEntries(response.logs);
         }
-
-        // Display logs
         filterAndDisplayDTMFLogs();
-
       } catch (error) {
-        if (!silent) {
-          console.error('Error refreshing DTMF logs:', error);
-          const container = document.getElementById('dtmf-log-container');
-          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
-        }
+        handleDTMFLogError(error, silent);
       } finally {
         isRefreshingDTMFLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
+      }
+    }
+
+    async function fetchDTMFLogs(silent) {
+      const endpoint = dtmfLogLastTimestamp > 0
+        ? '/api/dtmf/logs?since=' + dtmfLogLastTimestamp
+        : '/api/dtmf/logs';
+
+      const response = await apiRequest(endpoint, { silentError: silent });
+      if (!silent) console.log('DTMF logs response:', response);
+
+      return response && response.logs && Array.isArray(response.logs) ? response : null;
+    }
+
+    function appendDTMFLogEntries(logs) {
+      if (!logs || logs.length === 0) return;
+
+      dtmfLogEntries = dtmfLogEntries.concat(logs);
+
+      const timestamps = logs.map(e => e.timestamp || 0);
+      dtmfLogLastTimestamp = Math.max(...timestamps, dtmfLogLastTimestamp);
+
+      if (dtmfLogEntries.length > 1000) {
+        dtmfLogEntries = dtmfLogEntries.slice(-1000);
+      }
+    }
+
+    function handleDTMFLogError(error, silent) {
+      if (silent) return;
+
+      console.error('Error refreshing DTMF logs:', error);
+      const container = document.getElementById('dtmf-log-container');
+      if (container) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
       }
     }
 
