@@ -582,6 +582,9 @@
       box-shadow: var(--shadow-lg);
       overflow-y: auto;
       z-index: 1100;
+      list-style: none;
+      padding: 0;
+      margin: 0;
     }
 
     .search-result {
@@ -1425,7 +1428,7 @@
       <input type="search" class="global-search" id="global-search" placeholder="Search settings... (Ctrl+K)"
         autocomplete="off" aria-label="Search settings">
       <!-- Search Results Dropdown -->
-      <div class="search-results" id="search-results" hidden role="listbox" aria-label="Search results"></div>
+      <ul class="search-results" id="search-results" hidden role="listbox" aria-label="Search results"></ul>
     </div>
     <ul class="nav-menu">
       <li class="nav-item active" data-section="dashboard">
@@ -5374,7 +5377,7 @@
       const resultsContainer = document.getElementById('search-results');
 
       if (results.length === 0) {
-        resultsContainer.innerHTML = '<div class="search-no-results">No results found</div>';
+        resultsContainer.innerHTML = '<li class="search-no-results">No results found</li>';
         resultsContainer.hidden = false;
         return;
       }
@@ -5382,7 +5385,7 @@
       resultsContainer.innerHTML = '';
 
       results.forEach((result, index) => {
-        const resultElement = document.createElement('div');
+        const resultElement = document.createElement('li');
         resultElement.className = 'search-result';
         resultElement.setAttribute('role', 'option');
         resultElement.dataset.index = index;
