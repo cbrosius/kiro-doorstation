@@ -7863,13 +7863,13 @@
         const response = await apiRequest(endpoint, { silentError: silent });
         if (!silent) console.log('SIP logs response:', response);
 
-        if (response && response.entries && Array.isArray(response.entries)) {
+        if (response && response.logs && Array.isArray(response.logs)) {
           // Append new entries
-          if (response.entries.length > 0) {
-            sipLogEntries = sipLogEntries.concat(response.entries);
+          if (response.logs.length > 0) {
+            sipLogEntries = sipLogEntries.concat(response.logs);
 
             // Update last timestamp
-            const timestamps = response.entries.map(e => e.timestamp || 0);
+            const timestamps = response.logs.map(e => e.timestamp || 0);
             sipLogLastTimestamp = Math.max(...timestamps, sipLogLastTimestamp);
 
             // Keep only last 1000 entries to prevent memory issues
