@@ -8208,22 +8208,13 @@
      */
     function filterAndDisplayDTMFLogs() {
       const searchQuery = document.getElementById('dtmf-log-search')?.value.toLowerCase() || '';
-
-      // Filter by type
       let filtered = dtmfLogEntries;
       if (dtmfLogCurrentFilter !== 'all') {
         filtered = filtered.filter(entry => {
           const success = entry.success === true || entry.success === 'true';
-          if (dtmfLogCurrentFilter === 'success') {
-            return success;
-          } else if (dtmfLogCurrentFilter === 'failed') {
-            return !success;
-          }
-          return true;
+          return dtmfLogCurrentFilter === 'success' ? success : !success;
         });
       }
-
-      // Filter by search query
       if (searchQuery) {
         filtered = filtered.filter(entry => {
           const command = (entry.command || '').toLowerCase();
@@ -8251,51 +8242,37 @@
      * @param {Array} logs - Array of log entries to display
      * @param {string} searchQuery - Search query for highlighting
      */
+    function formatDTMFRow(entry, searchQuery) {
+      const timestamp = formatTimestamp(entry.timestamp);
+      const command = entry.command || '';
+      const type = entry.type || '';
+      const success = entry.success === true || entry.success === 'true';
+      const icon = success ? '✅' : '❌';
+      const color = success ? 'var(--color-success)' : 'var(--color-danger)';
+      let displayCommand = command;
+      if (searchQuery) {
+        const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
+        displayCommand = command.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
+      }
+      return `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">
+        <span style="color: var(--color-text-secondary);">[${timestamp}]</span>
+        <span style="font-size: var(--font-size-lg);">${icon}</span>
+        <span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span>
+        <span style="color: var(--color-text);">Command: ${displayCommand}</span>
+      </div>`;
+    }
+
     function displayDTMFLogs(logs, searchQuery = '') {
       const container = document.getElementById('dtmf-log-container');
       if (!container) return;
-
       if (logs.length === 0) {
         container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No log entries</div>';
         return;
       }
-
-      // Remember scroll position
       const wasAtBottom = isScrolledToBottom(container);
-
-      // Build HTML
-      let html = '';
-      logs.forEach(entry => {
-        const timestamp = formatTimestamp(entry.timestamp);
-        const command = entry.command || '';
-        const type = entry.type || '';
-        const success = entry.success === true || entry.success === 'true';
-
-        // Color coding and icon
-        const icon = success ? '✅' : '❌';
-        const color = success ? 'var(--color-success)' : 'var(--color-danger)';
-
-        // Highlight search terms
-        let displayCommand = command;
-        if (searchQuery) {
-          const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
-          displayCommand = command.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
-        }
-
-        html += `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">`;
-        html += `<span style="color: var(--color-text-secondary);">[${timestamp}]</span> `;
-        html += `<span style="font-size: var(--font-size-lg);">${icon}</span> `;
-        html += `<span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span> `;
-        html += `<span style="color: var(--color-text);">Command: ${displayCommand}</span>`;
-        html += `</div>`;
-      });
-
-      container.innerHTML = html;
-
-      // Scroll to bottom if was at bottom before
-      if (wasAtBottom) {
-        container.scrollTop = container.scrollHeight;
-      }
+      container.innerHTML = logs.map(e => formatDTMFRow(e, searchQuery)).join('');
+      if (wasAtBottom) container.scrollTop = container.scrollHeight;
+    }
 
       // Update jump button visibility
       updateDTMFLogJumpButton();
