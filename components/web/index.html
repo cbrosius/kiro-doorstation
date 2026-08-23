@@ -10371,7 +10371,7 @@
             }
           }
           setTimeout(() => { window.location.href = '/login.html'; }, 2000);
-        } catch (err) {
+        } catch {
           if (attempts >= maxAttempts) {
             clearInterval(pollInterval);
             console.log('Device did not come back online within expected time');
