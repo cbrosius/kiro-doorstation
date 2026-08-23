@@ -10419,44 +10419,38 @@
      */
     function startReconnectPolling() {
       let attempts = 0;
-      const maxAttempts = 60; // 60 attempts = 30 seconds (polling every 500ms)
-
+      const maxAttempts = 60;
       console.log('Restart reconnect polling started');
-
       const pollInterval = setInterval(async () => {
         attempts++;
-
         try {
-          // Try to fetch system state
-          // const response = await fetch('/api/system/state', {
-          //   method: 'GET',
-          //   cache: 'no-cache',
-          //   signal: AbortSignal.timeout(2000) // 2 second timeout
-          // });
-          fetch('/')
-            .then(response => {
-              // If this block is reached, the device is online.
-              console.log('Device is back online. Redirecting to login page...');
-              window.location.href = '/login.html';
-            })
-            .catch(err => {
-              // This block will only be reached on a network error.
-              throw new Error('Device not ready yet');
-            });
-          if (response) {
-            // Device is back online and session is valid!
+          await fetch('/');
+          clearInterval(pollInterval);
+          console.log('Device back online after restart, redirecting to login page');
+          sessionStorage.removeItem('cert_restart_pending');
+          const overlay = document.querySelector('div[style*="z-index: 9999"]');
+          if (overlay) {
+            const countdownBox = overlay.querySelector('div');
+            if (countdownBox) {
+              countdownBox.innerHTML = '<div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div><h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Successfully Restarted!</h2><p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">Device has restarted successfully. Redirecting to login page...</p>';
+            }
+          }
+          setTimeout(() => { window.location.href = '/login.html'; }, 2000);
+        } catch (err) {
+          if (attempts >= maxAttempts) {
             clearInterval(pollInterval);
-            console.log('Device back online after restart, redirecting to login page');
-
-            // Clear certificate restart flag
-            sessionStorage.removeItem('cert_restart_pending');
-
-            // Show success message briefly
+            console.log('Device did not come back online within expected time');
             const overlay = document.querySelector('div[style*="z-index: 9999"]');
             if (overlay) {
               const countdownBox = overlay.querySelector('div');
               if (countdownBox) {
-                countdownBox.innerHTML = `
+                countdownBox.innerHTML = '<div style="font-size: 64px; margin-bottom: var(--spacing-md); animation: spin 2s linear infinite;">⏳</div><h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Reconnect Timeout</h2><p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">Device is taking longer than expected. Please try refreshing the page manually.</p><p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);"><a href="/login.html" style="color: var(--color-primary); text-decoration: underline;">Go to Login Page</a></p>';
+              }
+            }
+          }
+        }
+      }, 500);
+    }
                   <div style="font-size: 64px; margin-bottom: var(--spacing-md);">✅</div>
                   <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
                     Device Online!
@@ -10468,71 +10462,7 @@
               }
             }
 
-            // Redirect to login page (certificate restarts invalidate all sessions)
-            setTimeout(() => {
-              window.location.href = '/login.html';
-            }, 1000);
-          } else if (response.status === 401) {
-            // Device is back online but session is invalid (expected after restart)
-            clearInterval(pollInterval);
-            console.log('Device back online after restart (401 received), redirecting to login page');
-
-            // Clear certificate restart flag
-            sessionStorage.removeItem('cert_restart_pending');
-
-            // Show success message briefly
-            const overlay = document.querySelector('div[style*="z-index: 9999"]');
-            if (overlay) {
-              const countdownBox = overlay.querySelector('div');
-              if (countdownBox) {
-                countdownBox.innerHTML = `
-                  <div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔐</div>
-                  <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-success); margin-bottom: var(--spacing-md);">
-                    Device Online!
-                  </h2>
-                  <p style="font-size: var(--font-size-base); color: var(--color-text-secondary);">
-                    Session expired. Redirecting to login page...
-                  </p>
-                `;
-              }
-            }
-
-            // Redirect to login page (certificate restarts invalidate all sessions)
-            setTimeout(() => {
-              window.location.href = '/login.html';
-            }, 1000);
-          }
-        } catch (error) {
-          // Device not ready yet, continue polling
-          console.log(`Certificate reconnect attempt ${attempts}/${maxAttempts}...`, error.message);
-        }
-
-        // Give up after max attempts
-        if (attempts >= maxAttempts) {
-          clearInterval(pollInterval);
-          console.log('Certificate reconnect timeout - redirecting to login page');
-
-          const overlay = document.querySelector('div[style*="z-index: 9999"]');
-          if (overlay) {
-            const countdownBox = overlay.querySelector('div');
-            if (countdownBox) {
-              countdownBox.innerHTML = `
-                <div style="font-size: 64px; margin-bottom: var(--spacing-md);">⚠️</div>
-                <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-warning); margin-bottom: var(--spacing-md);">
-                  Connection Timeout
-                </h2>
-                <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
-                  Device is taking longer than expected to restart.
-                </p>
-                <button type="button" class="btn btn-primary" data-action="go-to-login">
-                  <span>🔐</span>
-                  <span>Go to Login Page</span>
-                </button>
-              `;
-            }
-          }
-        }
-      }, 500); // Poll every 500ms
+      }, 500);
     }
 
     /**
