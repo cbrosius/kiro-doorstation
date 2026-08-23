@@ -317,10 +317,10 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
       uint32_t elapsed =
           xTaskGetTickCount() * portTICK_PERIOD_MS - call_start_timestamp;
       if (elapsed >= call_timeout_ms) {
-        led_handler_set_state(LED_STATE_ERROR);
         sip_add_log_entry("error", "Call timeout - no response from server");
         call_start_timestamp = 0;
         current_state = SIP_STATE_REGISTERED;
+        led_handler_set_state(LED_STATE_SIP_REGISTERED);
         audio_stop_recording();
         audio_stop_playback();
         rtp_stop_session();
@@ -990,6 +990,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
             call_start_timestamp = 0;             // Clear timeout
             current_state = SIP_STATE_REGISTERED; // Return to registered state
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
           } else {
             led_handler_set_state(LED_STATE_ERROR);
             current_state = SIP_STATE_AUTH_FAILED;
@@ -1009,6 +1010,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
             call_start_timestamp = 0;             // Clear timeout
             current_state = SIP_STATE_REGISTERED; // Return to registered state
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
           } else {
             led_handler_set_state(LED_STATE_ERROR);
             current_state = SIP_STATE_ERROR;
@@ -1027,6 +1029,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
             call_start_timestamp = 0;             // Clear timeout
             current_state = SIP_STATE_REGISTERED; // Return to registered state
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
           } else {
             current_state = SIP_STATE_TIMEOUT;
           }
@@ -1043,6 +1046,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
           call_start_timestamp = 0; // Clear timeout
           current_state = SIP_STATE_REGISTERED;
+          led_handler_set_state(LED_STATE_SIP_REGISTERED);
         } else if (strstr(buffer, "SIP/2.0 487 Request Terminated")) {
           sip_add_log_entry("info", "SIP request terminated");
 
@@ -1056,6 +1060,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
           call_start_timestamp = 0; // Clear timeout
           current_state = SIP_STATE_REGISTERED;
+          led_handler_set_state(LED_STATE_SIP_REGISTERED);
         } else if (strstr(buffer, "SIP/2.0 500 Internal Server Error")) {
           // Handle 500 Internal Server Error from SIP server
           sip_add_log_entry("error", "SIP 500 Internal Server Error received");
@@ -1086,6 +1091,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             has_invite_auth_challenge = false;
             invite_auth_attempt_count = 0;
             current_state = SIP_STATE_REGISTERED;
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
             audio_stop_recording();
             audio_stop_playback();
             rtp_stop_session();
@@ -1120,6 +1126,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
                      current_state == SIP_STATE_RINGING) {
             call_start_timestamp = 0;
             current_state = SIP_STATE_REGISTERED;
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
             audio_stop_recording();
             audio_stop_playback();
             rtp_stop_session();
@@ -1190,6 +1197,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
               call_start_timestamp = 0; // Clear timeout
               current_state = SIP_STATE_REGISTERED;
+              led_handler_set_state(LED_STATE_SIP_REGISTERED);
 
               sip_add_log_entry(
                   "info",
@@ -1241,6 +1249,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
             current_state = SIP_STATE_REGISTERED;
             call_start_timestamp = 0;
+            led_handler_set_state(LED_STATE_SIP_REGISTERED);
 
             audio_stop_recording();
             audio_stop_playback();
@@ -2832,6 +2841,7 @@ void sip_client_hangup(void) {
     // Return to registered state
     current_state = SIP_STATE_REGISTERED;
     call_start_timestamp = 0; // Clear timeout
+    led_handler_set_state(LED_STATE_SIP_REGISTERED);
 
     // Reset DTMF decoder state when call ends
     dtmf_reset_call_state();
