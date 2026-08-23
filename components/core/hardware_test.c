@@ -29,24 +29,29 @@ typedef struct {
 
 // Timeout task to automatically deactivate door relay
 static void hardware_test_door_timeout_task(void *arg) {
+  (void)arg;
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
 
-    if (xSemaphoreTake(test_ctx.test_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (test_ctx.door_test_active) {
-        uint32_t elapsed =
-            (xTaskGetTickCount() - test_ctx.door_test_start_time) *
-            portTICK_PERIOD_MS;
-
-        if (elapsed >= test_ctx.door_test_duration) {
-          // Timeout reached - deactivate relay
-          gpio_set_level(DOOR_RELAY_PIN, 0);
-          test_ctx.door_test_active = false;
-          ESP_LOGI(TAG, "Door opener test completed (timeout)");
-        }
-      }
-      xSemaphoreGive(test_ctx.test_mutex);
+    if (xSemaphoreTake(test_ctx.test_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+      continue;
     }
+    if (!test_ctx.door_test_active) {
+      xSemaphoreGive(test_ctx.test_mutex);
+      continue;
+    }
+
+    uint32_t elapsed =
+        (xTaskGetTickCount() - test_ctx.door_test_start_time) *
+        portTICK_PERIOD_MS;
+
+    if (elapsed >= test_ctx.door_test_duration) {
+      // Timeout reached - deactivate relay
+      gpio_set_level(DOOR_RELAY_PIN, 0);
+      test_ctx.door_test_active = false;
+      ESP_LOGI(TAG, "Door opener test completed (timeout)");
+    }
+    xSemaphoreGive(test_ctx.test_mutex);
   }
 }
 
