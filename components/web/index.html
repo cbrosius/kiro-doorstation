@@ -9115,53 +9115,60 @@
           }
 
           const status = await response.json();
-
-          // Update progress bar with backend progress
-          if (status.progress_percent !== undefined) {
-            document.getElementById('ota-progress-bar').style.width = status.progress_percent + '%';
-            document.getElementById('ota-progress-percent').textContent = status.progress_percent + '%';
-          }
-
-          // Update status message from backend
-          if (status.status_message) {
-            document.getElementById('ota-upload-status').textContent = status.status_message;
-          }
-
-          // Display detailed status messages based on state
-          if (status.state) {
-            const stateMessages = {
-              begin: 'Preparing to write firmware...',
-              writing: status.status_message || 'Writing firmware to flash...',
-              validating: 'Verifying firmware integrity...',
-              complete: 'Complete: Firmware ready to apply',
-              error: 'Failed: ' + (status.error_message || 'Unknown error'),
-              aborted: 'Update aborted',
-            };
-            const displayMessage = stateMessages[status.state] || '';
-            if (displayMessage && !status.status_message) {
-              document.getElementById('ota-upload-status').textContent = displayMessage;
-            }
-            if (status.state === 'writing') {
-              if (status.speed_bytes_per_second > 0) {
-                document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
-              }
-              if (status.time_remaining_seconds > 0) {
-                document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
-              }
-            }
-            if (status.state === 'complete' || status.state === 'error' || status.state === 'aborted') {
-              stopOTAStatusPolling();
-              if (status.state === 'error') showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
-            }
-          }
-
-          if (status.error_message) console.error('OTA Error:', status.error_message);
-
+          updateOTAProgressUI(status);
+          updateOTAStateUI(status);
         } catch (error) {
           console.error('Error polling OTA status:', error);
           // Don't stop polling on network errors, just log them
         }
       }, 500); // Poll every 500ms for responsive updates
+    }
+
+    function updateOTAProgressUI(status) {
+      if (status.progress_percent !== undefined) {
+        document.getElementById('ota-progress-bar').style.width = status.progress_percent + '%';
+        document.getElementById('ota-progress-percent').textContent = status.progress_percent + '%';
+      }
+      if (status.status_message) {
+        document.getElementById('ota-upload-status').textContent = status.status_message;
+      }
+      if (status.error_message) {
+        console.error('OTA Error:', status.error_message);
+      }
+    }
+
+    function updateOTAStateUI(status) {
+      if (!status.state) return;
+
+      const stateMessages = {
+        begin: 'Preparing to write firmware...',
+        writing: status.status_message || 'Writing firmware to flash...',
+        validating: 'Verifying firmware integrity...',
+        complete: 'Complete: Firmware ready to apply',
+        error: 'Failed: ' + (status.error_message || 'Unknown error'),
+        aborted: 'Update aborted',
+      };
+
+      const displayMessage = stateMessages[status.state] || '';
+      if (displayMessage && !status.status_message) {
+        document.getElementById('ota-upload-status').textContent = displayMessage;
+      }
+
+      if (status.state === 'writing') {
+        if (status.speed_bytes_per_second > 0) {
+          document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
+        }
+        if (status.time_remaining_seconds > 0) {
+          document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
+        }
+      }
+
+      if (status.state === 'complete' || status.state === 'error' || status.state === 'aborted') {
+        stopOTAStatusPolling();
+        if (status.state === 'error') {
+          showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
+        }
+      }
     }
 
     function stopOTAStatusPolling() {
