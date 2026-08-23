@@ -8034,39 +8034,24 @@
     function displayHWLogs(logs) {
       const container = document.getElementById('hw-log-container');
       if (!container) return;
-
       if (logs.length === 0) {
         container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No hardware events</div>';
         return;
       }
-
-      // Sort logs descending (newest first)
+      const logStyles = {
+        door_open: { icon: '🚪', color: 'var(--color-warning)' },
+        light_toggle: { icon: '💡', color: 'var(--color-info)' },
+        bell_press: { icon: '🔔', color: 'var(--color-success)' },
+        system_boot: { icon: '🚀', color: 'var(--color-primary)' },
+        reset_press: { icon: '⚠️', color: 'var(--color-danger)' },
+      };
       const displayLogs = [...logs].sort((a, b) => b.timestamp - a.timestamp);
-
       container.innerHTML = displayLogs.map(entry => {
-        const date = new Date(entry.timestamp);
-        const timeStr = date.toLocaleTimeString();
-
-        let icon = 'ℹ️';
-        let color = 'var(--color-text)';
-
-        switch (entry.type) {
-          case 'door_open': icon = '🚪'; color = 'var(--color-warning)'; break;
-          case 'light_toggle': icon = '💡'; color = 'var(--color-info)'; break;
-          case 'bell_press': icon = '🔔'; color = 'var(--color-success)'; break;
-          case 'system_boot': icon = '🚀'; color = 'var(--color-primary)'; break;
-          case 'reset_press': icon = '⚠️'; color = 'var(--color-danger)'; break;
-        }
-
-        return `
-          <div style="display: flex; gap: var(--spacing-md); padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border-subtle); align-items: flex-start;">
-            <div style="min-width: 80px; font-size: 0.8rem; color: var(--color-text-secondary);">${timeStr}</div>
-            <div style="font-size: 1.1rem; min-width: 24px;">${icon}</div>
-            <div style="flex: 1;">
-              <div style="font-weight: 600; color: ${color}; text-transform: capitalize;">${entry.type.replace('_', ' ')}</div>
-              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">${entry.metadata || ''} ${entry.value ? `(${entry.value})` : ''}</div>
-            </div>
-          </div>
+        const style = logStyles[entry.type] || { icon: 'ℹ️', color: 'var(--color-text)' };
+        const timeStr = new Date(entry.timestamp).toLocaleTimeString();
+        return `<div style="display: flex; gap: var(--spacing-md); padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border-subtle); align-items: flex-start;"><div style="min-width: 80px; font-size: 0.8rem; color: var(--color-text-secondary);">${timeStr}</div><div style="font-size: 1.1rem; min-width: 24px;">${style.icon}</div><div style="flex: 1;"><div style="font-weight: 600; color: ${style.color}; text-transform: capitalize;">${entry.type.replace('_', ' ')}</div><div style="font-size: 0.85rem; color: var(--color-text-secondary);">${entry.metadata || ''} ${entry.value ? `(${entry.value})` : ''}</div></div></div>`;
+      }).join('');
+    }
         `;
       }).join('');
     }
