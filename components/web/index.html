@@ -6987,10 +6987,6 @@
         if (response) {
           // Populate form fields (Task 10.4)
           const pinEnableCheckbox = document.getElementById('security-pin-enable');
-          const pinInput = document.getElementById('security-pin-input');
-          const timeoutInput = document.getElementById('security-timeout-input');
-          const maxAttemptsInput = document.getElementById('security-max-attempts-input');
-
           if (pinEnableCheckbox) pinEnableCheckbox.checked = response.pin_enabled || false;
           const secFields = [
             ['security-pin-input', 'pin_code'],
