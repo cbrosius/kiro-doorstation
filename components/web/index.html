@@ -1652,7 +1652,7 @@
       <!-- NTP Sync Status (Task 6.3) -->
       <div class="config-form">
         <h3 style="margin-bottom: var(--spacing-md);">Time Synchronization</h3>
-        <div id="ntp-status" style="display: flex; align-items: center; gap: var(--spacing-lg); flex-wrap: wrap;">
+        <div id="ntp-sync" style="display: flex; align-items: center; gap: var(--spacing-lg); flex-wrap: wrap;">
           <div style="flex: 1; min-width: 200px;">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
@@ -1927,7 +1927,7 @@
         </p>
 
         <!-- WiFi Scan -->
-        <div style="margin-bottom: var(--spacing-lg);">
+        <div style="margin-bottom: var(--spacing-lg);" id="wifi-scan">
           <button type="button" class="btn btn-info" data-action="wifi-scan" id="wifi-scan-btn">
             <span class="btn-text">
               <span>🔍</span>
@@ -1980,16 +1980,16 @@
       </div>
 
       <!-- Task 8.2: IP Configuration -->
-      <div class="config-form">
+      <div class="config-form" id="ip-config">
         <h3 style="margin-bottom: var(--spacing-md);">IP Configuration</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
           Configure network IP settings. Use DHCP for automatic configuration or Static IP for manual setup.
         </p>
 
         <form class="config-form" id="ip-config-form" data-api="/api/network/ip">
-          <!-- DHCP/Static Toggle -->
-          <div class="form-group">
-            <span style="display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">IP Address Mode</span>
+           <!-- DHCP/Static Toggle -->
+           <div class="form-group" id="dhcp-mode">
+             <span style="display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--color-text); margin-bottom: var(--spacing-sm);">IP Address Mode</span>
             <div style="display: flex; gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
               <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
                 <input type="radio" name="mode" value="dhcp" id="ip-mode-dhcp" aria-label="Use DHCP for automatic IP configuration" checked data-action="toggle-ip-mode">
@@ -2218,9 +2218,19 @@
     <section class="content-section" id="section-hardware" hidden>
       <h2 tabindex="-1">Hardware Settings</h2>
 
+      <div id="hardware-info">
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+          <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Chip Model</div>
+          <div id="chip-model" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">ESP32</div>
+        </div>
+        <div style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
+          <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Flash Size</div>
+          <div id="flash-size" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--color-text);">4MB</div>
+        </div>
+      </div>
 
       <!-- Task 9.2: GPIO Pin Assignments -->
-      <div class="config-form">
+      <div class="config-form" id="gpio-pins">
         <h3 style="margin-bottom: var(--spacing-md);">GPIO Pin Assignments</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
           GPIO pin configuration and current states for all hardware interfaces.
@@ -2293,7 +2303,7 @@
       </div>
 
       <!-- Task 9.3: DTMF Control Codes -->
-      <div class="config-form">
+      <div class="config-form" id="dtmf-codes">
         <h3 style="margin-bottom: var(--spacing-md);">DTMF Control Codes</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
           DTMF (Dual-Tone Multi-Frequency) codes that can be sent during a call to control the door station.
@@ -2361,7 +2371,7 @@
       </div>
 
       <!-- Task 9.4: Button and Relay Assignments -->
-      <div class="config-form">
+      <div class="config-form" id="doorbell-button">
         <h3 style="margin-bottom: var(--spacing-md);">Button and Relay Assignments</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
           Physical button assignments and relay output configurations with current states.
@@ -2419,15 +2429,7 @@
         <div
           style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-md);">
           <div
-            style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
-            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
-              <span style="font-size: var(--font-size-2xl);">🚪</span>
-              <div style="flex: 1;">
-                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Door Opener (GPIO 5)</div>
-                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Electric Strike/Maglock
-                </div>
-              </div>
-            </div>
+            style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);" id="door-relay">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
               Current State:</div>
@@ -2445,15 +2447,7 @@
           </div>
 
           <div
-            style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);">
-            <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm);">
-              <span style="font-size: var(--font-size-2xl);">💡</span>
-              <div style="flex: 1;">
-                <div style="font-weight: var(--font-weight-bold); color: var(--color-text);">Light Control (GPIO 6)
-                </div>
-                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Entrance Light</div>
-              </div>
-            </div>
+            style="padding: var(--spacing-md); background-color: var(--color-bg); border-radius: var(--border-radius); border: 1px solid var(--color-border);" id="light-relay">
             <div
               style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
               Current State:</div>
@@ -2473,7 +2467,7 @@
       </div>
 
       <!-- Task 9.5: BOOT Button Testing Information -->
-      <div class="config-form">
+      <div class="config-form" id="boot-button">
         <h3 style="margin-bottom: var(--spacing-md);">BOOT Button Testing</h3>
         <p style="margin-bottom: var(--spacing-lg); color: var(--color-text-secondary);">
           The BOOT button (GPIO 0) can be used for testing and diagnostics during development.
@@ -5245,30 +5239,30 @@
       { label: 'SIP Connection', section: 'sip', field: 'sip-connection', keywords: ['sip', 'connect', 'disconnect', 'connection', 'register'] },
       { label: 'Test SIP Configuration', section: 'sip', field: 'sip-test', keywords: ['sip', 'test', 'verify', 'check', 'configuration'] },
 
-      // Network Settings Section
-      { label: 'WiFi SSID', section: 'network', field: 'wifi-ssid', keywords: ['wifi', 'ssid', 'network', 'wireless', 'name'] },
-      { label: 'WiFi Password', section: 'network', field: 'wifi-password', keywords: ['wifi', 'password', 'pass', 'wireless', 'key'] },
-      { label: 'WiFi Scan', section: 'network', field: 'wifi-scan', keywords: ['wifi', 'scan', 'search', 'networks', 'available'] },
-      { label: 'IP Configuration', section: 'network', field: 'ip-config', keywords: ['ip', 'address', 'network', 'configuration', 'dhcp', 'static'] },
-      { label: 'DHCP Mode', section: 'network', field: 'dhcp-mode', keywords: ['dhcp', 'automatic', 'dynamic', 'ip', 'mode'] },
-      { label: 'Static IP Address', section: 'network', field: 'static-ip', keywords: ['static', 'ip', 'address', 'manual', 'fixed'] },
-      { label: 'Subnet Mask', section: 'network', field: 'subnet-mask', keywords: ['subnet', 'mask', 'netmask', 'network'] },
-      { label: 'Gateway', section: 'network', field: 'gateway', keywords: ['gateway', 'router', 'default', 'route'] },
-      { label: 'DNS Server', section: 'network', field: 'dns-server', keywords: ['dns', 'server', 'nameserver', 'resolver'] },
-      { label: 'NTP Server', section: 'network', field: 'ntp-server', keywords: ['ntp', 'time', 'server', 'sync', 'clock'] },
-      { label: 'Timezone', section: 'network', field: 'timezone', keywords: ['timezone', 'time', 'zone', 'region', 'location'] },
-      { label: 'NTP Sync', section: 'network', field: 'ntp-sync', keywords: ['ntp', 'sync', 'synchronize', 'time', 'update'] },
+       // Network Settings Section
+       { label: 'WiFi SSID', section: 'network', field: 'wifi-ssid', keywords: ['wifi', 'ssid', 'network', 'wireless', 'name'] },
+       { label: 'WiFi Password', section: 'network', field: 'wifi-password', keywords: ['wifi', 'password', 'pass', 'wireless', 'key'] },
+       { label: 'WiFi Scan', section: 'network', field: 'wifi-scan', keywords: ['wifi', 'scan', 'search', 'networks', 'available'] },
+       { label: 'IP Configuration', section: 'network', field: 'ip-config', keywords: ['ip', 'address', 'network', 'configuration', 'dhcp', 'static'] },
+       { label: 'DHCP Mode', section: 'network', field: 'dhcp-mode', keywords: ['dhcp', 'automatic', 'dynamic', 'ip', 'mode'] },
+       { label: 'Static IP Address', section: 'network', field: 'static-ip', keywords: ['static', 'ip', 'address', 'manual', 'fixed'] },
+       { label: 'Subnet Mask', section: 'network', field: 'subnet-mask', keywords: ['subnet', 'mask', 'netmask', 'network'] },
+       { label: 'Gateway', section: 'network', field: 'gateway', keywords: ['gateway', 'router', 'default', 'route'] },
+       { label: 'DNS Server', section: 'network', field: 'dns1', keywords: ['dns', 'server', 'namesolver', 'resolver'] },
+       { label: 'NTP Server', section: 'network', field: 'ntp-server', keywords: ['ntp', 'time', 'server', 'sync', 'clock'] },
+       { label: 'Timezone', section: 'network', field: 'timezone', keywords: ['timezone', 'time', 'zone', 'region', 'location'] },
+       { label: 'NTP Sync', section: 'network', field: 'ntp-sync', keywords: ['ntp', 'sync', 'synchronize', 'time', 'update'] },
 
-      // Hardware Settings Section
-      { label: 'Hardware Information', section: 'hardware', field: 'hardware-info', keywords: ['hardware', 'info', 'chip', 'esp32', 'model', 'specs'] },
-      { label: 'Chip Model', section: 'hardware', field: 'chip-model', keywords: ['chip', 'model', 'esp32', 'processor', 'cpu'] },
-      { label: 'Flash Size', section: 'hardware', field: 'flash-size', keywords: ['flash', 'storage', 'memory', 'size'] },
-      { label: 'GPIO Pins', section: 'hardware', field: 'gpio-pins', keywords: ['gpio', 'pins', 'io', 'input', 'output'] },
-      { label: 'Doorbell Button', section: 'hardware', field: 'doorbell-button', keywords: ['doorbell', 'button', 'bell', 'input', 'gpio'] },
-      { label: 'Door Relay', section: 'hardware', field: 'door-relay', keywords: ['door', 'relay', 'opener', 'output', 'gpio'] },
-      { label: 'Light Relay', section: 'hardware', field: 'light-relay', keywords: ['light', 'relay', 'output', 'gpio', 'lamp'] },
-      { label: 'DTMF Codes', section: 'hardware', field: 'dtmf-codes', keywords: ['dtmf', 'codes', 'tones', 'commands', 'control'] },
-      { label: 'BOOT Button', section: 'hardware', field: 'boot-button', keywords: ['boot', 'button', 'gpio0', 'programming'] },
+       // Hardware Settings Section
+       { label: 'Hardware Information', section: 'hardware', field: 'hardware-info', keywords: ['hardware', 'info', 'chip', 'esp32', 'model', 'specs'] },
+       { label: 'Chip Model', section: 'hardware', field: 'chip-model', keywords: ['chip', 'model', 'esp32', 'processor', 'cpu'] },
+       { label: 'Flash Size', section: 'hardware', field: 'flash-size', keywords: ['flash', 'storage', 'memory', 'size'] },
+       { label: 'GPIO Pins', section: 'hardware', field: 'gpio-pins', keywords: ['gpio', 'pins', 'io', 'input', 'output'] },
+       { label: 'Doorbell Button', section: 'hardware', field: 'doorbell-button', keywords: ['doorbell', 'button', 'bell', 'input', 'gpio'] },
+       { label: 'Door Relay', section: 'hardware', field: 'door-relay', keywords: ['door', 'relay', 'opener', 'output', 'gpio'] },
+       { label: 'Light Relay', section: 'hardware', field: 'light-relay', keywords: ['light', 'relay', 'output', 'gpio', 'lamp'] },
+       { label: 'DTMF Codes', section: 'hardware', field: 'dtmf-codes', keywords: ['dtmf', 'codes', 'tones', 'commands', 'control'] },
+       { label: 'BOOT Button', section: 'hardware', field: 'boot-button', keywords: ['boot', 'button', 'gpio0', 'programming'] },
 
       // Security Settings Section
       { label: 'DTMF PIN', section: 'security', field: 'dtmf-pin', keywords: ['dtmf', 'pin', 'code', 'security', 'password', 'access'] },
