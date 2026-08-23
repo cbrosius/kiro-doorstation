@@ -9986,12 +9986,14 @@
       }
 
       const uploadBtn = document.getElementById('ota-upload-btn');
+      const uploadStatus = document.getElementById('ota-upload-status');
+      const resetBtn = () => { if (uploadBtn) { setLoadingState(uploadBtn, false); uploadBtn.disabled = false; } };
+      const setStatus = (msg, color) => { if (uploadStatus) uploadStatus.innerHTML = '<strong style="color: ' + color + ';">' + msg + '</strong>'; };
       const progressContainer = document.getElementById('ota-progress-container');
       const progressBar = document.getElementById('ota-progress-bar');
       const progressPercent = document.getElementById('ota-progress-percent');
       const uploadSpeed = document.getElementById('ota-upload-speed');
       const timeRemaining = document.getElementById('ota-time-remaining');
-      const uploadStatus = document.getElementById('ota-upload-status');
 
       // Disable upload button
       if (uploadBtn) {
@@ -10066,98 +10068,51 @@
           }
         });
 
-        // Load handler (upload complete, waiting for response)
+        try {
+        const fileData = await file.arrayBuffer();
         xhr.addEventListener('load', () => {
           if (xhr.status === 200) {
             try {
               const response = JSON.parse(xhr.responseText);
-
-              if (response.success) {
-                // Success! Show countdown and restart message
-                if (uploadStatus) {
-                  uploadStatus.innerHTML = '<strong style="color: var(--color-success);">✅ Firmware update successful!</strong>';
-                }
-
+              if (response?.success) {
+                setStatus('✅ Firmware update successful!', 'var(--color-success)');
                 showToast('Firmware uploaded successfully! Device will restart in 5 seconds...', 'success');
-
-                // Show restart countdown
                 showRestartCountdown();
-
               } else {
-                // Upload failed
-                const errorMsg = response.error || 'Upload failed';
-                if (uploadStatus) {
-                  uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ ${errorMsg}</strong>`;
-                }
-                showToast('Firmware upload failed: ' + errorMsg, 'error');
-
-                // Re-enable upload button
-                if (uploadBtn) {
-                  setLoadingState(uploadBtn, false);
-                  uploadBtn.disabled = false;
-                }
+                setStatus('❌ ' + (response?.error || 'Upload failed'), 'var(--color-danger)');
+                showToast('Firmware upload failed: ' + (response?.error || 'Upload failed'), 'error');
+                resetBtn();
               }
             } catch (error) {
               console.error('Error parsing response:', error);
-              if (uploadStatus) {
-                uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Invalid server response</strong>';
-              }
+              setStatus('❌ Invalid server response', 'var(--color-danger)');
               showToast('Error: Invalid server response', 'error');
-
-              // Re-enable upload button
-              if (uploadBtn) {
-                setLoadingState(uploadBtn, false);
-                uploadBtn.disabled = false;
-              }
+              resetBtn();
             }
           } else {
-            // HTTP error
-            if (uploadStatus) {
-              uploadStatus.innerHTML = `<strong style="color: var(--color-danger);">❌ Upload failed (HTTP ${xhr.status})</strong>`;
-            }
-            showToast(`Upload failed: HTTP ${xhr.status}`, 'error');
-
-            // Re-enable upload button
-            if (uploadBtn) {
-              setLoadingState(uploadBtn, false);
-              uploadBtn.disabled = false;
-            }
+            setStatus('❌ Upload failed (HTTP ' + xhr.status + ')', 'var(--color-danger)');
+            showToast('Upload failed: HTTP ' + xhr.status, 'error');
+            resetBtn();
           }
         });
 
-        // Error handler
-        xhr.addEventListener('error', () => {
-          if (uploadStatus) {
-            uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Network error during upload</strong>';
-          }
-          showToast('Network error during upload. Please try again.', 'error');
-
-          // Re-enable upload button
-          if (uploadBtn) {
-            setLoadingState(uploadBtn, false);
-            uploadBtn.disabled = false;
-          }
-        });
-
-        // Abort handler
-        xhr.addEventListener('abort', () => {
-          if (uploadStatus) {
-            uploadStatus.innerHTML = '<strong style="color: var(--color-warning);">⚠️ Upload cancelled</strong>';
-          }
-          showToast('Upload cancelled', 'warning');
-
-          // Re-enable upload button
-          if (uploadBtn) {
-            setLoadingState(uploadBtn, false);
-            uploadBtn.disabled = false;
-          }
-        });
+        xhr.addEventListener('error', () => { setStatus('❌ Network error during upload', 'var(--color-danger)'); showToast('Network error during upload. Please try again.', 'error'); resetBtn(); });
+        xhr.addEventListener('abort', () => { setStatus('⚠️ Upload cancelled', 'var(--color-warning)'); showToast('Upload cancelled', 'warning'); resetBtn(); });
 
         // Send request with raw binary data
         xhr.open('POST', '/api/ota/upload');
-        // Set content type to application/octet-stream for binary data
         xhr.setRequestHeader('Content-Type', 'application/octet-stream');
         xhr.send(fileData);
+        fileInput.value = '';
+      } catch (error) {
+        console.error('Error during upload:', error);
+        const uploadStatus = document.getElementById('ota-upload-status');
+        if (uploadStatus) uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Network error during upload</strong>';
+        showToast('Error: Network connection failed during upload', 'error');
+        const uploadBtn = document.getElementById('ota-upload-btn');
+        if (uploadBtn) { setLoadingState(uploadBtn, false); uploadBtn.disabled = false; }
+      }
+    }
 
       } catch (error) {
         console.error('Error during upload:', error);
