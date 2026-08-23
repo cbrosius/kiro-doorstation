@@ -2657,7 +2657,7 @@
           <label for="security-pin-input">
             PIN Code <span class="required">*</span>
           </label>
-          <input type="text" id="security-pin-input" name="pin_code" required pattern="^\d{1,8}$" minlength="1"
+          <input type="text" id="security-pin-input" name="pin_code" pattern="^\d{1,8}$" minlength="1"
             maxlength="8" placeholder="Enter 1-8 digit PIN" data-error="PIN must be 1-8 digits only"
             aria-describedby="pin-help">
           <span class="error-message" hidden></span>
@@ -4762,10 +4762,19 @@
         const input = form.elements[key];
         if (input && input.type === 'checkbox') {
           data[key] = input.checked;
+        } else if (input && input.type === 'number') {
+          data[key] = Number(value);
         } else {
           data[key] = value;
         }
       }
+
+      // Include unchecked checkboxes (FormData omits them)
+      form.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        if (input.name && !(input.name in data)) {
+          data[input.name] = false;
+        }
+      });
 
       return data;
     }
@@ -7146,6 +7155,8 @@
           }
 
           console.log('Security configuration loaded successfully');
+          // Sync PIN required state with loaded config
+          updatePinRequiredState();
         }
       } catch (error) {
         console.error('Error loading security configuration:', error);
@@ -7164,6 +7175,26 @@
           saveFormInitialState(form);
           trackFormChanges(form);
         }
+      }
+    }
+
+    /**
+     * Toggle PIN input required state based on checkbox
+     */
+    function updatePinRequiredState() {
+      const pinEnableCheckbox = document.getElementById('security-pin-enable');
+      const pinInput = document.getElementById('security-pin-input');
+      if (!pinInput) return;
+
+      if (pinEnableCheckbox && pinEnableCheckbox.checked) {
+        pinInput.setAttribute('required', '');
+      } else {
+        pinInput.removeAttribute('required');
+        // Clear any validation errors when PIN protection is disabled
+        const errorSpan = pinInput.parentElement.querySelector('.error-message');
+        if (errorSpan) errorSpan.hidden = true;
+        pinInput.classList.remove('invalid');
+        pinInput.setAttribute('aria-invalid', 'false');
       }
     }
 
@@ -7752,6 +7783,11 @@
     function initSecuritySettings() {
       // Load existing configuration
       loadSecurityConfiguration();
+      // Setup PIN enable/disable toggle for required state
+      const pinEnableCheckbox = document.getElementById('security-pin-enable');
+      if (pinEnableCheckbox) {
+        pinEnableCheckbox.addEventListener('change', updatePinRequiredState);
+      }
       // Load certificate information (Task 18)
       loadCertificateInfo();
       // Note: initLoginLogs() is called when navigating to security section
