@@ -10534,10 +10534,11 @@
       'filter-dtmf-logs': () => filterDTMFLogs(button.dataset.filter),
     };
 
+    const action = button.dataset.action;
     const handler = actionHandlers[action];
     if (handler) handler();
-      });
-    }
+  });
+}
 
     /**
      * Setup delegated event handler for data-action inputs
