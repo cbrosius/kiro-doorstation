@@ -9998,7 +9998,7 @@
 
           const span = document.createElement('span');
           span.innerHTML = highlightedHTML;
-          parent.replaceChild(span, node);
+          node.replaceWith(span);
           matchCount++;
         }
       });
