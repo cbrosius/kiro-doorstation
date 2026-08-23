@@ -7906,30 +7906,66 @@
       isRefreshingHWLogs = true;
       const btn = document.getElementById('hw-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
-      if (!silent) { console.log('Fetching hardware logs...'); hwLogLastTimestamp = 0; hwLogEntries = []; }
+      if (!silent) {
+        console.log('Fetching hardware logs...');
+        hwLogLastTimestamp = 0;
+        hwLogEntries = [];
+      }
+
       try {
-        const endpoint = hwLogLastTimestamp > 0 ? `/api/hardware/events?since=${hwLogLastTimestamp}` : '/api/hardware/events';
-        const response = await apiRequest(endpoint, { silentError: silent });
-        if (!silent) console.log('Hardware logs response:', response);
-        if (response?.events?.length > 0) {
-          hwLogEntries = hwLogEntries.concat(response.events);
-          const timestamps = response.events.map(e => e.timestamp || 0);
-          hwLogLastTimestamp = Math.max(...timestamps, hwLogLastTimestamp);
-          if (hwLogEntries.length > 500) hwLogEntries = hwLogEntries.slice(-500);
-          displayHWLogs(hwLogEntries);
-        } else if (hwLogEntries.length === 0) {
-          const container = document.getElementById('hw-log-container');
-          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No hardware events recorded</div>';
+        const response = await fetchHWLogs(silent);
+        if (response) {
+          appendHWLogEntries(response.events);
         }
+        displayHWLogsOrEmpty(hwLogEntries);
       } catch (error) {
-        if (!silent) {
-          console.error('Error refreshing HW logs:', error);
-          const container = document.getElementById('hw-log-container');
-          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading hardware logs</div>';
-        }
+        handleHWLogError(error, silent);
       } finally {
         isRefreshingHWLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
+      }
+    }
+
+    async function fetchHWLogs(silent) {
+      const endpoint = hwLogLastTimestamp > 0
+        ? `/api/hardware/events?since=${hwLogLastTimestamp}`
+        : '/api/hardware/events';
+
+      const response = await apiRequest(endpoint, { silentError: silent });
+      if (!silent) console.log('Hardware logs response:', response);
+
+      return response?.events?.length > 0 ? response : null;
+    }
+
+    function appendHWLogEntries(events) {
+      hwLogEntries = hwLogEntries.concat(events);
+
+      const timestamps = events.map(e => e.timestamp || 0);
+      hwLogLastTimestamp = Math.max(...timestamps, hwLogLastTimestamp);
+
+      if (hwLogEntries.length > 500) {
+        hwLogEntries = hwLogEntries.slice(-500);
+      }
+    }
+
+    function displayHWLogsOrEmpty(logs) {
+      if (logs.length > 0) {
+        displayHWLogs(logs);
+      } else {
+        const container = document.getElementById('hw-log-container');
+        if (container) {
+          container.innerHTML = '<div style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-lg);">No hardware events recorded</div>';
+        }
+      }
+    }
+
+    function handleHWLogError(error, silent) {
+      if (silent) return;
+
+      console.error('Error refreshing HW logs:', error);
+      const container = document.getElementById('hw-log-container');
+      if (container) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading hardware logs</div>';
       }
     }
 
