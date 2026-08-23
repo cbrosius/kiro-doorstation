@@ -6886,50 +6886,33 @@
      */
     async function updateHardwareStatus() {
       try {
-        // Use cached hardware state (polls once per second max)
         const response = await apiCache.get('hardwareState');
-
-        if (response) {
-          // Update GPIO states (Task 9.2)
-          updateGPIOState(21, response.buttons?.bell1_active || false);
-          updateGPIOState(4, response.buttons?.bell2_active || false);
-          updateGPIOState(5, response.door?.status === 'open');
-          updateGPIOState(6, response.light?.status === 'on');
-          updateGPIOState(0, response.boot_button?.pressed || false);
-
-          // Update button last press times (Task 9.4)
-          if (response.buttons?.bell1_last_press) {
-            document.getElementById('bell1-last-press').textContent =
-              formatRelativeTime(response.buttons.bell1_last_press);
-          }
-          if (response.buttons?.bell2_last_press) {
-            document.getElementById('bell2-last-press').textContent =
-              formatRelativeTime(response.buttons.bell2_last_press);
-          }
-
-          // Update relay states (Task 9.4)
-          updateRelayState('door', response.door?.status === 'open');
-          updateRelayState('light', response.light?.status === 'on');
-
-          // Update relay last activation times
-          if (response.door?.last_activation) {
-            document.getElementById('door-last-activation').textContent =
-              formatRelativeTime(response.door.last_activation);
-          }
-          if (response.light?.last_toggle) {
-            document.getElementById('light-last-toggle').textContent =
-              formatRelativeTime(response.light.last_toggle);
-          }
-
-          // Update BOOT button state (Task 9.5)
-          const bootPressed = response.boot_button?.pressed || false;
-          const bootIndicator = document.getElementById('boot-button-indicator');
-          const bootState = document.getElementById('boot-button-state');
-          if (bootIndicator && bootState) {
-            bootIndicator.style.backgroundColor = bootPressed ?
-              'var(--color-status-connected)' : 'var(--color-status-inactive)';
-            bootState.textContent = bootPressed ? 'Pressed' : 'Not Pressed';
-          }
+        if (!response) return;
+        const gpioMap = [
+          [21, response.buttons?.bell1_active || false],
+          [4, response.buttons?.bell2_active || false],
+          [5, response.door?.status === 'open'],
+          [6, response.light?.status === 'on'],
+          [0, response.boot_button?.pressed || false],
+        ];
+        gpioMap.forEach(([gpio, active]) => updateGPIOState(gpio, active));
+        const lastPressMap = [
+          ['bell1-last-press', response.buttons?.bell1_last_press],
+          ['bell2-last-press', response.buttons?.bell2_last_press],
+          ['door-last-activation', response.door?.last_activation],
+          ['light-last-toggle', response.light?.last_toggle],
+        ];
+        lastPressMap.forEach(([id, ts]) => {
+          if (ts) document.getElementById(id).textContent = formatRelativeTime(ts);
+        });
+        updateRelayState('door', response.door?.status === 'open');
+        updateRelayState('light', response.light?.status === 'on');
+        const bootPressed = response.boot_button?.pressed || false;
+        const bootIndicator = document.getElementById('boot-button-indicator');
+        const bootState = document.getElementById('boot-button-state');
+        if (bootIndicator && bootState) {
+          bootIndicator.style.backgroundColor = bootPressed ? 'var(--color-status-connected)' : 'var(--color-status-inactive)';
+          bootState.textContent = bootPressed ? 'Pressed' : 'Not Pressed';
         }
       } catch (error) {
         console.error('Failed to fetch hardware status:', error);
