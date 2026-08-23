@@ -14,11 +14,9 @@
         if (savedTheme === 'light') {
           document.documentElement.dataset.theme = 'light';
         }
-      } else {
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
         // No saved preference - check system preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-          document.documentElement.dataset.theme = 'light';
-        }
+        document.documentElement.dataset.theme = 'light';
       }
     })();
   </script>
