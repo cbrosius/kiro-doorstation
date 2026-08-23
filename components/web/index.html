@@ -7366,7 +7366,7 @@
       const chainFileInput = document.getElementById('chain-file-input');
       if (!certFileInput?.files?.length) { showToast('Please select a certificate file', 'error'); return; }
       if (!keyFileInput?.files?.length) { showToast('Please select a private key file', 'error'); return; }
-      const confirmed = await showConfirmDialog('Upload Custom Certificate', `<strong>⚠️ Certificate Upload Warning:</strong><br><br>• This will replace the current certificate<br>• The web server will restart automatically<br>• You will lose connection temporarily<br>• All active sessions will be invalidated<br>• You will need to log in again after restart<br><br><strong>File:</strong> ${certFileInput.files[0].name}<br><strong>Key:</strong> ${keyFileInput.files[0].name}<br><br>Do you want to proceed?`, 'Upload and Restart', 'Cancel', 'warning');
+      const confirmed = await showConfirmDialog('Upload Custom Certificate', '<strong>⚠️ Certificate Upload Warning:</strong><br><br>• This will replace the current certificate<br>• The web server will restart automatically<br>• You will lose connection temporarily<br>• All active sessions will be invalidated<br>• You will need to log in again after restart<br><br><strong>File:</strong> ' + certFileInput.files[0].name + '<br><strong>Key:</strong> ' + keyFileInput.files[0].name + '<br><br>Do you want to proceed?', 'Upload and Restart', 'Cancel', 'warning');
       if (!confirmed) return;
       if (button) setLoadingState(button, true);
       try {
@@ -7374,39 +7374,16 @@
         const certPem = await readFileAsText(certFileInput.files[0]);
         const keyPem = await readFileAsText(keyFileInput.files[0]);
         const chainPem = chainFileInput?.files?.length > 0 ? await readFileAsText(chainFileInput.files[0]) : null;
-
-        // Validate PEM format
-        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) {
-          showToast('Invalid certificate file format. Must be PEM format.', 'error');
-          if (button) setLoadingState(button, false);
-          return;
-        }
-
-        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) {
-          showToast('Invalid private key file format. Must be PEM format.', 'error');
-          if (button) setLoadingState(button, false);
-          return;
-        }
-
-        // Upload certificate
+        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) { showToast('Invalid certificate file format. Must be PEM format.', 'error'); if (button) setLoadingState(button, false); return; }
+        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) { showToast('Invalid private key file format. Must be PEM format.', 'error'); if (button) setLoadingState(button, false); return; }
         const response = await apiRequest('/api/cert/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cert_pem: certPem,
-            key_pem: keyPem,
-            chain_pem: chainPem
-          })
+          body: JSON.stringify({ cert_pem: certPem, key_pem: keyPem, chain_pem: chainPem })
         });
-
-        if (response && response.success) {
-          // Certificate uploaded successfully - device will restart
+        if (response?.success) {
           showToast('Certificate uploaded successfully! Device will restart in 3 seconds...', 'success');
-
-          // Clear file inputs
-          certFileInput.value = '';
-          keyFileInput.value = '';
-          if (chainFileInput) chainFileInput.value = '';
+          [certFileInput, keyFileInput, chainFileInput].forEach(input => { if (input) input.value = ''; });
 
           // Mark session as invalidated for certificate restart
           sessionStorage.setItem('cert_restart_pending', 'true');
