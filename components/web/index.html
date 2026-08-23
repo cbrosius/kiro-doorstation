@@ -11300,9 +11300,8 @@
         if (!target) return;
 
         const action = target.dataset.action;
-        switch (action) {
-          case 'update-duration-display': updateDurationDisplay(target.value); break;
-          default: break;
+        if (action === 'update-duration-display') {
+          updateDurationDisplay(target.value);
         }
       });
 
