@@ -8274,10 +8274,6 @@
       if (wasAtBottom) container.scrollTop = container.scrollHeight;
     }
 
-      // Update jump button visibility
-      updateDTMFLogJumpButton();
-    }
-
     /**
      * Filter DTMF logs by type
      * @param {string} type - Log type to filter ('all', 'success', 'failed')
@@ -9523,9 +9519,6 @@
         updateOTAStatus('⚠️', 'Update Status Unknown', 'Device is taking longer than expected to restart. Please check device manually.');
       }
     }
-        showToast('Device restart is taking longer than expected', 'warning');
-      }
-    }
 
     /**
      * Task 14.6: Start reload countdown
@@ -10606,12 +10599,6 @@
       } catch (error) {
         console.error('Rollback error:', error);
         showToast('Rollback failed', 'error');
-        if (button) setLoadingState(button, false);
-      }
-    }
-      } catch (error) {
-        console.error('Error during rollback:', error);
-        showToast('Error during rollback: ' + error.message, 'error');
         if (button) setLoadingState(button, false);
       }
     }
