@@ -222,6 +222,9 @@ static esp_err_t get_hardware_events_handler(httpd_req_t *req) {
     case HW_EVENT_RESET_PRESS:
       type_str = "reset_press";
       break;
+    default:
+      type_str = "unknown";
+      break;
     }
     cJSON_AddStringToObject(event, "type", type_str);
     cJSON_AddNumberToObject(event, "value", logs[i].value);
