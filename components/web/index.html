@@ -10415,78 +10415,21 @@
      * Show restart countdown and automatic page reload
      */
     function showRestartCountdown() {
-      // Create countdown overlay
       const overlay = document.createElement('div');
-      overlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(0, 0, 0, 0.8);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-      `;
-
+      overlay.style.cssText = `position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 9999;`;
       const countdownBox = document.createElement('div');
-      countdownBox.style.cssText = `
-        background-color: var(--color-surface);
-        border-radius: var(--border-radius-lg);
-        padding: var(--spacing-xl);
-        text-align: center;
-        max-width: 500px;
-        box-shadow: var(--shadow-xl);
-      `;
-
-      countdownBox.innerHTML = `
-        <div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔄</div>
-        <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
-          Firmware Update Successful!
-        </h2>
-        <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
-          Device is restarting with new firmware...
-        </p>
-        <div style="font-size: 48px; font-weight: var(--font-weight-bold); color: var(--color-primary); margin-bottom: var(--spacing-md);">
-          <span id="restart-countdown">5</span>s
-        </div>
-        <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
-          Page will reload automatically when device is ready
-        </p>
-      `;
-
+      countdownBox.style.cssText = `background-color: var(--color-surface); border-radius: var(--border-radius-lg); padding: var(--spacing-xl); text-align: center; max-width: 500px; box-shadow: var(--shadow-xl);`;
+      countdownBox.innerHTML = `<div style="font-size: 64px; margin-bottom: var(--spacing-md);">🔄</div><h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Firmware Update Successful!</h2><p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">Device is restarting with new firmware...</p><div style="font-size: 48px; font-weight: var(--font-weight-bold); color: var(--color-primary); margin-bottom: var(--spacing-md);"><span id="restart-countdown">5</span>s</div><p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Page will reload automatically when device is ready</p>`;
       overlay.appendChild(countdownBox);
       document.body.appendChild(overlay);
-
-      // Countdown from 5 to 0
       let countdown = 5;
       const countdownElement = document.getElementById('restart-countdown');
-
       const countdownInterval = setInterval(() => {
         countdown--;
-        if (countdownElement) {
-          countdownElement.textContent = countdown;
-        }
-
+        if (countdownElement) countdownElement.textContent = countdown;
         if (countdown <= 0) {
           clearInterval(countdownInterval);
-
-          // Change message to "waiting for device"
-          countdownBox.innerHTML = `
-            <div style="font-size: 64px; margin-bottom: var(--spacing-md); animation: spin 2s linear infinite;">⏳</div>
-            <h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">
-              Waiting for Device...
-            </h2>
-            <p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">
-              Device is restarting. This may take up to 30 seconds.
-            </p>
-            <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
-              Attempting to reconnect...
-            </p>
-          `;
-
-          // Start polling for device availability
+          countdownBox.innerHTML = `<div style="font-size: 64px; margin-bottom: var(--spacing-md); animation: spin 2s linear infinite;">⏳</div><h2 style="font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); color: var(--color-text); margin-bottom: var(--spacing-md);">Waiting for Device...</h2><p style="font-size: var(--font-size-base); color: var(--color-text-secondary); margin-bottom: var(--spacing-lg);">Device is restarting. This may take up to 30 seconds.</p><p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Attempting to reconnect...</p>`;
           startReconnectPolling();
         }
       }, 1000);
