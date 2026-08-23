@@ -7568,7 +7568,7 @@
       isRefreshingSIPLogs = true;
       const btn = document.getElementById('sip-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
-      if (!silent) { console.log('Fetching SIP logs...'); sipLogLastTimestamp = 0; sipLogEntries = []; }
+      if (!silent) { sipLogLastTimestamp = 0; sipLogEntries = []; }
       try {
         let moreAvailable = !silent;
         while (moreAvailable) {
@@ -7576,19 +7576,19 @@
           const response = await apiRequest(endpoint, { silentError: true });
           if (response?.logs?.length > 0) {
             sipLogEntries = sipLogEntries.concat(response.logs);
-            const timestamps = response.logs.map(e => e.timestamp || 0);
-            sipLogLastTimestamp = Math.max(...timestamps, sipLogLastTimestamp);
+            const maxTs = Math.max(...response.logs.map(e => e.timestamp || 0), sipLogLastTimestamp);
+            sipLogLastTimestamp = maxTs;
             if (sipLogEntries.length > 1000) sipLogEntries = sipLogEntries.slice(-1000);
-            moreAvailable = response.logs.length >= 20 && sipLogEntries.length < 1000 && !silent;
+            moreAvailable = !silent && response.logs.length >= 20 && sipLogEntries.length < 1000;
           } else {
             moreAvailable = false;
           }
         }
         filterAndDisplaySIPLogs();
       } catch (error) {
-        if (!silent) console.error('Error refreshing SIP logs:', error);
-        const container = document.getElementById('sip-log-container');
-        if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
+        if (!silent) console.error('SIP logs error:', error);
+        const c = document.getElementById('sip-log-container');
+        if (c) c.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
       } finally {
         isRefreshingSIPLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
