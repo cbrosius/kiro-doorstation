@@ -7140,98 +7140,46 @@
      */
     async function handlePasswordChange(event) {
       event.preventDefault();
-
       const form = event.target;
       const submitButton = form.querySelector('button[type="submit"]');
       const btnText = submitButton.querySelector('.btn-text');
       const btnSpinner = submitButton.querySelector('.btn-spinner');
-
-      // Get form values
       const currentPassword = document.getElementById('current-password').value;
       const newPassword = document.getElementById('new-password').value;
       const confirmPassword = document.getElementById('confirm-new-password').value;
-
-      // Clear previous error messages
-      form.querySelectorAll('.error-message').forEach(el => {
-        el.hidden = true;
-        el.textContent = '';
-      });
+      form.querySelectorAll('.error-message').forEach(el => { el.hidden = true; el.textContent = ''; });
       form.querySelectorAll('input').forEach(input => input.classList.remove('invalid'));
-
-      // Validate passwords match
-      if (newPassword !== confirmPassword) {
-        const confirmInput = document.getElementById('confirm-new-password');
-        const errorMsg = confirmInput.nextElementSibling;
-        if (errorMsg && errorMsg.classList.contains('error-message')) {
-          errorMsg.textContent = 'Passwords do not match';
-          errorMsg.hidden = false;
-        }
-        confirmInput.classList.add('invalid');
-        showToast('Passwords do not match', 'error');
-        return;
-      }
-
-      // Validate password strength
+      const showFieldError = (inputId, msg) => {
+        const input = document.getElementById(inputId);
+        input.classList.add('invalid');
+        const err = input.nextElementSibling;
+        if (err?.classList.contains('error-message')) { err.textContent = msg; err.hidden = false; }
+      };
+      if (newPassword !== confirmPassword) { showFieldError('confirm-new-password', 'Passwords do not match'); return; }
       const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-      if (!passwordRegex.test(newPassword)) {
-        const newPasswordInput = document.getElementById('new-password');
-        const errorMsg = newPasswordInput.nextElementSibling;
-        if (errorMsg && errorMsg.classList.contains('error-message')) {
-          errorMsg.textContent = 'Password must be at least 8 characters with uppercase, lowercase, and digit';
-          errorMsg.hidden = false;
-        }
-        newPasswordInput.classList.add('invalid');
-        showToast('Password does not meet security requirements', 'error');
-        return;
-      }
-
-      // Set loading state
+      if (!passwordRegex.test(newPassword)) { showFieldError('new-password', 'Password must be at least 8 characters with uppercase, lowercase, and digit'); return; }
       submitButton.disabled = true;
       btnText.textContent = 'Changing Password...';
       btnSpinner.hidden = false;
-
       try {
         const response = await apiRequest('/api/auth/change-password', {
           method: 'POST',
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword
-          })
+          body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
         });
-
-        if (response && response.success) {
+        if (response?.success) {
           showToast('Password changed successfully. You will be logged out.', 'success');
-
-          // Invalidate auth logs cache
           apiCache.invalidate('authLogs');
-
-          // Clear form
           form.reset();
-
-          // Redirect to login page after 2 seconds
-          setTimeout(() => {
-            window.location.href = '/login.html';
-          }, 2000);
+          setTimeout(() => { window.location.href = '/login.html'; }, 2000);
         } else {
-          const errorMessage = response?.error || 'Failed to change password';
-          showToast(errorMessage, 'error');
-
-          // Highlight current password field if it's wrong
-          if (errorMessage.toLowerCase().includes('current password')) {
-            const currentPasswordInput = document.getElementById('current-password');
-            currentPasswordInput.classList.add('invalid');
-            const errorMsg = currentPasswordInput.nextElementSibling;
-            if (errorMsg && errorMsg.classList.contains('error-message')) {
-              errorMsg.textContent = 'Current password is incorrect';
-              errorMsg.hidden = false;
-            }
-          }
+          const msg = response?.error || 'Failed to change password';
+          showToast(msg, 'error');
+          if (msg.toLowerCase().includes('current password')) showFieldError('current-password', 'Current password is incorrect');
         }
       } catch (error) {
         console.error('Password change error:', error);
         showToast('Failed to change password. Please try again.', 'error');
       } finally {
-        // Reset button state
         submitButton.disabled = false;
         btnText.textContent = 'Change Password';
         btnSpinner.hidden = true;
