@@ -10103,7 +10103,6 @@
         xhr.open('POST', '/api/ota/upload');
         xhr.setRequestHeader('Content-Type', 'application/octet-stream');
         xhr.send(fileData);
-        fileInput.value = '';
       } catch (error) {
         console.error('Error during upload:', error);
         const uploadStatus = document.getElementById('ota-upload-status');
@@ -10111,21 +10110,6 @@
         showToast('Error: Network connection failed during upload', 'error');
         const uploadBtn = document.getElementById('ota-upload-btn');
         if (uploadBtn) { setLoadingState(uploadBtn, false); uploadBtn.disabled = false; }
-      }
-    }
-
-      } catch (error) {
-        console.error('Error during upload:', error);
-        if (uploadStatus) {
-          uploadStatus.innerHTML = '<strong style="color: var(--color-danger);">❌ Network error during upload</strong>';
-        }
-        showToast('Error: Network connection failed during upload', 'error');
-
-        // Re-enable upload button
-        if (uploadBtn) {
-          setLoadingState(uploadBtn, false);
-          uploadBtn.disabled = false;
-        }
       }
     }
 
