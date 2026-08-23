@@ -7374,8 +7374,16 @@
         const certPem = await readFileAsText(certFileInput.files[0]);
         const keyPem = await readFileAsText(keyFileInput.files[0]);
         const chainPem = chainFileInput?.files?.length > 0 ? await readFileAsText(chainFileInput.files[0]) : null;
-        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) { showToast('Invalid certificate file format. Must be PEM format.', 'error'); if (button) setLoadingState(button, false); return; }
-        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) { showToast('Invalid private key file format. Must be PEM format.', 'error'); if (button) setLoadingState(button, false); return; }
+        if (!certPem.includes('-----BEGIN CERTIFICATE-----')) {
+          showToast('Invalid certificate file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
+        if (!keyPem.includes('-----BEGIN') || !keyPem.includes('PRIVATE KEY-----')) {
+          showToast('Invalid private key file format. Must be PEM format.', 'error');
+          if (button) setLoadingState(button, false);
+          return;
+        }
         const response = await apiRequest('/api/cert/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
