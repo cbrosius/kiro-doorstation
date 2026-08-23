@@ -4985,8 +4985,40 @@
       // Setup reset button
       const resetBtn = form.querySelector('button[type="reset"]');
       if (resetBtn) {
-        resetBtn.addEventListener('click', (e) => {
+        resetBtn.addEventListener('click', async (e) => {
           e.preventDefault();
+
+          // Special handling: security form reset to factory defaults
+          if (form.id === 'security-form') {
+            const confirmed = await showConfirmDialog(
+              'Reset to Factory Defaults',
+              'This will reset all DTMF security settings to factory defaults:\n\n• PIN Protection: Disabled\n• PIN Code: (empty)\n• Timeout: 10 seconds\n• Max Attempts: 3\n\nAre you sure?',
+              'Reset',
+              'Cancel',
+              'danger'
+            );
+            if (!confirmed) return;
+
+            const pinEnableCheckbox = document.getElementById('security-pin-enable');
+            const pinInput = document.getElementById('security-pin-input');
+            const timeoutInput = document.getElementById('security-timeout-input');
+            const maxAttemptsInput = document.getElementById('security-max-attempts-input');
+
+            if (pinEnableCheckbox) pinEnableCheckbox.checked = false;
+            if (pinInput) pinInput.value = '';
+            if (timeoutInput) timeoutInput.value = '10000';
+            if (maxAttemptsInput) maxAttemptsInput.value = '3';
+
+            // Sync PIN required state
+            updatePinRequiredState();
+
+            // Save factory defaults to device
+            saveSecuritySettings(form);
+
+            // Update change tracking
+            trackFormChanges(form);
+            return;
+          }
 
           // Reset form to initial state
           const formId = form.id;
@@ -7195,6 +7227,27 @@
         if (errorSpan) errorSpan.hidden = true;
         pinInput.classList.remove('invalid');
         pinInput.setAttribute('aria-invalid', 'false');
+      }
+    }
+
+    /**
+     * Save security settings to the device
+     * @param {HTMLFormElement} form - The security form
+     */
+    async function saveSecuritySettings(form) {
+      const endpoint = form.dataset.api;
+      const formData = getFormData(form);
+
+      try {
+        const response = await apiRequest(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(formData)
+        });
+        showToast(response.message || 'Factory defaults restored and saved!', 'success');
+        // Reload to update status display
+        loadSecurityConfiguration();
+      } catch (error) {
+        showToast('Failed to save settings: ' + error.message, 'error');
       }
     }
 
