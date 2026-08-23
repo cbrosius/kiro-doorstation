@@ -5939,6 +5939,7 @@
         const seconds = String(date.getSeconds()).padStart(2, '0');
         return `${hours}:${minutes}:${seconds}`;
       } catch (error) {
+        console.warn('formatTimestamp: invalid timestamp', timestamp, error);
         return 'N/A';
       }
     }
