@@ -6416,35 +6416,31 @@
     /**
      * Load SIP configuration from server and populate form
      */
+    function populateFormFields(response, fields) {
+      fields.forEach(([fieldId, value]) => {
+        const el = document.getElementById(fieldId);
+        if (el && value) el.value = value;
+      });
+    }
+
     async function loadSIPConfiguration() {
       try {
         const response = await apiRequest('/api/sip/config');
-
-        // Populate form fields
-        const serverInput = document.getElementById('sip-server');
-        const usernameInput = document.getElementById('sip-username');
-        const passwordInput = document.getElementById('sip-password');
-        const target1Input = document.getElementById('sip-target1');
-        const target2Input = document.getElementById('sip-target2');
-
-        if (serverInput && response.server) serverInput.value = response.server;
-        if (usernameInput && response.username) usernameInput.value = response.username;
-        if (passwordInput && response.password) passwordInput.value = response.password;
-        if (target1Input && response.target1) target1Input.value = response.target1;
-        if (target2Input && response.target2) target2Input.value = response.target2;
-
-        // Save initial state for change tracking
+        populateFormFields(response, [
+          ['sip-server', response.server],
+          ['sip-username', response.username],
+          ['sip-password', response.password],
+          ['sip-target1', response.target1],
+          ['sip-target2', response.target2],
+        ]);
         const form = document.getElementById('sip-form');
         if (form) {
           saveFormInitialState(form);
           trackFormChanges(form);
         }
-
         console.log('SIP configuration loaded successfully');
-
       } catch (error) {
         console.error('Error loading SIP configuration:', error);
-        // Don't show error toast on initial load - config might not exist yet
       }
     }
 
@@ -7323,30 +7319,22 @@
       const container = document.getElementById('login-log-container');
       const btn = document.getElementById('login-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
-
       try {
         if (!silent) {
           console.log('Fetching login logs...');
-          apiCache.authLogs.timestamp = 0; // invalidate cache
+          apiCache.authLogs.timestamp = 0;
         }
         const response = await apiCache.get('authLogs');
         if (!silent) console.log('Login logs response:', response);
-
         if (response) {
-          // Display logs even if empty array
           displayLoginLogs(response.logs || []);
         } else {
-          // No response - show error
           if (!silent) console.error('No response from login logs API');
-          if (container) {
-            container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
-          }
+          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
         }
       } catch (error) {
         if (!silent) console.error('Error loading login logs:', error);
-        if (container) {
-          container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
-        }
+        if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
       } finally {
         if (!silent && btn) btn.classList.remove('rotating');
       }
