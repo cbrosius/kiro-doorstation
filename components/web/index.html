@@ -10029,47 +10029,43 @@
 
         // Upload progress handler
         xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            const currentTime = Date.now();
-            const timeDiff = (currentTime - lastTime) / 1000; // seconds
-            const bytesDiff = e.loaded - lastLoaded;
+          if (!e.lengthComputable) return;
 
-            // Update progress bar
-            if (progressBar) progressBar.style.width = percent + '%';
-            if (progressPercent) progressPercent.textContent = percent + '%';
+          const percent = Math.round((e.loaded / e.total) * 100);
+          const currentTime = Date.now();
+          const timeDiff = (currentTime - lastTime) / 1000; // seconds
+          const bytesDiff = e.loaded - lastLoaded;
 
-            // Calculate speed (bytes per second)
-            if (timeDiff > 0.5) { // Update speed every 0.5 seconds
-              const speed = bytesDiff / timeDiff;
-              if (uploadSpeed) {
-                uploadSpeed.textContent = `Speed: ${formatBytes(speed)}/s`;
-              }
+          // Update progress bar
+          if (progressBar) progressBar.style.width = percent + '%';
+          if (progressPercent) progressPercent.textContent = percent + '%';
 
-              // Calculate time remaining
-              const remaining = e.total - e.loaded;
-              const timeLeft = remaining / speed;
-              if (timeRemaining && timeLeft > 0) {
-                timeRemaining.textContent = `Time remaining: ${formatTime(timeLeft)}`;
-              }
-
-              lastLoaded = e.loaded;
-              lastTime = currentTime;
+          // Calculate speed (bytes per second)
+          if (timeDiff > 0.5) { // Update speed every 0.5 seconds
+            const speed = bytesDiff / timeDiff;
+            if (uploadSpeed) {
+              uploadSpeed.textContent = `Speed: ${formatBytes(speed)}/s`;
             }
 
-            // Update status message
-            if (uploadStatus) {
-              if (percent < 100) {
-                uploadStatus.textContent = `Uploading firmware... ${percent}%`;
-              } else {
-                uploadStatus.textContent = 'Upload complete. Validating firmware...';
-              }
+            // Calculate time remaining
+            const remaining = e.total - e.loaded;
+            const timeLeft = remaining / speed;
+            if (timeRemaining && timeLeft > 0) {
+              timeRemaining.textContent = `Time remaining: ${formatTime(timeLeft)}`;
             }
+
+            lastLoaded = e.loaded;
+            lastTime = currentTime;
+          }
+
+          // Update status message
+          if (uploadStatus) {
+            uploadStatus.textContent = percent < 100
+              ? `Uploading firmware... ${percent}%`
+              : 'Upload complete. Validating firmware...';
           }
         });
 
-        try {
-        const fileData = await file.arrayBuffer();
         xhr.addEventListener('load', () => {
           if (xhr.status === 200) {
             try {
