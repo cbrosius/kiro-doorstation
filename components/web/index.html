@@ -4511,9 +4511,7 @@
 
         const defaultOptions = {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' }
         };
 
         if (extendSession) {
@@ -4523,53 +4521,25 @@
         const config = { ...defaultOptions, ...options };
 
         try {
-          // Create timeout promise
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('Request timeout')), timeout);
           });
 
-          // Race between fetch and timeout
           const response = await Promise.race([
             fetch(endpoint, config),
             timeoutPromise
           ]);
 
           if (!response.ok) {
-            // Handle 401 Unauthorized - session expired or invalid
-            if (response.status === 401) {
-              console.warn('Session expired or invalid (401 response), redirecting to login');
-              showToast('Session expired. Redirecting to login...', 'warning', 3000);
-              // Small delay to allow toast to show before redirect
-              setTimeout(() => {
-                window.location.href = '/login.html';
-              }, 2000);
-              throw new Error('Session expired');
-            }
-            
-            // Handle 403 Forbidden - may indicate setup required or blocked
-            if (response.status === 403) {
-              console.warn('Access forbidden (403 response), checking if setup required');
-              const errorData = await response.json().catch(() => ({}));
-              if (errorData.message && errorData.message.includes('setup')) {
-                console.log('Setup required, redirecting to setup page');
-                window.location.href = '/setup.html';
-              }
-              throw new Error(errorData.message || 'Access forbidden');
-            }
-            
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            await handleHttpError(response);
           }
 
-          // Handle empty responses gracefully
-          const contentLength = response.headers.get('content-length');
-          if (contentLength === '0') {
+          if (response.headers.get('content-length') === '0') {
             throw new Error('Empty response from server');
           }
 
           const data = await response.json();
 
-          // Handle empty JSON responses
           if (data === null || data === undefined) {
             throw new Error('Empty response from server');
           }
@@ -4578,24 +4548,47 @@
         } catch (error) {
           console.error(`API Error [${endpoint}]:`, error);
 
-          // Show user-friendly error messages (unless silentError is true)
           if (!silentError) {
-            if (error.message === 'Request timeout') {
-              showToast('Request timed out. Please try again.', 'error');
-            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-              showToast('Connection error. Please check your network.', 'error');
-            } else if (error.message.includes('Empty response')) {
-              // Don't show toast for empty responses - handle gracefully in calling code
-              console.warn('Empty response from server:', endpoint);
-            } else if (error.message !== 'Session expired') {
-              // Don't show toast for session expired - redirect handles it
-              showToast(error.message, 'error');
-            }
+            showApiErrorToast(error);
           }
 
           throw error;
         }
       });
+    }
+
+    async function handleHttpError(response) {
+      if (response.status === 401) {
+        console.warn('Session expired or invalid (401 response), redirecting to login');
+        showToast('Session expired. Redirecting to login...', 'warning', 3000);
+        setTimeout(() => { window.location.href = '/login.html'; }, 2000);
+        throw new Error('Session expired');
+      }
+
+      if (response.status === 403) {
+        console.warn('Access forbidden (403 response), checking if setup required');
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.message && errorData.message.includes('setup')) {
+          console.log('Setup required, redirecting to setup page');
+          window.location.href = '/setup.html';
+        }
+        throw new Error(errorData.message || 'Access forbidden');
+      }
+
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    function showApiErrorToast(error) {
+      if (error.message === 'Request timeout') {
+        showToast('Request timed out. Please try again.', 'error');
+      } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        showToast('Connection error. Please check your network.', 'error');
+      } else if (error.message.includes('Empty response')) {
+        console.warn('Empty response from server');
+      } else if (error.message !== 'Session expired') {
+        showToast(error.message, 'error');
+      }
     }
 
     /**
@@ -7521,111 +7514,82 @@
      */
     let cachedCertInfo = null;
 
+    function updateTextElement(id, value, fallback = 'N/A') {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value || fallback;
+    }
+
+    function updateCertDaysRemaining(daysRemaining) {
+      const el = document.getElementById('cert-days-remaining');
+      if (!el) return;
+      el.textContent = daysRemaining > 0 ? `${daysRemaining} days` : 'Expired';
+      if (daysRemaining < 0) {
+        el.style.color = 'var(--color-danger)';
+      } else if (daysRemaining < 30) {
+        el.style.color = 'var(--color-warning)';
+      } else {
+        el.style.color = 'var(--color-success)';
+      }
+    }
+
+    function updateSanEntries(sanEntries, sanCount) {
+      const section = document.getElementById('cert-san-section');
+      const container = document.getElementById('cert-san-entries');
+      if (!section || !container) return;
+      if (!sanEntries || sanCount === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      container.innerHTML = '';
+      sanEntries.forEach(entry => {
+        const div = document.createElement('div');
+        div.style.marginBottom = 'var(--spacing-xs, 4px)';
+        div.textContent = (/^\d{1,3}(\.\d{1,3}){3}$/.test(entry) || entry.includes(':')) ? 'IP: ' + entry : 'DNS: ' + entry;
+        container.appendChild(div);
+      });
+      section.style.display = 'block';
+    }
+
+    function updateCertWarning(daysRemaining) {
+      const warningEl = document.getElementById('cert-expiry-warning');
+      const warningText = document.getElementById('cert-expiry-warning-text');
+      if (!warningEl || !warningText) return;
+      if (daysRemaining < 0) {
+        warningText.textContent = 'Your certificate has expired! Please generate a new certificate or upload a valid one.';
+        warningEl.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+        warningEl.style.borderColor = 'var(--color-danger)';
+        warningEl.style.display = 'block';
+      } else if (daysRemaining < 7) {
+        warningText.textContent = `Your certificate will expire in ${daysRemaining} days. Please renew it soon.`;
+        warningEl.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+        warningEl.style.borderColor = 'var(--color-danger)';
+        warningEl.style.display = 'block';
+      } else if (daysRemaining < 30) {
+        warningText.textContent = `Your certificate will expire in ${daysRemaining} days. Consider renewing it.`;
+        warningEl.style.display = 'block';
+      } else {
+        warningEl.style.display = 'none';
+      }
+    }
+
     async function loadCertificateInfo() {
       try {
         const response = await apiRequest('/api/cert/info', { silentError: true });
-
-        if (response) {
-          cachedCertInfo = response;
-
-          // Update certificate type
-          const certTypeElement = document.getElementById('cert-type');
-          if (certTypeElement) {
-            certTypeElement.textContent = response.is_self_signed ? 'Self-Signed' : 'CA-Signed';
-          }
-
-          // Update common name
-          const certCNElement = document.getElementById('cert-cn');
-          if (certCNElement) {
-            certCNElement.textContent = response.common_name || 'N/A';
-          }
-
-          // Update issuer
-          const certIssuerElement = document.getElementById('cert-issuer');
-          if (certIssuerElement) {
-            certIssuerElement.textContent = response.issuer || 'N/A';
-          }
-
-          // Update valid from
-          const certValidFromElement = document.getElementById('cert-valid-from');
-          if (certValidFromElement) {
-            certValidFromElement.textContent = response.not_before || 'N/A';
-          }
-
-          // Update expires
-          const certExpiresElement = document.getElementById('cert-expires');
-          if (certExpiresElement) {
-            certExpiresElement.textContent = response.not_after || 'N/A';
-          }
-
-          // Update days remaining
-          const certDaysRemainingElement = document.getElementById('cert-days-remaining');
-          if (certDaysRemainingElement) {
-            const daysRemaining = response.days_until_expiry || 0;
-            certDaysRemainingElement.textContent = daysRemaining > 0 ? `${daysRemaining} days` : 'Expired';
-
-            // Color code based on days remaining
-            if (daysRemaining < 0) {
-              certDaysRemainingElement.style.color = 'var(--color-danger)';
-            } else if (daysRemaining < 30) {
-              certDaysRemainingElement.style.color = 'var(--color-warning)';
-            } else {
-              certDaysRemainingElement.style.color = 'var(--color-success)';
-            }
-          }
-
-          // Update SAN entries
-          const sanSection = document.getElementById('cert-san-section');
-          const sanEntries = document.getElementById('cert-san-entries');
-          if (sanSection && sanEntries) {
-            if (response.san_entries && response.san_count > 0) {
-              sanEntries.innerHTML = '';
-              response.san_entries.forEach(function(entry) {
-                const div = document.createElement('div');
-                div.style.marginBottom = 'var(--spacing-xs, 4px)';
-                if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(entry) || entry.includes(':')) {
-                  div.textContent = 'IP: ' + entry;
-                } else {
-                  div.textContent = 'DNS: ' + entry;
-                }
-                sanEntries.appendChild(div);
-              });
-              sanSection.style.display = 'block';
-            } else {
-              sanSection.style.display = 'none';
-            }
-          }
-
-          // Show expiration warning if needed
-          const warningElement = document.getElementById('cert-expiry-warning');
-          const warningTextElement = document.getElementById('cert-expiry-warning-text');
-          if (warningElement && warningTextElement) {
-            const daysRemaining = response.days_until_expiry || 0;
-            if (response.is_expiring_soon || daysRemaining < 30) {
-              warningElement.style.display = 'block';
-              if (daysRemaining < 0) {
-                warningTextElement.textContent = 'Your certificate has expired! Please generate a new certificate or upload a valid one.';
-                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
-                warningElement.style.borderColor = 'var(--color-danger)';
-              } else if (daysRemaining < 7) {
-                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Please renew it soon.`;
-                warningElement.style.backgroundColor = 'rgba(220, 53, 69, 0.1)';
-                warningElement.style.borderColor = 'var(--color-danger)';
-              } else {
-                warningTextElement.textContent = `Your certificate will expire in ${daysRemaining} days. Consider renewing it.`;
-              }
-            } else {
-              warningElement.style.display = 'none';
-            }
-          }
-
-          console.log('Certificate information loaded successfully');
-        }
+        if (!response) return;
+        cachedCertInfo = response;
+        const daysRemaining = response.days_until_expiry || 0;
+        updateTextElement('cert-type', response.is_self_signed ? 'Self-Signed' : 'CA-Signed');
+        updateTextElement('cert-cn', response.common_name);
+        updateTextElement('cert-issuer', response.issuer);
+        updateTextElement('cert-valid-from', response.not_before);
+        updateTextElement('cert-expires', response.not_after);
+        updateCertDaysRemaining(daysRemaining);
+        updateSanEntries(response.san_entries, response.san_count);
+        if (response.is_expiring_soon || daysRemaining < 30) updateCertWarning(daysRemaining);
+        console.log('Certificate information loaded successfully');
       } catch (error) {
         console.error('Error loading certificate information:', error);
-        // Set default values if cert info doesn't exist
-        const certTypeElement = document.getElementById('cert-type');
-        if (certTypeElement) certTypeElement.textContent = 'Not Available';
+        updateTextElement('cert-type', 'Not Available');
       }
     }
 
