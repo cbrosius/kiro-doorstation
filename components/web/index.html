@@ -8404,6 +8404,37 @@
     }
 
     /**
+     * Global status polling interval
+     */
+    let globalStatusInterval = null;
+
+    /**
+     * Start global status polling for the hardware status card
+     */
+    function startGlobalStatusPolling() {
+      // Clear any existing interval
+      if (globalStatusInterval) {
+        clearInterval(globalStatusInterval);
+      }
+
+      // Initial update
+      updateHardwareStatus();
+
+      // Poll every 1000ms (cache ensures max 1 request/second anyway)
+      globalStatusInterval = setInterval(updateHardwareStatus, 1000);
+    }
+
+    /**
+     * Stop global status polling
+     */
+    function stopGlobalStatusPolling() {
+      if (globalStatusInterval) {
+        clearInterval(globalStatusInterval);
+        globalStatusInterval = null;
+      }
+    }
+
+    /**
      * Test doorbell button press
      * @param {number} bell - Bell number (1 or 2)
      */
@@ -10631,6 +10662,9 @@
       // Setup delegated event handlers for data-action buttons
       setupDataActionHandlers();
       setupDataActionInputHandlers();
+
+      // Start global status polling for hardware status card
+      startGlobalStatusPolling();
 
       // Setup theme toggle
       const themeToggle = document.getElementById('theme-toggle');
