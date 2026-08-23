@@ -8159,15 +8159,15 @@
       const color = success ? 'var(--color-success)' : 'var(--color-danger)';
       let displayCommand = command;
       if (searchQuery) {
-        const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
+        const regex = new RegExp('(' + escapeRegex(searchQuery) + ')', 'gi');
         displayCommand = command.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
       }
-      return `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">
-        <span style="color: var(--color-text-secondary);">[${timestamp}]</span>
-        <span style="font-size: var(--font-size-lg);">${icon}</span>
-        <span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span>
-        <span style="color: var(--color-text);">Command: ${displayCommand}</span>
-      </div>`;
+      return '<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ' + color + '; padding-left: var(--spacing-sm);">' +
+        '<span style="color: var(--color-text-secondary);">[' + timestamp + ']</span> ' +
+        '<span style="font-size: var(--font-size-lg);">' + icon + '</span> ' +
+        '<span style="color: ' + color + '; font-weight: var(--font-weight-bold);">[' + type.toUpperCase() + ']</span> ' +
+        '<span style="color: var(--color-text);">Command: ' + displayCommand + '</span>' +
+        '</div>';
     }
 
     function displayDTMFLogs(logs, searchQuery = '') {
