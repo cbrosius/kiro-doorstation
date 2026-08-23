@@ -7114,18 +7114,11 @@
       const btn = document.getElementById('login-log-refresh-btn');
       if (!silent && btn) btn.classList.add('rotating');
       try {
-        if (!silent) {
-          console.log('Fetching login logs...');
-          apiCache.authLogs.timestamp = 0;
-        }
+        if (!silent) { console.log('Fetching login logs...'); apiCache.authLogs.timestamp = 0; }
         const response = await apiCache.get('authLogs');
         if (!silent) console.log('Login logs response:', response);
-        if (response) {
-          displayLoginLogs(response.logs || []);
-        } else {
-          if (!silent) console.error('No response from login logs API');
-          if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
-        }
+        if (response) displayLoginLogs(response.logs || []);
+        else if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
       } catch (error) {
         if (!silent) console.error('Error loading login logs:', error);
         if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Failed to load login logs</div>';
