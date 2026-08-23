@@ -3916,15 +3916,15 @@
      * @param {string} sectionId - The section identifier (e.g., 'dashboard', 'sip')
      */
     function navigateToSection(sectionId) {
-      // Stop hardware state polling if leaving testing section
       const currentSection = sessionStorage.getItem('activeSection');
-      if (currentSection === 'testing' && sectionId !== 'testing') {
-        stopHardwareStatePolling();
-      }
 
-      // Stop login log auto-refresh if leaving logs section
-      if (currentSection === 'logs' && sectionId !== 'logs') {
-        stopLoginLogAutoRefresh();
+      // Cleanup when leaving specific sections
+      const cleanupHandlers = {
+        'testing': stopHardwareStatePolling,
+        'logs': stopLoginLogAutoRefresh,
+      };
+      if (currentSection && currentSection !== sectionId && cleanupHandlers[currentSection]) {
+        cleanupHandlers[currentSection]();
       }
 
       // Hide all sections
@@ -3933,74 +3933,43 @@
         section.classList.remove('active');
       });
 
-      // Show selected section with fade-in
+      // Show selected section
       const targetSection = document.getElementById(`section-${sectionId}`);
       if (targetSection) {
         targetSection.hidden = false;
-        // Small delay to trigger CSS transition
         setTimeout(() => targetSection.classList.add('active'), 10);
-
-        // Scroll to top of main content
         document.getElementById('main-content').scrollTop = 0;
-
-        // Set focus to section heading for accessibility
         const heading = targetSection.querySelector('h2');
-        if (heading) {
-          heading.focus();
-        }
+        if (heading) heading.focus();
       }
 
-      // Update sidebar active state
+      // Update sidebar
       document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.section === sectionId);
         item.setAttribute('aria-current', item.dataset.section === sectionId ? 'page' : 'false');
       });
 
-      // Save to sessionStorage for persistence
       sessionStorage.setItem('activeSection', sectionId);
 
-      // Close mobile sidebar after navigation
-      if (window.innerWidth < 768) {
-        closeMobileSidebar();
-      }
+      if (window.innerWidth < 768) closeMobileSidebar();
 
-      // Section-specific initialization (Task 7.3, 7.4, Task 8.4, Task 9, Task 10, Task 11)
-      if (sectionId === 'sip') {
-        // Load SIP configuration from server (Task 7.4)
-        loadSIPConfiguration();
-        // Update SIP connection status and button states
-        updateSIPConnectionStatus();
-      } else if (sectionId === 'network') {
-        // Initialize Network Settings section (Task 8.4)
-        initNetworkSettings();
-      } else if (sectionId === 'hardware') {
-        // Update Hardware Settings section (Task 9)
-        updateHardwareStatus();
-      } else if (sectionId === 'security') {
-        // Load Security Settings (Task 10.4)
-        loadSecurityConfiguration();
-        // Load Certificate Information (Task 18)
-        loadCertificateInfo();
-      } else if (sectionId === 'logs') {
-        // Initialize System Logs section (Task 11)
-        initLogsSection();
-        // Load Login Audit Logs (Task 20)
-        initLoginLogs();
-      } else if (sectionId === 'testing') {
-        // Start hardware state polling for testing section
-        startHardwareStatePolling();
-      } else if (sectionId === 'email') {
-        // Load Email Reports configuration (Task 13.5)
-        loadEmailConfiguration();
-      } else if (sectionId === 'ota') {
-        // Load OTA firmware information (Task 14.1)
-        loadOTAFirmwareInfo();
-      } else if (sectionId === 'docs') {
-        // Ensure documentation is loaded (Task 15)
-        if (!document.getElementById('documentation-container').querySelector('.docs-section')) {
-          loadDocumentation();
-        }
-      }
+      // Section-specific initialization
+      const sectionInit = {
+        'sip': () => { loadSIPConfiguration(); updateSIPConnectionStatus(); },
+        'network': initNetworkSettings,
+        'hardware': updateHardwareStatus,
+        'security': () => { loadSecurityConfiguration(); loadCertificateInfo(); },
+        'logs': () => { initLogsSection(); initLoginLogs(); },
+        'testing': startHardwareStatePolling,
+        'email': loadEmailConfiguration,
+        'ota': loadOTAFirmwareInfo,
+        'docs': () => {
+          if (!document.getElementById('documentation-container').querySelector('.docs-section')) {
+            loadDocumentation();
+          }
+        },
+      };
+      if (sectionInit[sectionId]) sectionInit[sectionId]();
     }
 
     /**
