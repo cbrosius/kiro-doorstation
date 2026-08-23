@@ -11224,57 +11224,58 @@
         const button = e.target.closest('[data-action]');
         if (!button) return;
 
-        const action = button.dataset.action;
-        switch (action) {
-          case 'force-ntp-sync': handleForceNTPSync(); break;
-          case 'sip-connect': handleSIPConnectEnhanced(); break;
-          case 'sip-disconnect': handleSIPDisconnectEnhanced(); break;
-          case 'sip-test': handleSIPTestEnhanced(); break;
-          case 'system-restart': handleSystemRestart(); break;
-          case 'factory-reset': handleFactoryReset(); break;
-          case 'backup-config': handleBackupConfig(); break;
-          case 'test-call-1': handleTestCall(1); break;
-          case 'test-call-2': handleTestCall(2); break;
-          case 'wifi-scan': handleWiFiScan(); break;
-          case 'ntp-force-sync': handleNTPForceSync(); break;
-          case 'download-cert': downloadCertificate(); break;
-          case 'generate-cert': generateSelfSignedCertificate(); break;
-          case 'upload-cert': uploadCustomCertificate(); break;
-          case 'generate-cert-quick': generateSelfSignedCertificateQuick(); break;
-          case 'refresh-sip-logs': refreshSIPLogs(); break;
-          case 'clear-sip-logs': clearSIPLogDisplay(); break;
-          case 'export-sip-logs': exportSIPLogs(); break;
-          case 'refresh-dtmf-logs': refreshDTMFLogs(); break;
-          case 'clear-dtmf-logs': clearDTMFLogDisplay(); break;
-          case 'export-dtmf-logs': exportDTMFLogs(); break;
-          case 'refresh-login-logs': refreshLoginLogs(); break;
-          case 'refresh-hw-logs': refreshHWLogs(); break;
-          case 'jump-sip-log-bottom': jumpToBottomSIPLog(); break;
-          case 'jump-dtmf-log-bottom': jumpToBottomDTMFLog(); break;
-          case 'test-doorbell-1': testDoorbell(1); break;
-          case 'test-doorbell-2': testDoorbell(2); break;
-          case 'test-door-opener': testDoorOpener(); break;
-          case 'test-light-toggle': testLightToggle(); break;
-          case 'emergency-stop': emergencyStop(); break;
-          case 'test-email': handleTestEmail(); break;
-          case 'send-report-now': handleSendReportNow(); break;
-          case 'trigger-ota-file': document.getElementById('ota-file-input')?.click(); break;
-          case 'clear-ota-file': clearOTAFile(); break;
-          case 'upload-firmware': uploadFirmware(); break;
-          case 'start-remote-ota': startRemoteOTA(); break;
-          case 'ota-apply': handleOTAApply(); break;
-          case 'ota-rollback': handleOTARollback(); break;
-          case 'reload-page': location.reload(); break;
-          case 'go-to-login': window.location.href = '/login.html'; break;
-          case 'trigger-restore-file': document.getElementById('restore-file-input')?.click(); break;
-          case 'navigate-security-manage-cert':
-            navigateToSection('security');
-            scrollToElement('cert-info-panel');
-            break;
-          case 'filter-sip-logs': filterSIPLogs(button.dataset.filter); break;
-          case 'filter-dtmf-logs': filterDTMFLogs(button.dataset.filter); break;
-          default: break;
-        }
+    const actionHandlers = {
+      'force-ntp-sync': () => handleForceNTPSync(),
+      'sip-connect': () => handleSIPConnectEnhanced(),
+      'sip-disconnect': () => handleSIPDisconnectEnhanced(),
+      'sip-test': () => handleSIPTestEnhanced(),
+      'system-restart': () => handleSystemRestart(),
+      'factory-reset': () => handleFactoryReset(),
+      'backup-config': () => handleBackupConfig(),
+      'test-call-1': () => handleTestCall(1),
+      'test-call-2': () => handleTestCall(2),
+      'wifi-scan': () => handleWiFiScan(),
+      'ntp-force-sync': () => handleNTPForceSync(),
+      'download-cert': () => downloadCertificate(),
+      'generate-cert': () => generateSelfSignedCertificate(),
+      'upload-cert': () => uploadCustomCertificate(),
+      'generate-cert-quick': () => generateSelfSignedCertificateQuick(),
+      'refresh-sip-logs': () => refreshSIPLogs(),
+      'clear-sip-logs': () => clearSIPLogDisplay(),
+      'export-sip-logs': () => exportSIPLogs(),
+      'refresh-dtmf-logs': () => refreshDTMFLogs(),
+      'clear-dtmf-logs': () => clearDTMFLogDisplay(),
+      'export-dtmf-logs': () => exportDTMFLogs(),
+      'refresh-login-logs': () => refreshLoginLogs(),
+      'refresh-hw-logs': () => refreshHWLogs(),
+      'jump-sip-log-bottom': () => jumpToBottomSIPLog(),
+      'jump-dtmf-log-bottom': () => jumpToBottomDTMFLog(),
+      'test-doorbell-1': () => testDoorbell(1),
+      'test-doorbell-2': () => testDoorbell(2),
+      'test-door-opener': () => testDoorOpener(),
+      'test-light-toggle': () => testLightToggle(),
+      'emergency-stop': () => emergencyStop(),
+      'test-email': () => handleTestEmail(),
+      'send-report-now': () => handleSendReportNow(),
+      'trigger-ota-file': () => document.getElementById('ota-file-input')?.click(),
+      'clear-ota-file': () => clearOTAFile(),
+      'upload-firmware': () => uploadFirmware(),
+      'start-remote-ota': () => startRemoteOTA(),
+      'ota-apply': () => handleOTAApply(),
+      'ota-rollback': () => handleOTARollback(),
+      'reload-page': () => location.reload(),
+      'go-to-login': () => { window.location.href = '/login.html'; },
+      'trigger-restore-file': () => document.getElementById('restore-file-input')?.click(),
+      'navigate-security-manage-cert': () => {
+        navigateToSection('security');
+        scrollToElement('cert-info-panel');
+      },
+      'filter-sip-logs': () => filterSIPLogs(button.dataset.filter),
+      'filter-dtmf-logs': () => filterDTMFLogs(button.dataset.filter),
+    };
+
+    const handler = actionHandlers[action];
+    if (handler) handler();
       });
     }
 
