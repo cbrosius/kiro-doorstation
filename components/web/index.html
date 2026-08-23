@@ -9503,40 +9503,26 @@
     async function pollDeviceAvailability() {
       pollAttempts++;
       addOTALogEntry(`Checking device availability (attempt ${pollAttempts}/${maxPollAttempts})...`);
-
       try {
-        // Try to fetch system status
-        const response = await fetch('/api/system/state', {
-          method: 'GET',
-          cache: 'no-cache'
-        });
-
+        const response = await fetch('/api/system/state', { method: 'GET', cache: 'no-cache' });
         if (response.ok) {
-          // Device is back online
           addOTALogEntry('Device is back online!');
           updateOTAStatus('✅', 'Update Complete', 'Firmware updated successfully');
-
-          // Hide status section, show reload section
           document.getElementById('ota-status-section').style.display = 'none';
           document.getElementById('ota-reload-section').style.display = 'block';
-
-          // Start countdown
           startReloadCountdown();
-
           return;
         }
       } catch (error) {
-        // Device not available yet, continue polling
         console.debug('Device not ready during polling:', error.message);
       }
-
       if (pollAttempts < maxPollAttempts) {
-        // Continue polling
-        setTimeout(pollDeviceAvailability, 2000); // Poll every 2 seconds
+        setTimeout(pollDeviceAvailability, 2000);
       } else {
-        // Max attempts reached
         addOTALogEntry('ERROR: Device did not come back online within expected time');
         updateOTAStatus('⚠️', 'Update Status Unknown', 'Device is taking longer than expected to restart. Please check device manually.');
+      }
+    }
         showToast('Device restart is taking longer than expected', 'warning');
       }
     }
