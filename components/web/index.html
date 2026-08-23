@@ -8404,82 +8404,41 @@
      */
     let hardwareStateInterval = null;
 
+    function updateIndicatorCard(stateId, cardId, active, activeText, inactiveText, activeColor, inactiveColor) {
+      const stateEl = document.getElementById(stateId);
+      const cardEl = document.getElementById(cardId);
+      if (stateEl && cardEl) {
+        stateEl.textContent = active ? activeText : inactiveText;
+        cardEl.style.borderColor = active ? activeColor : inactiveColor;
+      }
+    }
+
     async function updateHardwareState() {
       try {
-        // Use cached hardware state (polls once per second max)
         const response = await apiCache.get('hardwareState');
-
-        // Update door relay state
         const doorRelayState = document.getElementById('hw-door-relay-state');
         const doorRelayCard = document.getElementById('hw-door-relay-card');
         const doorCountdown = document.getElementById('hw-door-countdown');
         const doorRemaining = document.getElementById('hw-door-remaining');
-
         if (doorRelayState && doorRelayCard) {
           if (response.door_relay_active) {
             doorRelayState.textContent = 'Active';
             doorRelayCard.style.borderColor = 'var(--color-status-connected)';
-
-            // Show countdown if remaining time is available
             if (doorCountdown && doorRemaining && response.door_relay_remaining_ms > 0) {
-              const remainingSeconds = Math.ceil(response.door_relay_remaining_ms / 1000);
-              doorRemaining.textContent = remainingSeconds;
+              doorRemaining.textContent = Math.ceil(response.door_relay_remaining_ms / 1000);
               doorCountdown.hidden = false;
             }
           } else {
             doorRelayState.textContent = 'Inactive';
             doorRelayCard.style.borderColor = 'var(--color-border)';
-            if (doorCountdown) {
-              doorCountdown.hidden = true;
-            }
+            if (doorCountdown) doorCountdown.hidden = true;
           }
         }
-
-        // Update light relay state
-        const lightRelayState = document.getElementById('hw-light-relay-state');
-        const lightRelayCard = document.getElementById('hw-light-relay-card');
-
-        if (lightRelayState && lightRelayCard) {
-          if (response.light_relay_active) {
-            lightRelayState.textContent = 'On';
-            lightRelayCard.style.borderColor = 'var(--color-warning)';
-          } else {
-            lightRelayState.textContent = 'Off';
-            lightRelayCard.style.borderColor = 'var(--color-border)';
-          }
-        }
-
-        // Update bell 1 state
-        const bell1State = document.getElementById('hw-bell1-state');
-        const bell1Card = document.getElementById('hw-bell1-card');
-
-        if (bell1State && bell1Card) {
-          if (response.bell1_pressed) {
-            bell1State.textContent = 'Pressed';
-            bell1Card.style.borderColor = 'var(--color-primary)';
-          } else {
-            bell1State.textContent = 'Not Pressed';
-            bell1Card.style.borderColor = 'var(--color-border)';
-          }
-        }
-
-        // Update bell 2 state
-        const bell2State = document.getElementById('hw-bell2-state');
-        const bell2Card = document.getElementById('hw-bell2-card');
-
-        if (bell2State && bell2Card) {
-          if (response.bell2_pressed) {
-            bell2State.textContent = 'Pressed';
-            bell2Card.style.borderColor = 'var(--color-primary)';
-          } else {
-            bell2State.textContent = 'Not Pressed';
-            bell2Card.style.borderColor = 'var(--color-border)';
-          }
-        }
-
+        updateIndicatorCard('hw-light-relay-state', 'hw-light-relay-card', response.light_relay_active, 'On', 'Off', 'var(--color-warning)', 'var(--color-border)');
+        updateIndicatorCard('hw-bell1-state', 'hw-bell1-card', response.bell1_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
+        updateIndicatorCard('hw-bell2-state', 'hw-bell2-card', response.bell2_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
       } catch (error) {
         console.error('Error updating hardware state:', error);
-        // Don't show error toast for polling failures
       }
     }
 
