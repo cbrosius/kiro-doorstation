@@ -203,52 +203,38 @@ esp_err_t cert_get_info(cert_info_t* info) {
         return ESP_FAIL;
     }
     
-    // Extract Common Name from subject using mbedtls helper
-    ret = mbedtls_x509_dn_gets(info->common_name, CERT_COMMON_NAME_MAX_LEN, &crt.subject);
-    if (ret < 0) {
-        ESP_LOGW(TAG, "Failed to extract subject DN");
-        info->common_name[0] = '\0';
-    } else {
-        // Try to extract just the CN= part if present
-        char *cn_start = (char*)strstr(info->common_name, "CN=");
-        if (cn_start) {
-            cn_start += 3; // Skip "CN="
-            char *cn_end = strchr(cn_start, ',');
-            if (cn_end) {
-                size_t cn_len = cn_end - cn_start;
-                if (cn_len < CERT_COMMON_NAME_MAX_LEN) {
-                    memmove(info->common_name, cn_start, cn_len);
-                    info->common_name[cn_len] = '\0';
-                }
-            } else {
-                // CN is the last or only field
-                memmove(info->common_name, cn_start, strlen(cn_start) + 1);
+    // Extract Common Name directly from parsed subject (OID 2.5.4.3)
+    info->common_name[0] = '\0';
+    mbedtls_x509_name *name = &crt.subject;
+    while (name != NULL) {
+        if (name->oid.len == 3 && name->oid.p[0] == 0x55 &&
+            name->oid.p[1] == 0x04 && name->oid.p[2] == 0x03) {
+            size_t len = name->val.len;
+            if (len >= CERT_COMMON_NAME_MAX_LEN) {
+                len = CERT_COMMON_NAME_MAX_LEN - 1;
             }
+            memcpy(info->common_name, name->val.p, len);
+            info->common_name[len] = '\0';
+            break;
         }
+        name = name->next;
     }
-    
-    // Extract issuer information
-    ret = mbedtls_x509_dn_gets(info->issuer, CERT_ISSUER_MAX_LEN, &crt.issuer);
-    if (ret < 0) {
-        ESP_LOGW(TAG, "Failed to extract issuer DN");
-        info->issuer[0] = '\0';
-    } else {
-        // Try to extract just the CN= part if present
-        char *cn_start = (char*)strstr(info->issuer, "CN=");
-        if (cn_start) {
-            cn_start += 3; // Skip "CN="
-            char *cn_end = strchr(cn_start, ',');
-            if (cn_end) {
-                size_t cn_len = cn_end - cn_start;
-                if (cn_len < CERT_ISSUER_MAX_LEN) {
-                    memmove(info->issuer, cn_start, cn_len);
-                    info->issuer[cn_len] = '\0';
-                }
-            } else {
-                // CN is the last or only field
-                memmove(info->issuer, cn_start, strlen(cn_start) + 1);
+
+    // Extract Issuer CN directly from parsed issuer (OID 2.5.4.3)
+    info->issuer[0] = '\0';
+    name = &crt.issuer;
+    while (name != NULL) {
+        if (name->oid.len == 3 && name->oid.p[0] == 0x55 &&
+            name->oid.p[1] == 0x04 && name->oid.p[2] == 0x03) {
+            size_t len = name->val.len;
+            if (len >= CERT_ISSUER_MAX_LEN) {
+                len = CERT_ISSUER_MAX_LEN - 1;
             }
+            memcpy(info->issuer, name->val.p, len);
+            info->issuer[len] = '\0';
+            break;
         }
+        name = name->next;
     }
     
     // Format validity dates (not_before)
@@ -305,19 +291,51 @@ esp_err_t cert_get_info(cert_info_t* info) {
     ESP_LOGI(TAG, "Extracting SAN information");
     info->san_count = 0;
 
-    // For now, add the Common Name as the primary SAN entry
-    // This is a basic implementation - full SAN parsing would require
-    // more complex ASN.1 parsing of the certificate extensions
     if (strlen(info->common_name) > 0) {
-        strncpy(info->san_entries[0], info->common_name, CERT_SAN_MAX_LEN - 1);
-        info->san_entries[0][CERT_SAN_MAX_LEN - 1] = '\0';
-        info->san_count = 1;
-        ESP_LOGI(TAG, "Added CN as SAN entry: %s", info->san_entries[0]);
+        strncpy(info->san_entries[info->san_count], info->common_name, CERT_SAN_MAX_LEN - 1);
+        info->san_entries[info->san_count][CERT_SAN_MAX_LEN - 1] = '\0';
+        info->san_count++;
     }
 
-    // TODO: Implement full SAN extension parsing using mbedtls_x509_get_ext
-    // and proper ASN.1 decoding for complete SAN support
-    ESP_LOGI(TAG, "Total SAN entries found: %d (basic implementation)", info->san_count);
+    const mbedtls_x509_sequence *cur = &crt.subject_alt_names;
+    while (cur != NULL && info->san_count < CERT_SAN_COUNT_MAX) {
+        if (cur->buf.len == 0 || cur->buf.p == NULL) {
+            cur = cur->next;
+            continue;
+        }
+
+        unsigned char san_type = cur->buf.tag & 0x0F;
+
+        if (san_type == MBEDTLS_X509_SAN_DNS_NAME) {
+            size_t len = cur->buf.len;
+            if (len >= CERT_SAN_MAX_LEN) {
+                len = CERT_SAN_MAX_LEN - 1;
+            }
+            memcpy(info->san_entries[info->san_count], cur->buf.p, len);
+            info->san_entries[info->san_count][len] = '\0';
+            ESP_LOGI(TAG, "  SAN DNS: %s", info->san_entries[info->san_count]);
+            info->san_count++;
+        } else if (san_type == MBEDTLS_X509_SAN_IP_ADDRESS) {
+            unsigned char *p = cur->buf.p;
+            if (cur->buf.len == 4) {
+                snprintf(info->san_entries[info->san_count], CERT_SAN_MAX_LEN,
+                         "%u.%u.%u.%u", p[0], p[1], p[2], p[3]);
+                ESP_LOGI(TAG, "  SAN IPv4: %s", info->san_entries[info->san_count]);
+                info->san_count++;
+            } else if (cur->buf.len == 16) {
+                snprintf(info->san_entries[info->san_count], CERT_SAN_MAX_LEN,
+                         "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+                         p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
+                         p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+                ESP_LOGI(TAG, "  SAN IPv6: %s", info->san_entries[info->san_count]);
+                info->san_count++;
+            }
+        }
+
+        cur = cur->next;
+    }
+
+    ESP_LOGI(TAG, "Total SAN entries found: %d", info->san_count);
 
     // Clean up
     mbedtls_x509_crt_free(&crt);
