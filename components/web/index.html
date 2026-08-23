@@ -7401,38 +7401,24 @@
      */
     function initLoginLogs() {
       console.log('Initializing login logs...');
-
-      // Prevent duplicate initialization
       if (loginLogInitialized) {
         console.log('Login logs already initialized, refreshing...');
         refreshLoginLogs();
         return;
       }
-
-      // Load initial logs
       refreshLoginLogs();
-
-      // Setup auto-refresh
       const autoRefreshCheckbox = document.getElementById('login-log-auto-refresh');
-      if (autoRefreshCheckbox) {
-        console.log('Setting up login log auto-refresh, checkbox checked:', autoRefreshCheckbox.checked);
-        autoRefreshCheckbox.addEventListener('change', (e) => {
-          if (e.target.checked) {
-            startLoginLogAutoRefresh();
-          } else {
-            stopLoginLogAutoRefresh();
-          }
-        });
-
-        // Start auto-refresh if checked
-        if (autoRefreshCheckbox.checked) {
-          startLoginLogAutoRefresh();
-        }
-
-        loginLogInitialized = true;
-      } else {
+      if (!autoRefreshCheckbox) {
         console.error('Login log auto-refresh checkbox not found');
+        return;
       }
+      console.log('Setting up login log auto-refresh, checkbox checked:', autoRefreshCheckbox.checked);
+      autoRefreshCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) startLoginLogAutoRefresh();
+        else stopLoginLogAutoRefresh();
+      });
+      if (autoRefreshCheckbox.checked) startLoginLogAutoRefresh();
+      loginLogInitialized = true;
     }
 
     /**
