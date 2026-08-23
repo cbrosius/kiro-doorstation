@@ -1428,7 +1428,7 @@
       <input type="search" class="global-search" id="global-search" placeholder="Search settings... (Ctrl+K)"
         autocomplete="off" aria-label="Search settings">
       <!-- Search Results Dropdown -->
-      <ul class="search-results" id="search-results" hidden role="listbox" aria-label="Search results"></ul>
+      <ul class="search-results" id="search-results" hidden></ul>
     </div>
     <ul class="nav-menu">
       <li class="nav-item active" data-section="dashboard">
@@ -5387,7 +5387,6 @@
       results.forEach((result, index) => {
         const resultElement = document.createElement('li');
         resultElement.className = 'search-result';
-        resultElement.setAttribute('role', 'option');
         resultElement.dataset.index = index;
         resultElement.dataset.section = result.section;
         resultElement.dataset.field = result.field;
