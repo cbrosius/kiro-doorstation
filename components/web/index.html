@@ -9091,69 +9091,60 @@
     /**
      * Task 13.5: Load existing email configuration
      */
+    function populateEmailFields(config, fieldDefinitions) {
+      fieldDefinitions.forEach(({ id, property, type = 'value', shouldSet, transform }) => {
+        const element = document.getElementById(id);
+        const value = config[property];
+
+        if (element && (shouldSet ? shouldSet(value) : value)) {
+          element[type] = transform ? transform(value) : value;
+        }
+      });
+    }
+
+    function populateLastReportStatus(lastReport) {
+      const lastReportTime = document.getElementById('last-report-time');
+      if (lastReportTime && lastReport.timestamp) {
+        lastReportTime.textContent = new Date(lastReport.timestamp * 1000).toLocaleString();
+      }
+
+      const statusElement = document.getElementById('last-report-status-value');
+      if (!statusElement) return;
+
+      const statusColor = lastReport.success ? 'var(--color-success)' : 'var(--color-danger)';
+      const statusText = lastReport.success ? '✅ Success' : '❌ Failed';
+      statusElement.innerHTML = `<span style="color: ${statusColor};">${statusText}</span>`;
+
+      if (lastReport.error && !lastReport.success) {
+        statusElement.innerHTML += `<br><span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">${lastReport.error}</span>`;
+      }
+    }
+
     async function loadEmailConfiguration() {
       try {
         const response = await apiRequest('/api/email/config');
 
-        // Populate SMTP form fields
-        const smtpServer = document.getElementById('smtp-server');
-        const smtpPort = document.getElementById('smtp-port');
-        const smtpUsername = document.getElementById('smtp-username');
-        const smtpPassword = document.getElementById('smtp-password');
-        const smtpSender = document.getElementById('smtp-sender');
+        populateEmailFields(response.smtp || {}, [
+          { id: 'smtp-server', property: 'server' },
+          { id: 'smtp-port', property: 'port' },
+          { id: 'smtp-username', property: 'username' },
+          { id: 'smtp-password', property: 'password' },
+          { id: 'smtp-sender', property: 'sender' }
+        ]);
 
-        if (response.smtp) {
-          if (smtpServer && response.smtp.server) smtpServer.value = response.smtp.server;
-          if (smtpPort && response.smtp.port) smtpPort.value = response.smtp.port;
-          if (smtpUsername && response.smtp.username) smtpUsername.value = response.smtp.username;
-          if (smtpPassword && response.smtp.password) smtpPassword.value = response.smtp.password;
-          if (smtpSender && response.smtp.sender) smtpSender.value = response.smtp.sender;
-        }
+        populateEmailFields(response.reports || {}, [
+          { id: 'reports-enabled', property: 'enabled', type: 'checked', shouldSet: value => value !== false, transform: value => value !== false },
+          { id: 'report-recipient', property: 'recipient' },
+          { id: 'report-schedule', property: 'schedule' },
+          { id: 'report-time', property: 'time' },
+          { id: 'report-day', property: 'day', shouldSet: value => value !== undefined },
+          { id: 'report-day-of-month', property: 'day_of_month' },
+          { id: 'include-status', property: 'include_status', type: 'checked', shouldSet: value => value !== false, transform: value => value !== false },
+          { id: 'include-logs', property: 'include_logs', type: 'checked', shouldSet: value => value !== false, transform: value => value !== false },
+          { id: 'include-backup', property: 'include_backup', type: 'checked', shouldSet: value => value !== false, transform: value => value !== false }
+        ]);
 
-        // Populate report configuration fields
-        const reportsEnabled = document.getElementById('reports-enabled');
-        const reportRecipient = document.getElementById('report-recipient');
-        const reportSchedule = document.getElementById('report-schedule');
-        const reportTime = document.getElementById('report-time');
-        const reportDay = document.getElementById('report-day');
-        const reportDayOfMonth = document.getElementById('report-day-of-month');
-        const includeStatus = document.getElementById('include-status');
-        const includeLogs = document.getElementById('include-logs');
-        const includeBackup = document.getElementById('include-backup');
-
-        if (response.reports) {
-          if (reportsEnabled) reportsEnabled.checked = response.reports.enabled !== false;
-          if (reportRecipient && response.reports.recipient) reportRecipient.value = response.reports.recipient;
-          if (reportSchedule && response.reports.schedule) reportSchedule.value = response.reports.schedule;
-          if (reportTime && response.reports.time) reportTime.value = response.reports.time;
-          if (reportDay && response.reports.day !== undefined) reportDay.value = response.reports.day;
-          if (reportDayOfMonth && response.reports.day_of_month) reportDayOfMonth.value = response.reports.day_of_month;
-          if (includeStatus) includeStatus.checked = response.reports.include_status !== false;
-          if (includeLogs) includeLogs.checked = response.reports.include_logs !== false;
-          if (includeBackup) includeBackup.checked = response.reports.include_backup !== false;
-        }
-
-        // Update last report status (Task 13.3)
-        if (response.last_report) {
-          const lastReportTime = document.getElementById('last-report-time');
-          const lastReportStatusValue = document.getElementById('last-report-status-value');
-
-          if (lastReportTime && response.last_report.timestamp) {
-            const date = new Date(response.last_report.timestamp * 1000);
-            lastReportTime.textContent = date.toLocaleString();
-          }
-
-          if (lastReportStatusValue) {
-            if (response.last_report.success) {
-              lastReportStatusValue.innerHTML = '<span style="color: var(--color-success);">✅ Success</span>';
-            } else {
-              lastReportStatusValue.innerHTML = '<span style="color: var(--color-danger);">❌ Failed</span>';
-              if (response.last_report.error) {
-                lastReportStatusValue.innerHTML += `<br><span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">${response.last_report.error}</span>`;
-              }
-            }
-          }
-        }
+        if (response.last_report) populateLastReportStatus(response.last_report);
 
         // Toggle report config fields based on enabled checkbox
         toggleReportConfigFields();
