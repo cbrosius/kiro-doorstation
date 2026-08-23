@@ -8336,12 +8336,10 @@
           hwLogAutoRefreshInterval = setInterval(() => refreshHWLogs(true), 5000);
           console.log('Hardware log auto-refresh started (5s)');
         }
-      } else {
-        if (hwLogAutoRefreshInterval) {
-          clearInterval(hwLogAutoRefreshInterval);
-          hwLogAutoRefreshInterval = null;
-          console.log('Hardware log auto-refresh stopped');
-        }
+      } else if (hwLogAutoRefreshInterval) {
+        clearInterval(hwLogAutoRefreshInterval);
+        hwLogAutoRefreshInterval = null;
+        console.log('Hardware log auto-refresh stopped');
       }
     }
 
