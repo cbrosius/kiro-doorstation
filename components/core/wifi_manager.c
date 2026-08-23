@@ -206,6 +206,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         current_connection.rssi = ap_info.rssi;
       }
 
+      // Get IP info (netmask, gateway)
+      esp_netif_ip_info_t ip_info;
+      if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
+        snprintf(current_connection.netmask, sizeof(current_connection.netmask),
+                 IPSTR, IP2STR(&ip_info.netmask));
+        snprintf(current_connection.gateway, sizeof(current_connection.gateway),
+                 IPSTR, IP2STR(&ip_info.gw));
+      }
+
       // Get DNS info
       esp_netif_dns_info_t dns_info;
       if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
