@@ -29,9 +29,12 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req) {
 
   wifi_connection_info_t info = wifi_get_connection_info();
 
-  cJSON_AddStringToObject(root, "ip_address", info.ip_address);
-  cJSON_AddStringToObject(root, "subnet_mask", info.netmask);
+  cJSON_AddStringToObject(root, "mode", "dhcp");
+  cJSON_AddStringToObject(root, "ip", info.ip_address);
+  cJSON_AddStringToObject(root, "subnet", info.netmask);
   cJSON_AddStringToObject(root, "gateway", info.gateway);
+  cJSON_AddStringToObject(root, "dns1", info.dns1);
+  cJSON_AddStringToObject(root, "dns2", info.dns2);
 
   return http_response_json_data(req, root);
 }

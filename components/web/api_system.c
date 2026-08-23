@@ -212,6 +212,9 @@ static esp_err_t get_system_health_handler(httpd_req_t *req) {
   uint32_t minutes = (uptime_seconds % 3600) / 60;
   uint32_t seconds = uptime_seconds % 60;
   cJSON_AddNumberToObject(root, "uptime_seconds", (double)uptime_seconds);
+  char uptime_str[16];
+  snprintf(uptime_str, sizeof(uptime_str), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+  cJSON_AddStringToObject(root, "uptime_formatted", uptime_str);
 
   // Memory
   uint32_t free_heap = esp_get_free_heap_size();

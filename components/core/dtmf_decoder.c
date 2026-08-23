@@ -708,8 +708,8 @@ int dtmf_get_security_logs(dtmf_security_log_t* entries, int max_entries, uint64
             int index = (start_index + i) % SECURITY_LOG_SIZE;
             const dtmf_security_log_t* entry = &security_log_buffer[index];
 
-            // Filter by timestamp
-            if (entry->timestamp >= since_timestamp) {
+            // Filter by timestamp (strictly greater to avoid duplicating the last entry)
+            if (entry->timestamp > since_timestamp) {
                 memcpy(&entries[count], entry, sizeof(dtmf_security_log_t));
                 count++;
             }

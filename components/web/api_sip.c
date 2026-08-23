@@ -160,8 +160,18 @@ static esp_err_t get_sip_log_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
 
+  char query[64];
+  uint64_t since_timestamp = 0;
+
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    char param[32];
+    if (httpd_query_key_value(query, "since", param, sizeof(param)) == ESP_OK) {
+      since_timestamp = strtoull(param, NULL, 10);
+    }
+  }
+
   sip_log_entry_t entries[20];
-  int count = sip_get_log_entries(entries, 20, 0);
+  int count = sip_get_log_entries(entries, 20, since_timestamp);
 
   cJSON *root = cJSON_CreateObject();
   if (!root)

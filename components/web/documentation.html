@@ -26,10 +26,11 @@
 <!-- Documentation Search (Task 15.10) -->
 <div class="config-form" style="margin-bottom: var(--spacing-lg);">
   <div class="form-group" style="margin-bottom: 0;">
-    <input type="search" 
-           id="docs-search" 
+    <input type="search"
+           id="docs-search"
            class="docs-search-input"
-           placeholder="Search documentation..." 
+           placeholder="Search documentation..."
+           aria-label="Search documentation"
            autocomplete="off"
            oninput="searchDocumentation(this.value)"
            style="width: 100%;">
@@ -55,12 +56,12 @@
 
 <!-- Quick Start Guide (Task 15.2) -->
 <div class="config-form docs-section" id="docs-quickstart">
-  <div class="docs-section-header" onclick="toggleDocsSection('quickstart')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('quickstart')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>Quick Start Guide</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-quickstart-content">
     
     <h4>1. Initial Setup</h4>
@@ -124,12 +125,12 @@
 
 <!-- Hardware Reference (Task 15.3) -->
 <div class="config-form docs-section" id="docs-hardware">
-  <div class="docs-section-header" onclick="toggleDocsSection('hardware')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('hardware')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>Hardware Reference</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-hardware-content">
     
     <h4>GPIO Pinout</h4>
@@ -218,12 +219,12 @@ Audio (I2S):
 
 <!-- SIP Configuration Guide (Task 15.4) -->
 <div class="config-form docs-section" id="docs-sip">
-  <div class="docs-section-header" onclick="toggleDocsSection('sip')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('sip')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>SIP Configuration Guide</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-sip-content">
     
     <h4>Server Setup</h4>
@@ -331,12 +332,12 @@ Audio (I2S):
 
 <!-- DTMF Commands (Task 15.5) -->
 <div class="config-form docs-section" id="docs-dtmf">
-  <div class="docs-section-header" onclick="toggleDocsSection('dtmf')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('dtmf')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>DTMF Commands</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-dtmf-content">
     
     <p>During an active call, you can send DTMF tones from your phone to control the door station:</p>
@@ -424,12 +425,12 @@ Scenario 3: Toggle light
 
 <!-- Network Configuration Guide (Task 15.6) -->
 <div class="config-form docs-section" id="docs-network">
-  <div class="docs-section-header" onclick="toggleDocsSection('network')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('network')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>Network Configuration Guide</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-network-content">
     
     <h4>WiFi Setup</h4>
@@ -520,12 +521,12 @@ Scenario 3: Toggle light
 
 <!-- API Reference (Task 15.7) -->
 <div class="config-form docs-section" id="docs-api">
-  <div class="docs-section-header" onclick="toggleDocsSection('api')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('api')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>API Reference</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-api-content">
     
     <p>The ESP32 SIP Door Station provides a REST API for programmatic control and monitoring.</p>
@@ -641,12 +642,12 @@ Scenario 3: Toggle light
 
 <!-- Troubleshooting Guide (Task 15.8) -->
 <div class="config-form docs-section" id="docs-troubleshooting">
-  <div class="docs-section-header" onclick="toggleDocsSection('troubleshooting')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('troubleshooting')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>Troubleshooting Guide</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-troubleshooting-content">
     
     <h4>Device Won't Power On</h4>
@@ -756,12 +757,12 @@ Scenario 3: Toggle light
 
 <!-- FAQ Section (Task 15.9) -->
 <div class="config-form docs-section" id="docs-faq">
-  <div class="docs-section-header" onclick="toggleDocsSection('faq')">
+  <button type="button" class="docs-section-header" onclick="toggleDocsSection('faq')" style="width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer;">
     <h3 style="margin: 0; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer;">
       <span class="docs-toggle-icon">▼</span>
       <span>Frequently Asked Questions</span>
     </h3>
-  </div>
+  </button>
   <div class="docs-section-content" id="docs-faq-content">
     
     <h4>General Questions</h4>

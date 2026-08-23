@@ -206,6 +206,26 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         current_connection.rssi = ap_info.rssi;
       }
 
+      // Get IP info (netmask, gateway)
+      esp_netif_ip_info_t ip_info;
+      if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
+        snprintf(current_connection.netmask, sizeof(current_connection.netmask),
+                 IPSTR, IP2STR(&ip_info.netmask));
+        snprintf(current_connection.gateway, sizeof(current_connection.gateway),
+                 IPSTR, IP2STR(&ip_info.gw));
+      }
+
+      // Get DNS info
+      esp_netif_dns_info_t dns_info;
+      if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
+        snprintf(current_connection.dns1, sizeof(current_connection.dns1), IPSTR,
+                 IP2STR(&dns_info.ip.u_addr.ip4));
+      }
+      if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns_info) == ESP_OK) {
+        snprintf(current_connection.dns2, sizeof(current_connection.dns2), IPSTR,
+                 IP2STR(&dns_info.ip.u_addr.ip4));
+      }
+
       xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
@@ -566,6 +586,16 @@ wifi_connection_info_t wifi_get_connection_info(void) {
                  IP2STR(&ip_info.netmask));
         snprintf(info.gateway, sizeof(info.gateway), IPSTR,
                  IP2STR(&ip_info.gw));
+      }
+
+      esp_netif_dns_info_t dns_info;
+      if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
+        snprintf(info.dns1, sizeof(info.dns1), IPSTR,
+                 IP2STR(&dns_info.ip.u_addr.ip4));
+      }
+      if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns_info) == ESP_OK) {
+        snprintf(info.dns2, sizeof(info.dns2), IPSTR,
+                 IP2STR(&dns_info.ip.u_addr.ip4));
       }
     }
 

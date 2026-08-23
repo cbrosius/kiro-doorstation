@@ -31,6 +31,7 @@ static esp_err_t get_wifi_config_handler(httpd_req_t *req) {
   wifi_manager_get_config(&config);
 
   cJSON_AddStringToObject(root, "ssid", config.ssid);
+  cJSON_AddBoolToObject(root, "configured", config.ssid[0] != '\0');
   cJSON_AddBoolToObject(root, "dhcp", config.dhcp);
   cJSON_AddStringToObject(root, "static_ip", config.static_ip);
   cJSON_AddStringToObject(root, "gateway", config.gateway);

@@ -29,24 +29,29 @@ typedef struct {
 
 // Timeout task to automatically deactivate door relay
 static void hardware_test_door_timeout_task(void *arg) {
+  (void)arg;
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
 
-    if (xSemaphoreTake(test_ctx.test_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (test_ctx.door_test_active) {
-        uint32_t elapsed =
-            (xTaskGetTickCount() - test_ctx.door_test_start_time) *
-            portTICK_PERIOD_MS;
-
-        if (elapsed >= test_ctx.door_test_duration) {
-          // Timeout reached - deactivate relay
-          gpio_set_level(DOOR_RELAY_PIN, 0);
-          test_ctx.door_test_active = false;
-          ESP_LOGI(TAG, "Door opener test completed (timeout)");
-        }
-      }
-      xSemaphoreGive(test_ctx.test_mutex);
+    if (xSemaphoreTake(test_ctx.test_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+      continue;
     }
+    if (!test_ctx.door_test_active) {
+      xSemaphoreGive(test_ctx.test_mutex);
+      continue;
+    }
+
+    uint32_t elapsed =
+        (xTaskGetTickCount() - test_ctx.door_test_start_time) *
+        portTICK_PERIOD_MS;
+
+    if (elapsed >= test_ctx.door_test_duration) {
+      // Timeout reached - deactivate relay
+      gpio_set_level(DOOR_RELAY_PIN, 0);
+      test_ctx.door_test_active = false;
+      ESP_LOGI(TAG, "Door opener test completed (timeout)");
+    }
+    xSemaphoreGive(test_ctx.test_mutex);
   }
 }
 
@@ -57,6 +62,9 @@ void hardware_test_init(void) {
   test_ctx.door_test_active = false;
   test_ctx.door_test_start_time = 0;
   test_ctx.door_test_duration = 0;
+
+  // Ensure light relay GPIO starts in OFF state (LOW)
+  gpio_set_level(LIGHT_RELAY_PIN, 0);
 
   // Create mutex for thread safety
   test_ctx.test_mutex = xSemaphoreCreateMutex();
@@ -142,20 +150,15 @@ esp_err_t hardware_test_door_opener(uint32_t duration_ms) {
 esp_err_t hardware_test_light_toggle(bool *new_state) {
   ESP_LOGI(TAG, "Testing light relay toggle");
 
-  // Read current light relay state
-  int current_state = gpio_get_level(LIGHT_RELAY_PIN);
-
-  // Toggle light relay GPIO pin
-  int new_level = (current_state == 0) ? 1 : 0;
-  gpio_set_level(LIGHT_RELAY_PIN, new_level);
+  // Use the gpio_handler's toggle function to maintain consistent state
+  bool toggled_state = light_relay_toggle();
 
   // Return new state to caller
   if (new_state != NULL) {
-    *new_state = (new_level == 1);
+    *new_state = toggled_state;
   }
 
-  ESP_LOGI(TAG, "Light relay toggled: %s", (new_level == 1) ? "ON" : "OFF");
-  hw_status_log_event(HW_EVENT_LIGHT_TOGGLE, new_level, "Web Test");
+  ESP_LOGI(TAG, "Light relay toggled: %s", toggled_state ? "ON" : "OFF");
 
   return ESP_OK;
 }

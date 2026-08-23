@@ -205,7 +205,7 @@ static esp_err_t get_hardware_events_handler(httpd_req_t *req) {
     cJSON *event = cJSON_CreateObject();
     cJSON_AddNumberToObject(event, "timestamp", (double)logs[i].timestamp);
 
-    const char *type_str = "unknown";
+    const char *type_str;
     switch (logs[i].type) {
     case HW_EVENT_DOOR_OPEN:
       type_str = "door_open";
@@ -221,6 +221,9 @@ static esp_err_t get_hardware_events_handler(httpd_req_t *req) {
       break;
     case HW_EVENT_RESET_PRESS:
       type_str = "reset_press";
+      break;
+    default:
+      type_str = "unknown";
       break;
     }
     cJSON_AddStringToObject(event, "type", type_str);
