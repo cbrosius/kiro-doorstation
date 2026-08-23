@@ -6329,64 +6329,32 @@
     /**
      * Update SIP connection status display
      */
+    function setSIPStatus(icon, text, color, connectDisabled, disconnectDisabled) {
+      const iconElement = document.getElementById('sip-connection-icon');
+      const statusElement = document.getElementById('sip-connection-status');
+      const connectBtn = document.getElementById('sip-connect-btn');
+      const disconnectBtn = document.getElementById('sip-disconnect-btn');
+      if (iconElement) iconElement.textContent = icon;
+      if (statusElement) { statusElement.textContent = text; statusElement.style.color = color; }
+      if (connectBtn) connectBtn.disabled = connectDisabled;
+      if (disconnectBtn) disconnectBtn.disabled = disconnectDisabled;
+    }
+
     async function updateSIPConnectionStatus() {
+      const setStatus = (icon, text, color, connectDisabled, disconnectDisabled) =>
+        setSIPStatus(icon, text, color, connectDisabled, disconnectDisabled);
       try {
         const response = await apiCache.get('sipState');
-
-        const iconElement = document.getElementById('sip-connection-icon');
-        const statusElement = document.getElementById('sip-connection-status');
-        const connectBtn = document.getElementById('sip-connect-btn');
-        const disconnectBtn = document.getElementById('sip-disconnect-btn');
-
-        // API returns capitalized status values like "Registered", "Connecting", etc.
         const status = response.status ? response.status.toLowerCase() : '';
-
-        if (status === 'registered') {
-          if (iconElement) iconElement.textContent = '✅';
-          if (statusElement) {
-            statusElement.textContent = `Registered (${response.state || 'IDLE'})`;
-            statusElement.style.color = 'var(--color-success)';
-          }
-          // Enable disconnect, disable connect
-          if (connectBtn) connectBtn.disabled = true;
-          if (disconnectBtn) disconnectBtn.disabled = false;
-
-        } else if (status === 'connecting') {
-          if (iconElement) iconElement.textContent = '⏳';
-          if (statusElement) {
-            statusElement.textContent = 'Connecting...';
-            statusElement.style.color = 'var(--color-warning)';
-          }
-          // Disable both buttons while connecting
-          if (connectBtn) connectBtn.disabled = true;
-          if (disconnectBtn) disconnectBtn.disabled = true;
-
-        } else {
-          if (iconElement) iconElement.textContent = '❌';
-          if (statusElement) {
-            statusElement.textContent = response.status || 'Disconnected';
-            statusElement.style.color = 'var(--color-danger)';
-          }
-          // Enable connect, disable disconnect
-          if (connectBtn) connectBtn.disabled = false;
-          if (disconnectBtn) disconnectBtn.disabled = true;
-        }
-
+        const states = {
+          registered: ['✅', `Registered (${response.state || 'IDLE'})`, 'var(--color-success)', true, false],
+          connecting: ['⏳', 'Connecting...', 'var(--color-warning)', true, true],
+        };
+        const s = states[status] || ['❌', response.status || 'Disconnected', 'var(--color-danger)', false, true];
+        setStatus(...s);
       } catch (error) {
         console.error('Error updating SIP connection status:', error);
-        const iconElement = document.getElementById('sip-connection-icon');
-        const statusElement = document.getElementById('sip-connection-status');
-        const connectBtn = document.getElementById('sip-connect-btn');
-        const disconnectBtn = document.getElementById('sip-disconnect-btn');
-
-        if (iconElement) iconElement.textContent = '❌';
-        if (statusElement) {
-          statusElement.textContent = 'Error';
-          statusElement.style.color = 'var(--color-danger)';
-        }
-        // On error, enable connect button, disable disconnect
-        if (connectBtn) connectBtn.disabled = false;
-        if (disconnectBtn) disconnectBtn.disabled = true;
+        setStatus('❌', 'Error', 'var(--color-danger)', false, true);
       }
     }
 
