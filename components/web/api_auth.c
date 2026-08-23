@@ -45,7 +45,13 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req) {
       inet_ntop(AF_INET, &((struct sockaddr_in *)&addr)->sin_addr, client_ip,
                 sizeof(client_ip));
     } else {
-      inet_ntop(AF_INET6, &addr.sin6_addr, client_ip, sizeof(client_ip));
+      /* Check for IPv4-mapped IPv6 address (::FFFF:x.x.x.x) */
+      const uint8_t *a = addr.sin6_addr.s6_addr;
+      if (memcmp(a, "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF", 12) == 0) {
+        inet_ntop(AF_INET, &a[12], client_ip, sizeof(client_ip));
+      } else {
+        inet_ntop(AF_INET6, &addr.sin6_addr, client_ip, sizeof(client_ip));
+      }
     }
   }
 
