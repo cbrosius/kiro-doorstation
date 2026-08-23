@@ -5579,22 +5579,16 @@
      * Handle system restart action (with confirmation)
      */
     async function handleSystemRestart() {
-      const confirmed = await confirmSystemRestart();
-      if (!confirmed) return;
-
+      if (!await confirmSystemRestart()) return;
       try {
         showToast('Restarting system...', 'info');
         const response = await apiRequest('/api/system/restart', { method: 'POST' });
-
-        // Check if session will be invalidated (device restart)
         if (response && response.session_invalidated) {
           showToast('System is restarting. You will need to log in again.', 'info', 5000);
           sessionStorage.setItem('ota_session_invalidated', 'true');
         } else {
           showToast('System is restarting. Page will reload automatically.', 'info', 5000);
         }
-
-        // Show restart countdown and redirect to login
         showRestartCountdown();
       } catch (error) {
         console.error('System restart error:', error);
@@ -5605,18 +5599,12 @@
      * Handle factory reset action (with confirmation)
      */
     async function handleFactoryReset() {
-      const confirmed = await confirmFactoryReset();
-      if (!confirmed) return;
-
+      if (!await confirmFactoryReset()) return;
       try {
         showToast('Performing factory reset...', 'warning');
         await apiRequest('/api/system/factory-reset', { method: 'POST' });
         showToast('Factory reset complete. Device is restarting.', 'info', 5000);
-
-        // Reload page after delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
+        setTimeout(() => { window.location.reload(); }, 5000);
       } catch (error) {
         console.error('Factory reset error:', error);
       }
