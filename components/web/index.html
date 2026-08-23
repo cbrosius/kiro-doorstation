@@ -2779,6 +2779,14 @@
                 style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">
                 Loading...</div>
             </div>
+            <div id="cert-san-section" style="display: none;">
+              <div
+                style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
+                Subject Alternative Names (SAN)</div>
+              <div id="cert-san-entries"
+                style="font-size: var(--font-size-sm); color: var(--text-monospace, var(--color-text)); font-family: var(--font-family-monospace, monospace);">
+              </div>
+            </div>
             <div>
               <div
                 style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
@@ -2802,14 +2810,6 @@
               <div id="cert-days-remaining"
                 style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text);">
                 Loading...</div>
-            </div>
-            <div id="cert-san-section" style="display: none;">
-              <div
-                style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">
-                Subject Alternative Names (SAN)</div>
-              <div id="cert-san-entries"
-                style="font-size: var(--font-size-sm); color: var(--text-monospace, var(--color-text)); font-family: var(--font-family-monospace, monospace);">
-              </div>
             </div>
           </div>
 
@@ -7839,15 +7839,33 @@
       try {
         showToast('Downloading certificate...', 'info');
 
-        const response = await apiRequest('/api/cert/download');
+        const infoResponse = await apiRequest('/api/cert/info', { silentError: true });
+        let filename = 'certificate.pem';
+        if (infoResponse && infoResponse.common_name) {
+          filename = infoResponse.common_name.replace(/[^a-zA-Z0-9._-]/g, '_') + '.pem';
+        }
 
-        if (response && response.cert_pem) {
-          // Create a blob and download
-          const blob = new Blob([response.cert_pem], { type: 'application/x-pem-file' });
+        const response = await fetch('/api/cert/download', {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'X-Session-Extend': 'true'
+          }
+        });
+
+        if (!response.ok) {
+          showToast('Failed to download certificate: HTTP ' + response.status, 'error');
+          return;
+        }
+
+        const pemText = await response.text();
+
+        if (pemText && pemText.includes('-----BEGIN CERTIFICATE-----')) {
+          const blob = new Blob([pemText], { type: 'application/x-pem-file' });
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = 'certificate.pem';
+          a.download = filename;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -7855,7 +7873,7 @@
 
           showToast('Certificate downloaded successfully', 'success');
         } else {
-          showToast('Failed to download certificate', 'error');
+          showToast('Invalid certificate data received', 'error');
         }
       } catch (error) {
         console.error('Error downloading certificate:', error);
