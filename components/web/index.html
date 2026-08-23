@@ -8733,7 +8733,7 @@
      * @returns {string} Escaped string
      */
     function escapeRegex(string) {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return string.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     }
 
     /**
