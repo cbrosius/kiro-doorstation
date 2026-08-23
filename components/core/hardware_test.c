@@ -143,17 +143,14 @@ esp_err_t hardware_test_light_toggle(bool *new_state) {
   ESP_LOGI(TAG, "Testing light relay toggle");
 
   // Use the gpio_handler's toggle function to maintain consistent state
-  light_relay_toggle();
-
-  // Read current light relay state after toggle
-  int current_level = gpio_get_level(LIGHT_RELAY_PIN);
+  bool toggled_state = light_relay_toggle();
 
   // Return new state to caller
   if (new_state != NULL) {
-    *new_state = (current_level == 1);
+    *new_state = toggled_state;
   }
 
-  ESP_LOGI(TAG, "Light relay toggled: %s", (current_level == 1) ? "ON" : "OFF");
+  ESP_LOGI(TAG, "Light relay toggled: %s", toggled_state ? "ON" : "OFF");
 
   return ESP_OK;
 }

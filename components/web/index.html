@@ -8370,6 +8370,15 @@
           }
         }
         updateIndicatorCard('hw-light-relay-state', 'hw-light-relay-card', response.light_relay_active, 'On', 'Off', 'var(--color-warning)', 'var(--color-border)');
+
+        // Update toggle button icon to reflect current state
+        const testLightBtn = document.getElementById('test-light-btn');
+        if (testLightBtn) {
+          const btnText = testLightBtn.querySelector('.btn-text');
+          if (btnText) {
+            btnText.textContent = response.light_relay_active ? '💡 Light ON' : '🔌 Light OFF';
+          }
+        }
         updateIndicatorCard('hw-bell1-state', 'hw-bell1-card', response.bell1_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
         updateIndicatorCard('hw-bell2-state', 'hw-bell2-card', response.bell2_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
       } catch (error) {
@@ -8554,6 +8563,12 @@
         // Show success feedback with new state
         const newState = response.state || 'unknown';
         showFeedback('success', `Light toggled ${newState.toUpperCase()}. ${response.message || ''}`);
+
+        // Update button icon to reflect current state
+        const btnText = btn.querySelector('.btn-text');
+        if (btnText) {
+          btnText.textContent = newState === 'on' ? '💡 Light ON' : '🔌 Light OFF';
+        }
 
         // Invalidate cache to force immediate refresh
         apiCache.invalidate('hardwareState');

@@ -187,12 +187,13 @@ void door_relay_activate(void) {
   }
 }
 
-void light_relay_toggle(void) {
+bool light_relay_toggle(void) {
   light_state = !light_state;
   gpio_set_level(LIGHT_RELAY_PIN, light_state ? 1 : 0);
   ESP_LOGI(TAG, "Light %s", light_state ? "on" : "off");
   hw_status_log_event(HW_EVENT_LIGHT_TOGGLE, light_state ? 1 : 0,
                       "DTMF/System");
+  return light_state;
 }
 
 bool is_doorbell_pressed(doorbell_t bell) {
