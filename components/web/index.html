@@ -8135,9 +8135,9 @@
       const countElement = document.getElementById('dtmf-log-filter-count');
       if (countElement) {
         if (filtered.length === dtmfLogEntries.length) {
-          countElement.textContent = `Showing all ${dtmfLogEntries.length} entries`;
+          countElement.textContent = 'Showing all ' + dtmfLogEntries.length + ' entries';
         } else {
-          countElement.textContent = `Showing ${filtered.length} of ${dtmfLogEntries.length} entries`;
+          countElement.textContent = 'Showing ' + filtered.length + ' of ' + dtmfLogEntries.length + ' entries';
         }
       }
 
