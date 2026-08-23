@@ -8049,17 +8049,15 @@
       container.innerHTML = displayLogs.map(entry => {
         const style = logStyles[entry.type] || { icon: 'ℹ️', color: 'var(--color-text)' };
         const timeStr = new Date(entry.timestamp).toLocaleTimeString();
-        return `<div style="display: flex; gap: var(--spacing-md); padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border-subtle); align-items: flex-start;"><div style="min-width: 80px; font-size: 0.8rem; color: var(--color-text-secondary);">${timeStr}</div><div style="font-size: 1.1rem; min-width: 24px;">${style.icon}</div><div style="flex: 1;"><div style="font-weight: 600; color: ${style.color}; text-transform: capitalize;">${entry.type.replace('_', ' ')}</div><div style="font-size: 0.85rem; color: var(--color-text-secondary);">${entry.metadata || ''} ${entry.value ? `(${entry.value})` : ''}</div></div></div>`;
-      }).join('');
-    }
-        `;
+        const valueStr = entry.value ? '(' + entry.value + ')' : '';
+        return '<div style="display: flex; gap: var(--spacing-md); padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border-subtle); align-items: flex-start;"><div style="min-width: 80px; font-size: 0.8rem; color: var(--color-text-secondary);">' + timeStr + '</div><div style="font-size: 1.1rem; min-width: 24px;">' + style.icon + '</div><div style="flex: 1;"><div style="font-weight: 600; color: ' + style.color + '; text-transform: capitalize;">' + entry.type.replace('_', ' ') + '</div><div style="font-size: 0.85rem; color: var(--color-text-secondary);">' + (entry.metadata || '') + ' ' + valueStr + '</div></div></div>';
       }).join('');
     }
 
     /**
      * Refresh DTMF logs from server
      * @param {boolean} silent - If true, don't show loading message
-     */
+    */
     async function refreshDTMFLogs(silent = false) {
       if (isRefreshingDTMFLogs) return;
       isRefreshingDTMFLogs = true;
@@ -8159,15 +8157,15 @@
       const color = success ? 'var(--color-success)' : 'var(--color-danger)';
       let displayCommand = command;
       if (searchQuery) {
-        const regex = new RegExp('(' + escapeRegex(searchQuery) + ')', 'gi');
+        const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
         displayCommand = command.replace(regex, '<mark style="background-color: var(--color-warning); padding: 2px 4px; border-radius: 2px;">$1</mark>');
       }
-      return '<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ' + color + '; padding-left: var(--spacing-sm);">' +
-        '<span style="color: var(--color-text-secondary);">[' + timestamp + ']</span> ' +
-        '<span style="font-size: var(--font-size-lg);">' + icon + '</span> ' +
-        '<span style="color: ' + color + '; font-weight: var(--font-weight-bold);">[' + type.toUpperCase() + ']</span> ' +
-        '<span style="color: var(--color-text);">Command: ' + displayCommand + '</span>' +
-        '</div>';
+      return `<div style="margin-bottom: var(--spacing-xs); padding: var(--spacing-xs); border-left: 3px solid ${color}; padding-left: var(--spacing-sm);">
+        <span style="color: var(--color-text-secondary);">[${timestamp}]</span>
+        <span style="font-size: var(--font-size-lg);">${icon}</span>
+        <span style="color: ${color}; font-weight: var(--font-weight-bold);">[${type.toUpperCase()}]</span>
+        <span style="color: var(--color-text);">Command: ${displayCommand}</span>
+      </div>`;
     }
 
     function displayDTMFLogs(logs, searchQuery = '') {
