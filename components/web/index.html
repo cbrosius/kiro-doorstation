@@ -9448,18 +9448,18 @@
       const dropZone = document.getElementById('ota-drop-zone');
       const fileInput = document.getElementById('ota-file-input');
 
-      // Prevent default drag behaviors
-      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, preventDefaults, false);
-        document.body.addEventListener(eventName, preventDefaults, false);
-      });
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
-      function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, preventDefaults, false);
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
 
-      // Highlight drop zone when item is dragged over it
+    // Highlight drop zone when item is dragged over it
       ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
           dropZone.style.borderColor = 'var(--color-primary)';
