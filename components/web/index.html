@@ -2635,9 +2635,26 @@
             <span class="btn-text">Change Password</span>
             <span class="btn-spinner" hidden>⏳</span>
           </button>
-          <button type="reset" class="btn btn-secondary">Clear</button>
         </div>
       </form>
+
+      <!-- Hardware Password Reset Info Banner -->
+      <div class="config-form">
+        <div style="padding: var(--spacing-md); background-color: rgba(41, 182, 246, 0.1); border: 1px solid var(--color-info); border-radius: var(--border-radius);">
+          <div style="display: flex; align-items: flex-start; gap: var(--spacing-md);">
+            <span style="font-size: var(--font-size-2xl); flex-shrink: 0;">ℹ️</span>
+            <div style="flex: 1;">
+              <h3 style="margin: 0 0 var(--spacing-xs) 0; color: var(--color-info); font-size: var(--font-size-lg);">
+                Hardware Password Reset</h3>
+              <p style="margin: 0; color: var(--color-text);">
+                If you have forgotten the admin password, you can reset it using the physical <strong>BOOT button</strong> on the device.
+                Press and hold the BOOT button for <strong>10 seconds</strong> to reset the administrator password to the default.
+                All active sessions will be invalidated and the initial setup wizard will appear on next web access.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- DTMF Security Configuration Form (Task 10.1) -->
       <form class="config-form" id="security-form" data-api="/api/dtmf/security" data-on-success="onSecuritySaved">
