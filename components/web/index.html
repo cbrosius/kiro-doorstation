@@ -9226,49 +9226,33 @@
 
           // Display detailed status messages based on state
           if (status.state) {
-            let displayMessage = '';
-            switch (status.state) {
-              case 'begin':
-                displayMessage = 'Preparing to write firmware...';
-                break;
-              case 'writing':
-                displayMessage = status.status_message || 'Writing firmware to flash...';
-                // Show speed and time remaining if available
-                if (status.speed_bytes_per_second && status.speed_bytes_per_second > 0) {
-                  document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
-                }
-                if (status.time_remaining_seconds && status.time_remaining_seconds > 0) {
-                  document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
-                }
-                break;
-              case 'validating':
-                displayMessage = 'Verifying firmware integrity...';
-                break;
-              case 'complete':
-                displayMessage = 'Complete: Firmware ready to apply';
-                stopOTAStatusPolling();
-                break;
-              case 'error':
-                displayMessage = 'Failed: ' + (status.error_message || 'Unknown error');
-                stopOTAStatusPolling();
-                showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
-                break;
-              case 'aborted':
-                displayMessage = 'Update aborted';
-                stopOTAStatusPolling();
-                break;
-            }
-
+            const stateMessages = {
+              begin: 'Preparing to write firmware...',
+              writing: status.status_message || 'Writing firmware to flash...',
+              validating: 'Verifying firmware integrity...',
+              complete: 'Complete: Firmware ready to apply',
+              error: 'Failed: ' + (status.error_message || 'Unknown error'),
+              aborted: 'Update aborted',
+            };
+            const displayMessage = stateMessages[status.state] || '';
             if (displayMessage && !status.status_message) {
               document.getElementById('ota-upload-status').textContent = displayMessage;
             }
+            if (status.state === 'writing') {
+              if (status.speed_bytes_per_second > 0) {
+                document.getElementById('ota-upload-speed').textContent = 'Speed: ' + formatSpeed(status.speed_bytes_per_second);
+              }
+              if (status.time_remaining_seconds > 0) {
+                document.getElementById('ota-time-remaining').textContent = 'Time remaining: ' + formatTimeRemaining(status.time_remaining_seconds);
+              }
+            }
+            if (status.state === 'complete' || status.state === 'error' || status.state === 'aborted') {
+              stopOTAStatusPolling();
+              if (status.state === 'error') showToast('OTA Error: ' + (status.error_message || 'Unknown error'), 'error');
+            }
           }
 
-          // Display error messages if present
-          if (status.error_message) {
-            console.error('OTA Error:', status.error_message);
-            // Error will be shown via toast in the error state handler above
-          }
+          if (status.error_message) console.error('OTA Error:', status.error_message);
 
         } catch (error) {
           console.error('Error polling OTA status:', error);
