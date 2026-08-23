@@ -7889,6 +7889,7 @@
           if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading SIP logs</div>';
         }
       } finally {
+        isRefreshingSIPLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
       }
     }
@@ -8243,6 +8244,7 @@
           if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading hardware logs</div>';
         }
       } finally {
+        isRefreshingHWLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
       }
     }
@@ -8342,6 +8344,7 @@
           if (container) container.innerHTML = '<div style="text-align: center; color: var(--color-danger); padding: var(--spacing-lg);">Error loading DTMF logs</div>';
         }
       } finally {
+        isRefreshingDTMFLogs = false;
         if (!silent && btn) btn.classList.remove('rotating');
       }
     }
