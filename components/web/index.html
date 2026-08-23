@@ -7786,8 +7786,6 @@
       }
 
       try {
-        // Fetch logs since last timestamp (incremental)
-        // For manual refresh: keep fetching batches until buffer is drained
         let moreAvailable = true;
         while (moreAvailable) {
           const endpoint = sipLogLastTimestamp > 0
@@ -7797,38 +7795,18 @@
           const response = await apiRequest(endpoint, { silentError: silent });
           if (!silent) console.log('SIP logs response:', response);
 
-          if (response && response.logs && Array.isArray(response.logs)) {
-            if (response.logs.length > 0) {
-              sipLogEntries = sipLogEntries.concat(response.logs);
-
-              // Update last timestamp
-              const timestamps = response.logs.map(e => e.timestamp || 0);
-              sipLogLastTimestamp = Math.max(...timestamps, sipLogLastTimestamp);
-
-              // Keep only last 1000 entries to prevent memory issues
-              if (sipLogEntries.length > 1000) {
-                sipLogEntries = sipLogEntries.slice(-1000);
-              }
-
-              // If we got fewer than the max batch size, buffer is drained
-              moreAvailable = response.logs.length >= 20;
-
-              // Stop if we've hit the overall cap
-              if (sipLogEntries.length >= 1000) moreAvailable = false;
-            } else {
-              moreAvailable = false;
-            }
+          if (response?.logs?.length > 0) {
+            sipLogEntries = sipLogEntries.concat(response.logs);
+            const timestamps = response.logs.map(e => e.timestamp || 0);
+            sipLogLastTimestamp = Math.max(...timestamps, sipLogLastTimestamp);
+            if (sipLogEntries.length > 1000) sipLogEntries = sipLogEntries.slice(-1000);
+            moreAvailable = response.logs.length >= 20 && sipLogEntries.length < 1000;
           } else {
             moreAvailable = false;
           }
-
-          // Auto-refresh only fetches one batch (incremental)
           if (silent) moreAvailable = false;
         }
-
-        // Display logs
         filterAndDisplaySIPLogs();
-
       } catch (error) {
         if (!silent) {
           console.error('Error refreshing SIP logs:', error);
