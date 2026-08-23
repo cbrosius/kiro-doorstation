@@ -8348,37 +8348,43 @@
       }
     }
 
+    function updateDoorRelayUI(response) {
+      const doorRelayState = document.getElementById('hw-door-relay-state');
+      const doorRelayCard = document.getElementById('hw-door-relay-card');
+      if (!doorRelayState || !doorRelayCard) return;
+
+      const doorCountdown = document.getElementById('hw-door-countdown');
+      const doorRemaining = document.getElementById('hw-door-remaining');
+
+      if (response.door_relay_active) {
+        doorRelayState.textContent = 'Active';
+        doorRelayCard.style.borderColor = 'var(--color-status-connected)';
+        if (doorCountdown && doorRemaining && response.door_relay_remaining_ms > 0) {
+          doorRemaining.textContent = Math.ceil(response.door_relay_remaining_ms / 1000);
+          doorCountdown.hidden = false;
+        }
+      } else {
+        doorRelayState.textContent = 'Inactive';
+        doorRelayCard.style.borderColor = 'var(--color-border)';
+        if (doorCountdown) doorCountdown.hidden = true;
+      }
+    }
+
+    function updateLightButtonUI(response) {
+      const testLightBtn = document.getElementById('test-light-btn');
+      if (!testLightBtn) return;
+      const btnText = testLightBtn.querySelector('.btn-text');
+      if (btnText) {
+        btnText.textContent = response.light_relay_active ? '💡 Light ON' : '🔌 Light OFF';
+      }
+    }
+
     async function updateHardwareState() {
       try {
         const response = await apiCache.get('hardwareState');
-        const doorRelayState = document.getElementById('hw-door-relay-state');
-        const doorRelayCard = document.getElementById('hw-door-relay-card');
-        const doorCountdown = document.getElementById('hw-door-countdown');
-        const doorRemaining = document.getElementById('hw-door-remaining');
-        if (doorRelayState && doorRelayCard) {
-          if (response.door_relay_active) {
-            doorRelayState.textContent = 'Active';
-            doorRelayCard.style.borderColor = 'var(--color-status-connected)';
-            if (doorCountdown && doorRemaining && response.door_relay_remaining_ms > 0) {
-              doorRemaining.textContent = Math.ceil(response.door_relay_remaining_ms / 1000);
-              doorCountdown.hidden = false;
-            }
-          } else {
-            doorRelayState.textContent = 'Inactive';
-            doorRelayCard.style.borderColor = 'var(--color-border)';
-            if (doorCountdown) doorCountdown.hidden = true;
-          }
-        }
+        updateDoorRelayUI(response);
         updateIndicatorCard('hw-light-relay-state', 'hw-light-relay-card', response.light_relay_active, 'On', 'Off', 'var(--color-warning)', 'var(--color-border)');
-
-        // Update toggle button icon to reflect current state
-        const testLightBtn = document.getElementById('test-light-btn');
-        if (testLightBtn) {
-          const btnText = testLightBtn.querySelector('.btn-text');
-          if (btnText) {
-            btnText.textContent = response.light_relay_active ? '💡 Light ON' : '🔌 Light OFF';
-          }
-        }
+        updateLightButtonUI(response);
         updateIndicatorCard('hw-bell1-state', 'hw-bell1-card', response.bell1_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
         updateIndicatorCard('hw-bell2-state', 'hw-bell2-card', response.bell2_pressed, 'Pressed', 'Not Pressed', 'var(--color-primary)', 'var(--color-border)');
       } catch (error) {
