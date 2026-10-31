@@ -113,7 +113,7 @@ static esp_err_t get_wifi_state_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_wifi_scan_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 

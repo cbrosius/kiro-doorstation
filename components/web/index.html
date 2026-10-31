@@ -6947,11 +6947,15 @@
             const input = document.getElementById(id);
             if (input && response[key]) input.value = response[key];
           });
+          const pinInput = document.getElementById('security-pin-input');
+          if (pinInput && response.pin_configured && !response.pin_code) {
+            pinInput.placeholder = 'PIN configured (leave blank to keep current PIN)';
+          }
           updateSecurityStatus(response);
           const form = document.getElementById('security-form');
           if (form) { saveFormInitialState(form); trackFormChanges(form); }
           console.log('Security configuration loaded successfully');
-          updatePinRequiredState();
+          updatePinRequiredState(response.pin_configured);
         }
       } catch (error) {
         console.error('Error loading security configuration:', error);
@@ -6968,12 +6972,13 @@
     /**
      * Toggle PIN input required state based on checkbox
      */
-    function updatePinRequiredState() {
+    function updatePinRequiredState(pinConfigured = false) {
       const pinEnableCheckbox = document.getElementById('security-pin-enable');
       const pinInput = document.getElementById('security-pin-input');
       if (!pinInput) return;
 
-      if (pinEnableCheckbox && pinEnableCheckbox.checked) {
+      const hasExistingPin = pinConfigured || pinInput.placeholder.includes('PIN configured');
+      if (pinEnableCheckbox && pinEnableCheckbox.checked && !hasExistingPin) {
         pinInput.setAttribute('required', '');
       } else {
         pinInput.removeAttribute('required');
@@ -9724,15 +9729,8 @@
      * @returns {Promise<boolean>} True if session is valid
      */
     async function checkSession() {
-      // First check if session cookie exists
-      if (!hasSessionCookie()) {
-        console.log('No session cookie found during validation, redirecting to login');
-        window.location.href = '/login.html';
-        return false;
-      }
-
       try {
-        // Make a simple API call to check session validity
+        // Make a simple API call to check session validity (HttpOnly session cookie is sent automatically)
         const response = await fetch('/api/system/info', {
           method: 'GET',
           credentials: 'include'
@@ -9836,13 +9834,6 @@
     function startSessionMonitoring() {
       // Check session every 30 seconds (more frequent for proactive detection)
       sessionManager.checkInterval = setInterval(async () => {
-        // First check if session cookie still exists
-        if (!hasSessionCookie()) {
-          console.log('Session cookie lost during session, redirecting to login');
-          window.location.href = '/login.html';
-          return;
-        }
-
         const isValid = await checkSession();
 
         if (isValid && sessionManager.sessionExpiresAt) {
@@ -9900,29 +9891,7 @@
         return;
       }
 
-      // Allow a brief moment for cookie to be set after login redirect
-      let retries = 0;
-      const maxRetries = 5;
-      const retryDelay = 200; // 200ms
-
-      while (retries < maxRetries) {
-        if (hasSessionCookie()) {
-          console.log('Session cookie found, proceeding with validation');
-          break;
-        }
-
-        if (retries === maxRetries - 1) {
-          console.log('No session cookie found after retries, redirecting to login');
-          window.location.href = '/login.html';
-          return;
-        }
-
-        console.log(`Session cookie not found, retry ${retries + 1}/${maxRetries}`);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        retries++;
-      }
-
-      // Check if session is valid on page load
+      // Check if session is valid on page load (HttpOnly cookie sent via credentials: 'include')
       const isValid = await checkSession();
 
       if (!isValid) {

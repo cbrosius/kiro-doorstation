@@ -105,7 +105,7 @@ static esp_err_t post_ntp_config_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_ntp_sync_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 

@@ -3,6 +3,7 @@
 #include <time.h>
 #include "esp_log.h"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "mbedtls/md.h"
@@ -43,10 +44,17 @@ static SemaphoreHandle_t session_mutex = NULL;
 static bool auth_initialized = false;
 
 /**
- * @brief Get current timestamp in seconds
+ * @brief Get current wall-clock timestamp in seconds (for audit logs)
  */
 static uint32_t get_current_time(void) {
     return (uint32_t)time(NULL);
+}
+
+/**
+ * @brief Get monotonic uptime in seconds (immune to NTP time jumps)
+ */
+static uint32_t get_monotonic_seconds(void) {
+    return (uint32_t)(esp_timer_get_time() / 1000000ULL);
 }
 
 /**
@@ -172,9 +180,11 @@ bool auth_verify_password(const char* password, const password_hash_t* stored_ha
 }
 
 /**
- * @brief Add entry to audit log
+ * @brief Add entry to audit log (thread-safe)
  */
 static void add_audit_log(const char* username, const char* ip_address, const char* result, bool success) {
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
+
     audit_log_entry_t* entry = &audit_logs[audit_log_head];
     
     entry->timestamp = get_current_time();
@@ -193,8 +203,12 @@ static void add_audit_log(const char* username, const char* ip_address, const ch
     if (audit_log_count < AUTH_MAX_AUDIT_LOGS) {
         audit_log_count++;
     }
+
+    if (locked) {
+        xSemaphoreGive(session_mutex);
+    }
     
-    ESP_LOGI(TAG, "Audit log: user=%s ip=%s result=%s", username, ip_address, result);
+    ESP_LOGI(TAG, "Audit log: user=%s ip=%s result=%s", username ? username : "unknown", ip_address ? ip_address : "unknown", result);
 }
 
 void auth_manager_init(void) {
@@ -369,28 +383,47 @@ esp_err_t auth_change_password(const char* current_password, const char* new_pas
     return err;
 }
 
+static void clear_failed_attempts_unlocked(const char* ip_address) {
+    if (!ip_address) {
+        return;
+    }
+    for (int i = 0; i < MAX_TRACKED_IPS; i++) {
+        if (strcmp(login_attempts[i].ip_address, ip_address) == 0) {
+            memset(&login_attempts[i], 0, sizeof(login_attempts_t));
+            return;
+        }
+    }
+}
+
 bool auth_is_ip_blocked(const char* ip_address) {
     if (!ip_address) {
         return false;
     }
     
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
+    bool blocked = false;
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
     
     for (int i = 0; i < MAX_TRACKED_IPS; i++) {
         if (strcmp(login_attempts[i].ip_address, ip_address) == 0) {
             if (login_attempts[i].blocked && current_time < login_attempts[i].block_until) {
-                return true;
+                blocked = true;
+                break;
             }
             // Unblock if time has passed
             if (login_attempts[i].blocked && current_time >= login_attempts[i].block_until) {
                 login_attempts[i].blocked = false;
                 login_attempts[i].failed_attempts = 0;
             }
-            return false;
+            break;
         }
     }
+
+    if (locked) {
+        xSemaphoreGive(session_mutex);
+    }
     
-    return false;
+    return blocked;
 }
 
 void auth_record_failed_attempt(const char* ip_address) {
@@ -398,10 +431,13 @@ void auth_record_failed_attempt(const char* ip_address) {
         return;
     }
     
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
     int empty_slot = -1;
+    int oldest_slot = 0;
+    uint32_t oldest_time = UINT32_MAX;
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
     
-    // Find existing entry or empty slot
+    // Find existing entry, empty slot, or oldest slot for eviction
     for (int i = 0; i < MAX_TRACKED_IPS; i++) {
         if (strcmp(login_attempts[i].ip_address, ip_address) == 0) {
             // Check if attempts are within the window
@@ -421,22 +457,32 @@ void auth_record_failed_attempt(const char* ip_address) {
                 ESP_LOGW(TAG, "IP %s blocked due to %d failed attempts", 
                          ip_address, login_attempts[i].failed_attempts);
             }
-            
+            if (locked) {
+                xSemaphoreGive(session_mutex);
+            }
             return;
         }
         
         if (empty_slot == -1 && login_attempts[i].ip_address[0] == '\0') {
             empty_slot = i;
         }
+        if (login_attempts[i].last_attempt_time < oldest_time) {
+            oldest_time = login_attempts[i].last_attempt_time;
+            oldest_slot = i;
+        }
     }
     
-    // Add new entry if space available
-    if (empty_slot != -1) {
-        strncpy(login_attempts[empty_slot].ip_address, ip_address, AUTH_IP_ADDRESS_MAX_LEN - 1);
-        login_attempts[empty_slot].ip_address[AUTH_IP_ADDRESS_MAX_LEN - 1] = '\0';
-        login_attempts[empty_slot].failed_attempts = 1;
-        login_attempts[empty_slot].last_attempt_time = current_time;
-        login_attempts[empty_slot].blocked = false;
+    // Use empty slot if available, otherwise evict oldest slot
+    int target_slot = (empty_slot != -1) ? empty_slot : oldest_slot;
+    strncpy(login_attempts[target_slot].ip_address, ip_address, AUTH_IP_ADDRESS_MAX_LEN - 1);
+    login_attempts[target_slot].ip_address[AUTH_IP_ADDRESS_MAX_LEN - 1] = '\0';
+    login_attempts[target_slot].failed_attempts = 1;
+    login_attempts[target_slot].last_attempt_time = current_time;
+    login_attempts[target_slot].blocked = false;
+    login_attempts[target_slot].block_until = 0;
+
+    if (locked) {
+        xSemaphoreGive(session_mutex);
     }
 }
 
@@ -444,12 +490,10 @@ void auth_clear_failed_attempts(const char* ip_address) {
     if (!ip_address) {
         return;
     }
-    
-    for (int i = 0; i < MAX_TRACKED_IPS; i++) {
-        if (strcmp(login_attempts[i].ip_address, ip_address) == 0) {
-            memset(&login_attempts[i], 0, sizeof(login_attempts_t));
-            return;
-        }
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
+    clear_failed_attempts_unlocked(ip_address);
+    if (locked) {
+        xSemaphoreGive(session_mutex);
     }
 }
 
@@ -516,7 +560,7 @@ auth_result_t auth_login(const char* username, const char* password, const char*
     }
     
     // Authentication successful - create session
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
     
     // Find empty session slot
     int session_slot = -1;
@@ -530,8 +574,9 @@ auth_result_t auth_login(const char* username, const char* password, const char*
 
         // If no empty slot, use oldest session
         if (session_slot == -1) {
-            uint32_t oldest_time = current_time;
-            for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+            session_slot = 0;
+            uint32_t oldest_time = active_sessions[0].created_at;
+            for (int i = 1; i < AUTH_MAX_SESSIONS; i++) {
                 if (active_sessions[i].created_at < oldest_time) {
                     oldest_time = active_sessions[i].created_at;
                     session_slot = i;
@@ -561,9 +606,9 @@ auth_result_t auth_login(const char* username, const char* password, const char*
         result.session_id[AUTH_SESSION_ID_SIZE - 1] = '\0';
         result.expires_at = session->expires_at;
 
-        // Clear failed attempts on successful login
+        // Clear failed attempts on successful login (already holding session_mutex)
         if (client_ip) {
-            auth_clear_failed_attempts(client_ip);
+            clear_failed_attempts_unlocked(client_ip);
         }
     
         xSemaphoreGive(session_mutex);
@@ -582,7 +627,7 @@ bool auth_validate_session(const char* session_id) {
         return false;
     }
 
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
 
     bool valid = false;
     if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -613,7 +658,7 @@ void auth_extend_session(const char* session_id) {
         return;
     }
 
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
 
     if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
@@ -648,7 +693,7 @@ void auth_logout(const char* session_id) {
 }
 
 void auth_cleanup_expired_sessions(void) {
-    uint32_t current_time = get_current_time();
+    uint32_t current_time = get_monotonic_seconds();
     int cleaned = 0;
 
     if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
@@ -673,7 +718,12 @@ int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs) {
         return 0;
     }
     
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE);
+
     if (audit_log_count == 0) {
+        if (locked) {
+            xSemaphoreGive(session_mutex);
+        }
         ESP_LOGI(TAG, "No audit logs available");
         return 0;
     }
@@ -703,6 +753,10 @@ int auth_get_audit_logs(audit_log_entry_t* logs, int max_logs) {
         }
         
         memcpy(&logs[i], &audit_logs[index], sizeof(audit_log_entry_t));
+    }
+
+    if (locked) {
+        xSemaphoreGive(session_mutex);
     }
     
     ESP_LOGI(TAG, "Successfully retrieved %d audit logs", count);

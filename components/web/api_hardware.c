@@ -19,7 +19,7 @@ static const char *TAG = "API_HARDWARE";
 // ============================================================================
 
 static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 
@@ -53,7 +53,7 @@ static esp_err_t post_hardware_test_doorbell_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_hardware_test_door_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 
@@ -87,7 +87,7 @@ static esp_err_t post_hardware_test_door_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_hardware_test_light_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 
@@ -166,7 +166,7 @@ static esp_err_t get_hardware_state_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_hardware_test_stop_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 
