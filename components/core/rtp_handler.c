@@ -261,12 +261,33 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
         // RFC 4733 telephone-event
         rtp_process_telephone_event(header, payload, payload_size);
         return 0; // No audio samples to return
-    } else if (payload_type == 0 || payload_type == 8) {
-        // Audio payload (PCMU=0, PCMA=8)
-        // Decode μ-law to linear PCM
+    } else if (payload_type == 0) {
+        // PCMU (G.711 μ-law)
         size_t sample_count = (payload_size < max_samples) ? payload_size : max_samples;
         for (size_t i = 0; i < sample_count; i++) {
             samples[i] = mulaw_decode_table[payload[i]];
+        }
+        return sample_count;
+    } else if (payload_type == 8) {
+        // PCMA (G.711 A-law)
+        size_t sample_count = (payload_size < max_samples) ? payload_size : max_samples;
+        for (size_t i = 0; i < sample_count; i++) {
+            uint8_t a_val = payload[i] ^ 0x55;
+            int t = (a_val & 0x0F) << 4;
+            int seg = ((unsigned)a_val & 0x70) >> 4;
+            switch (seg) {
+                case 0:
+                    t += 8;
+                    break;
+                case 1:
+                    t += 0x108;
+                    break;
+                default:
+                    t += 0x108;
+                    t <<= (seg - 1);
+                    break;
+            }
+            samples[i] = (int16_t)((a_val & 0x80) ? t : -t);
         }
         return sample_count;
     } else {
@@ -285,7 +306,7 @@ int rtp_receive_audio(int16_t* samples, size_t max_samples)
     return sample_count;
 }
 
-// NEW: Send RFC 4733 telephone-event DTMF digit
+// Send RFC 4733 telephone-event DTMF digit (start + continuation + 3x end packets)
 int rtp_send_dtmf(char dtmf_digit)
 {
     if (!session_active || rtp_socket < 0) {
@@ -302,48 +323,45 @@ int rtp_send_dtmf(char dtmf_digit)
     
     ESP_LOGI(TAG, "Sending DTMF via RFC 4733: %c (event code %d)", dtmf_digit, event_code);
     
-    // Allocate buffer for RTP telephone-event packet
-    size_t packet_size = sizeof(rtp_header_t) + sizeof(rtp_telephone_event_t);
-    uint8_t* packet = malloc(packet_size);
-    if (!packet) {
-        ESP_LOGE(TAG, "Failed to allocate DTMF packet buffer");
-        return -1;
-    }
+    uint8_t packet[sizeof(rtp_header_t) + sizeof(rtp_telephone_event_t)];
+    memset(packet, 0, sizeof(packet));
     
-    // Build RTP header for telephone-event
     rtp_header_t* header = (rtp_header_t*)packet;
     header->version = 2;
     header->padding = 0;
     header->extension = 0;
     header->csrc_count = 0;
-    header->marker = 0;
     header->payload_type = 101; // RFC 4733 telephone-event
-    header->sequence = htons(sequence_number++);
-    header->timestamp = htonl(timestamp);
+    header->timestamp = htonl(timestamp); // Constant event start timestamp per RFC 4733
     header->ssrc = htonl(ssrc);
     
-    // Build telephone-event payload
     rtp_telephone_event_t* event = (rtp_telephone_event_t*)(packet + sizeof(rtp_header_t));
     event->event = event_code;
-    event->e_r_volume = 0x80 | 10; // End bit set, volume 10 (default)
-    event->duration = htons(160); // 20ms duration at 8000Hz (20ms * 8000 / 1000)
     
-    // Send packet
-    int sent = sendto(rtp_socket, packet, packet_size, 0,
-                     (struct sockaddr*)&remote_addr, sizeof(remote_addr));
+    int total_sent = 0;
+    const uint16_t durations[5] = {160, 320, 480, 480, 480};
+    const uint8_t end_flags[5] = {0, 0, 0x80, 0x80, 0x80};
     
-    free(packet);
-    
-    if (sent < 0) {
-        ESP_LOGE(TAG, "Failed to send DTMF RTP packet");
-        return -1;
+    for (int i = 0; i < 5; i++) {
+        header->marker = (i == 0) ? 1 : 0;
+        header->sequence = htons(sequence_number++);
+        event->e_r_volume = end_flags[i] | 10; // Volume 10 (-10 dBm0)
+        event->duration = htons(durations[i]);
+        
+        int sent = sendto(rtp_socket, packet, sizeof(packet), 0,
+                         (struct sockaddr*)&remote_addr, sizeof(remote_addr));
+        if (sent < 0) {
+            ESP_LOGE(TAG, "Failed to send DTMF RTP packet %d", i);
+            return -1;
+        }
+        total_sent += sent;
     }
     
-    // Update timestamp for next packet
-    timestamp += 160; // 20ms worth of samples at 8000Hz
+    // Advance RTP timestamp by total event duration (60ms = 480 samples at 8000Hz)
+    timestamp += 480;
     
     ESP_LOGI(TAG, "DTMF sent successfully via RFC 4733: %c", dtmf_digit);
-    return sent;
+    return total_sent;
 }
 
 bool rtp_is_active(void)
