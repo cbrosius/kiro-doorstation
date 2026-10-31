@@ -43,6 +43,8 @@ typedef struct {
 // Forward declarations
 static void wifi_clear_scan_results(void);
 static void credential_test_task_func(void *pvParameters);
+static void wifi_load_extended_config(void);
+static wifi_config_data_t g_wifi_config = {.dhcp = true};
 
 void wifi_manager_register_ap_start_callback(
     wifi_manager_ap_start_callback_t cb) {
@@ -326,6 +328,7 @@ void wifi_manager_init(void) {
                                              &wifi_event_handler, NULL));
 
   // Load saved WiFi configuration
+  wifi_load_extended_config();
   wifi_manager_config_t saved_config = wifi_load_config();
 
   if (saved_config.configured) {
@@ -423,6 +426,9 @@ void wifi_connect_sta(const char *ssid, const char *password) {
     sta_netif = esp_netif_create_default_wifi_sta();
   }
 
+  // Apply DHCP or Static IP configuration to sta_netif
+  wifi_manager_apply_ip_config();
+
   // Set the mode and configuration
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
@@ -440,11 +446,20 @@ void wifi_connect_sta(const char *ssid, const char *password) {
 void wifi_save_config(const char *ssid, const char *password) {
   ESP_LOGI(TAG, "Saving WiFi configuration");
 
+  if (ssid) {
+    strncpy(g_wifi_config.ssid, ssid, sizeof(g_wifi_config.ssid) - 1);
+    g_wifi_config.ssid[sizeof(g_wifi_config.ssid) - 1] = '\0';
+  }
+  if (password) {
+    strncpy(g_wifi_config.password, password, sizeof(g_wifi_config.password) - 1);
+    g_wifi_config.password[sizeof(g_wifi_config.password) - 1] = '\0';
+  }
+
   nvs_handle_t nvs_handle;
   esp_err_t err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
   if (err == ESP_OK) {
-    nvs_set_str(nvs_handle, "ssid", ssid);
-    nvs_set_str(nvs_handle, "password", password);
+    nvs_set_str(nvs_handle, "ssid", ssid ? ssid : "");
+    nvs_set_str(nvs_handle, "password", password ? password : "");
     nvs_set_u8(nvs_handle, "configured", 1);
     nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
@@ -867,8 +882,108 @@ bool wifi_test_credentials(const char *ssid, const char *password) {
  * credential testing This should be called after the user has been redirected
  * to the STA IP
  */
-// Global wifi config structure for easy access
-static wifi_config_data_t g_wifi_config = {0};
+static void wifi_load_extended_config(void) {
+  memset(&g_wifi_config, 0, sizeof(g_wifi_config));
+  g_wifi_config.dhcp = true;
+
+  wifi_manager_config_t base_cfg = wifi_load_config();
+  if (base_cfg.configured) {
+    strncpy(g_wifi_config.ssid, base_cfg.ssid, sizeof(g_wifi_config.ssid) - 1);
+    strncpy(g_wifi_config.password, base_cfg.password,
+            sizeof(g_wifi_config.password) - 1);
+  }
+
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("wifi_config_ext", NVS_READONLY, &nvs_handle);
+  if (err == ESP_OK) {
+    size_t sz;
+    uint8_t dhcp_val = 1;
+    if (nvs_get_u8(nvs_handle, "dhcp", &dhcp_val) == ESP_OK) {
+      g_wifi_config.dhcp = (dhcp_val != 0);
+    }
+    sz = sizeof(g_wifi_config.ssid);
+    if (nvs_get_str(nvs_handle, "ssid", g_wifi_config.ssid, &sz) != ESP_OK &&
+        base_cfg.configured) {
+      strncpy(g_wifi_config.ssid, base_cfg.ssid,
+              sizeof(g_wifi_config.ssid) - 1);
+    }
+    sz = sizeof(g_wifi_config.password);
+    if (nvs_get_str(nvs_handle, "password", g_wifi_config.password, &sz) !=
+            ESP_OK &&
+        base_cfg.configured) {
+      strncpy(g_wifi_config.password, base_cfg.password,
+              sizeof(g_wifi_config.password) - 1);
+    }
+    sz = sizeof(g_wifi_config.static_ip);
+    nvs_get_str(nvs_handle, "static_ip", g_wifi_config.static_ip, &sz);
+    sz = sizeof(g_wifi_config.gateway);
+    nvs_get_str(nvs_handle, "gateway", g_wifi_config.gateway, &sz);
+    sz = sizeof(g_wifi_config.netmask);
+    nvs_get_str(nvs_handle, "netmask", g_wifi_config.netmask, &sz);
+    sz = sizeof(g_wifi_config.dns1);
+    nvs_get_str(nvs_handle, "dns1", g_wifi_config.dns1, &sz);
+    sz = sizeof(g_wifi_config.dns2);
+    nvs_get_str(nvs_handle, "dns2", g_wifi_config.dns2, &sz);
+    nvs_close(nvs_handle);
+  }
+}
+
+esp_err_t wifi_manager_apply_ip_config(void) {
+  if (sta_netif == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  if (g_wifi_config.dhcp || g_wifi_config.static_ip[0] == '\0') {
+    esp_err_t err = esp_netif_dhcpc_start(sta_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+      ESP_LOGW(TAG, "Failed to start DHCP client: %s", esp_err_to_name(err));
+      return err;
+    }
+    ESP_LOGI(TAG, "DHCP client enabled on STA interface");
+    return ESP_OK;
+  }
+
+  esp_netif_ip_info_t ip_info = {0};
+  if (esp_netif_str_to_ip4(g_wifi_config.static_ip, &ip_info.ip) != ESP_OK ||
+      esp_netif_str_to_ip4(g_wifi_config.netmask, &ip_info.netmask) != ESP_OK ||
+      esp_netif_str_to_ip4(g_wifi_config.gateway, &ip_info.gw) != ESP_OK) {
+    ESP_LOGE(TAG, "Invalid static IP parameters, keeping DHCP");
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  esp_err_t err = esp_netif_dhcpc_stop(sta_netif);
+  if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+    ESP_LOGW(TAG, "Failed to stop DHCP client: %s", esp_err_to_name(err));
+  }
+
+  err = esp_netif_set_ip_info(sta_netif, &ip_info);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to set static IP info: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  if (g_wifi_config.dns1[0] != '\0') {
+    esp_netif_dns_info_t dns1_info = {0};
+    if (esp_netif_str_to_ip4(g_wifi_config.dns1, &dns1_info.ip.u_addr.ip4) ==
+        ESP_OK) {
+      dns1_info.ip.type = ESP_IPADDR_TYPE_V4;
+      esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns1_info);
+    }
+  }
+  if (g_wifi_config.dns2[0] != '\0') {
+    esp_netif_dns_info_t dns2_info = {0};
+    if (esp_netif_str_to_ip4(g_wifi_config.dns2, &dns2_info.ip.u_addr.ip4) ==
+        ESP_OK) {
+      dns2_info.ip.type = ESP_IPADDR_TYPE_V4;
+      esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns2_info);
+    }
+  }
+
+  ESP_LOGI(TAG, "Applied Static IP: %s, Netmask: %s, Gateway: %s",
+           g_wifi_config.static_ip, g_wifi_config.netmask,
+           g_wifi_config.gateway);
+  return ESP_OK;
+}
 
 void wifi_manager_get_config(wifi_config_data_t *config) {
   if (config) {
@@ -893,11 +1008,15 @@ void wifi_manager_save_config(void) {
     nvs_set_str(nvs_handle, "static_ip", g_wifi_config.static_ip);
     nvs_set_str(nvs_handle, "gateway", g_wifi_config.gateway);
     nvs_set_str(nvs_handle, "netmask", g_wifi_config.netmask);
+    nvs_set_str(nvs_handle, "dns1", g_wifi_config.dns1);
+    nvs_set_str(nvs_handle, "dns2", g_wifi_config.dns2);
     nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
 
     // Also save to the legacy wifi_config for compatibility with existing logic
-    wifi_save_config(g_wifi_config.ssid, g_wifi_config.password);
+    if (g_wifi_config.ssid[0] != '\0') {
+      wifi_save_config(g_wifi_config.ssid, g_wifi_config.password);
+    }
   } else {
     ESP_LOGE(TAG, "Error opening NVS for saving extended wifi config: %s",
              esp_err_to_name(err));

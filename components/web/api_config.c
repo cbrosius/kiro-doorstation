@@ -1,6 +1,7 @@
 #include "api_config.h"
 #include "cJSON.h"
 #include "dtmf_decoder.h"
+#include "esp_app_desc.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "ntp_sync.h"
@@ -35,7 +36,9 @@ static esp_err_t get_config_backup_handler(httpd_req_t *req) {
     return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "Failed to create JSON");
 
-  cJSON_AddStringToObject(root, "firmware_version", "1.0.0");
+  const esp_app_desc_t *app_desc = esp_app_get_description();
+  cJSON_AddStringToObject(root, "firmware_version",
+                          app_desc ? app_desc->version : "1.0.0");
   cJSON_AddBoolToObject(root, "include_passwords", include_passwords);
 
   cJSON *wifi = cJSON_CreateObject();

@@ -15,6 +15,7 @@ esp_err_t http_response_json_success(httpd_req_t *req, const char *message) {
   cJSON *root = cJSON_CreateObject();
   if (!root)
     return ESP_FAIL;
+  cJSON_AddBoolToObject(root, "success", true);
   cJSON_AddStringToObject(root, "status", "success");
   if (message) {
     cJSON_AddStringToObject(root, "message", message);
@@ -29,6 +30,7 @@ esp_err_t http_response_json_error(httpd_req_t *req, httpd_err_code_t code,
     httpd_resp_send_err(req, code, message);
     return ESP_FAIL;
   }
+  cJSON_AddBoolToObject(root, "success", false);
   cJSON_AddStringToObject(root, "status", "error");
   if (message) {
     cJSON_AddStringToObject(root, "message", message);

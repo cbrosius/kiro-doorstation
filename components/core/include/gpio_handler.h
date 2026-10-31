@@ -23,6 +23,10 @@ typedef enum { DOORBELL_1 = 1, DOORBELL_2 = 2 } doorbell_t;
 
 void gpio_handler_init(void);
 void door_relay_activate(void);
+esp_err_t door_relay_activate_for_ms(uint32_t duration_ms, const char *source);
+void door_relay_deactivate(void);
+bool door_relay_is_active(void);
+uint32_t door_relay_get_remaining_ms(void);
 bool light_relay_toggle(void);
 bool is_doorbell_pressed(doorbell_t bell);
 
