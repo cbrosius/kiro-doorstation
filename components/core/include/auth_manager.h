@@ -183,6 +183,11 @@ void auth_record_failed_attempt(const char* ip_address);
 void auth_clear_failed_attempts(const char* ip_address);
 
 /**
+ * @brief Clear all failed login attempts and temporary IP blocks across all tracked IPs
+ */
+void auth_clear_all_failed_attempts(void);
+
+/**
  * @brief Hash a password using PBKDF2
  * 
  * @param password Password to hash

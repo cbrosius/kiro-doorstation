@@ -497,6 +497,15 @@ void auth_clear_failed_attempts(const char* ip_address) {
     }
 }
 
+void auth_clear_all_failed_attempts(void) {
+    bool locked = (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE);
+    memset(login_attempts, 0, sizeof(login_attempts));
+    if (locked) {
+        xSemaphoreGive(session_mutex);
+    }
+    ESP_LOGI(TAG, "Cleared all failed login attempts and temporary IP blocks");
+}
+
 auth_result_t auth_login(const char* username, const char* password, const char* client_ip) {
     auth_result_t result = {0};
     
@@ -798,10 +807,14 @@ esp_err_t auth_reset_password(void) {
         return err;
     }
     
-    // Invalidate all sessions
-    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    // Invalidate all sessions and reset all temporary IP blocks
+    if (session_mutex != NULL && xSemaphoreTake(session_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         memset(active_sessions, 0, sizeof(active_sessions));
+        memset(login_attempts, 0, sizeof(login_attempts));
         xSemaphoreGive(session_mutex);
+    } else {
+        memset(active_sessions, 0, sizeof(active_sessions));
+        memset(login_attempts, 0, sizeof(login_attempts));
     }
     
     // Log password reset event

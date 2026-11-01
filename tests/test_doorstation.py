@@ -167,6 +167,18 @@ class TestDoorstationCore(unittest.TestCase):
         self.assertIn('"/api/email/test"', api_email_c)
         self.assertIn('"/api/email/send-report"', api_email_c)
 
+    def test_password_reset_clears_ip_blocks(self) -> None:
+        auth_mgr_c = (REPO_ROOT / "components" / "core" / "auth_manager.c").read_text(
+            encoding="utf-8"
+        )
+        reset_fn_pos = auth_mgr_c.find("esp_err_t auth_reset_password(void)")
+        self.assertGreater(reset_fn_pos, 0)
+        reset_fn_body = auth_mgr_c[reset_fn_pos:]
+        self.assertIn(
+            "memset(login_attempts, 0, sizeof(login_attempts))", reset_fn_body
+        )
+        self.assertIn("void auth_clear_all_failed_attempts(void)", auth_mgr_c)
+
     def test_index_html_modern_web_practices(self) -> None:
         index_html = (REPO_ROOT / "components" / "web" / "index.html").read_text(
             encoding="utf-8"

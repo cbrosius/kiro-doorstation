@@ -88,20 +88,20 @@ TEST_CASE("gpio_handler unified door relay activation and deactivation", "[gpio_
 
 TEST_CASE("auth_manager password policy and rate limiting", "[auth_manager]")
 {
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, auth_validate_password_policy("short"));
-    TEST_ASSERT_EQUAL(ESP_OK, auth_validate_password_policy("ValidPass123!"));
+    TEST_ASSERT_FALSE(auth_validate_password("short", NULL, 0));
+    TEST_ASSERT_TRUE(auth_validate_password("ValidPass123!", NULL, 0));
 
     const char *test_ip = "192.0.2.99";
-    auth_reset_failed_attempts(test_ip);
-    TEST_ASSERT_TRUE(auth_check_rate_limit(test_ip));
+    auth_clear_failed_attempts(test_ip);
+    TEST_ASSERT_FALSE(auth_is_ip_blocked(test_ip));
 
     for (int i = 0; i < 5; i++) {
         auth_record_failed_attempt(test_ip);
     }
-    TEST_ASSERT_FALSE(auth_check_rate_limit(test_ip));
+    TEST_ASSERT_TRUE(auth_is_ip_blocked(test_ip));
 
-    auth_reset_failed_attempts(test_ip);
-    TEST_ASSERT_TRUE(auth_check_rate_limit(test_ip));
+    auth_clear_all_failed_attempts();
+    TEST_ASSERT_FALSE(auth_is_ip_blocked(test_ip));
 }
 
 TEST_CASE("rtp_handler inactive session safety", "[rtp_handler]")
