@@ -253,6 +253,12 @@ void app_main(void) {
   // Start session cleanup task (4096 bytes stack for mutex operations and looping)
   xTaskCreate(&session_cleanup_task, "session_cleanup", 4096, NULL, 5, NULL);
 
+  // Mark current OTA firmware image as valid after all core components initialized cleanly
+  esp_err_t ota_valid_err = ota_mark_valid();
+  if (ota_valid_err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to mark OTA app valid: %s", esp_err_to_name(ota_valid_err));
+  }
+
   // Initialize Task Watchdog Timer for critical tasks
   ESP_LOGI(TAG, "Initializing Task Watchdog Timer");
   esp_task_wdt_config_t twdt_config = {
@@ -269,9 +275,16 @@ void app_main(void) {
     ESP_LOGW(TAG, "Failed to initialize Task Watchdog Timer: %s", esp_err_to_name(twdt_err));
   }
 
+  // Subscribe main health monitor task to TWDT
+  esp_err_t wdt_add_err = esp_task_wdt_add(NULL);
+  if (wdt_add_err != ESP_OK && wdt_add_err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(TAG, "Failed to add main task to TWDT: %s", esp_err_to_name(wdt_add_err));
+  }
+
   // Main loop - monitor system health
   uint32_t health_check_counter = 0;
   while (1) {
+    esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1000));
     health_check_counter++;
 

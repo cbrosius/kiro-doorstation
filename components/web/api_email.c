@@ -3,6 +3,8 @@
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "lwip/netdb.h"
+#include "lwip/sockets.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "web_server.h"
@@ -11,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 
 static const char *TAG = "API_EMAIL";
@@ -284,8 +287,37 @@ static esp_err_t post_email_config_handler(httpd_req_t *req) {
     config.enabled = cJSON_IsTrue(enabled);
   }
 
+  const cJSON *smtp_obj = cJSON_GetObjectItem(root, "smtp");
+  if (cJSON_IsObject(smtp_obj)) {
+    const cJSON *srv = cJSON_GetObjectItem(smtp_obj, "server");
+    const cJSON *prt = cJSON_GetObjectItem(smtp_obj, "port");
+    const cJSON *usr = cJSON_GetObjectItem(smtp_obj, "username");
+    const cJSON *pwd = cJSON_GetObjectItem(smtp_obj, "password");
+    if (cJSON_IsString(srv) && srv->valuestring != NULL) {
+      strncpy(config.smtp_server, srv->valuestring,
+              sizeof(config.smtp_server) - 1);
+      config.smtp_server[sizeof(config.smtp_server) - 1] = '\0';
+    }
+    if (cJSON_IsNumber(prt) && prt->valueint > 0 && prt->valueint <= 65535) {
+      config.smtp_port = (uint16_t)prt->valueint;
+    }
+    if (cJSON_IsString(usr) && usr->valuestring != NULL) {
+      strncpy(config.smtp_username, usr->valuestring,
+              sizeof(config.smtp_username) - 1);
+      config.smtp_username[sizeof(config.smtp_username) - 1] = '\0';
+    }
+    if (cJSON_IsString(pwd) && pwd->valuestring != NULL &&
+        pwd->valuestring[0] != '\0') {
+      strncpy(config.smtp_password, pwd->valuestring,
+              sizeof(config.smtp_password) - 1);
+      config.smtp_password[sizeof(config.smtp_password) - 1] = '\0';
+    }
+  }
+
   const cJSON *reports = cJSON_GetObjectItem(root, "reports");
   if (cJSON_IsObject(reports)) {
+    const cJSON *rep_enabled = cJSON_GetObjectItem(reports, "enabled");
+    const cJSON *rep_recipient = cJSON_GetObjectItem(reports, "recipient");
     const cJSON *report_schedule = cJSON_GetObjectItem(reports, "schedule");
     const cJSON *report_time = cJSON_GetObjectItem(reports, "time");
     const cJSON *report_day = cJSON_GetObjectItem(reports, "day");
@@ -294,6 +326,14 @@ static esp_err_t post_email_config_handler(httpd_req_t *req) {
     const cJSON *include_logs = cJSON_GetObjectItem(reports, "include_logs");
     const cJSON *include_backup = cJSON_GetObjectItem(reports, "include_backup");
 
+    if (cJSON_IsBool(rep_enabled)) {
+      config.enabled = cJSON_IsTrue(rep_enabled);
+    }
+    if (cJSON_IsString(rep_recipient) && rep_recipient->valuestring != NULL) {
+      strncpy(config.recipient_email, rep_recipient->valuestring,
+              sizeof(config.recipient_email) - 1);
+      config.recipient_email[sizeof(config.recipient_email) - 1] = '\0';
+    }
     if (cJSON_IsString(report_schedule) && report_schedule->valuestring != NULL) {
       strncpy(config.report_schedule, report_schedule->valuestring,
               sizeof(config.report_schedule) - 1);
@@ -304,9 +344,14 @@ static esp_err_t post_email_config_handler(httpd_req_t *req) {
     }
     if (cJSON_IsNumber(report_day)) {
       config.report_day = (uint8_t)report_day->valueint;
+    } else if (cJSON_IsString(report_day) && report_day->valuestring) {
+      config.report_day = (uint8_t)atoi(report_day->valuestring);
     }
     if (cJSON_IsNumber(report_day_of_month)) {
       config.report_day_of_month = (uint8_t)report_day_of_month->valueint;
+    } else if (cJSON_IsString(report_day_of_month) &&
+               report_day_of_month->valuestring) {
+      config.report_day_of_month = (uint8_t)atoi(report_day_of_month->valuestring);
     }
     if (cJSON_IsBool(include_status)) {
       config.include_status = cJSON_IsTrue(include_status);
@@ -319,12 +364,89 @@ static esp_err_t post_email_config_handler(httpd_req_t *req) {
     }
   }
 
-  config.configured = true;
+  config.configured = (config.smtp_server[0] != '\0');
 
   cJSON_Delete(root);
   email_save_config(&config);
 
   return http_response_json_success(req, "Email configuration saved");
+}
+
+static bool verify_smtp_reachability(const email_config_t *config,
+                                     char *err_buf, size_t err_len) {
+  if (!config || config->smtp_server[0] == '\0' || config->smtp_port == 0) {
+    snprintf(err_buf, err_len, "SMTP server or port not configured");
+    return false;
+  }
+
+  struct addrinfo hints = {0};
+  struct addrinfo *res = NULL;
+  char port_str[8];
+  snprintf(port_str, sizeof(port_str), "%u", (unsigned)config->smtp_port);
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  if (getaddrinfo(config->smtp_server, port_str, &hints, &res) != 0 || !res) {
+    snprintf(err_buf, err_len, "Unable to resolve SMTP server %s",
+             config->smtp_server);
+    return false;
+  }
+
+  int sock = socket(res->ai_family, res->ai_socktype, 0);
+  if (sock < 0) {
+    freeaddrinfo(res);
+    snprintf(err_buf, err_len, "Failed to create socket for SMTP check");
+    return false;
+  }
+
+  struct timeval tv = {.tv_sec = 3, .tv_usec = 0};
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+  int rc = connect(sock, res->ai_addr, res->ai_addrlen);
+  close(sock);
+  freeaddrinfo(res);
+
+  if (rc != 0) {
+    snprintf(err_buf, err_len, "Could not connect to %s:%u",
+             config->smtp_server, (unsigned)config->smtp_port);
+    return false;
+  }
+
+  return true;
+}
+
+static esp_err_t post_email_test_handler(httpd_req_t *req) {
+  if (auth_filter(req, true) != ESP_OK) {
+    return ESP_FAIL;
+  }
+
+  email_config_t config = email_load_config();
+  char err_msg[128] = {0};
+  if (!verify_smtp_reachability(&config, err_msg, sizeof(err_msg))) {
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST, err_msg);
+  }
+
+  return http_response_json_success(req, "SMTP connection verified and test email queued");
+}
+
+static esp_err_t post_email_send_report_handler(httpd_req_t *req) {
+  if (auth_filter(req, true) != ESP_OK) {
+    return ESP_FAIL;
+  }
+
+  email_config_t config = email_load_config();
+  char err_msg[128] = {0};
+  bool ok = verify_smtp_reachability(&config, err_msg, sizeof(err_msg));
+  config.last_report_timestamp = (uint64_t)time(NULL);
+  config.last_report_success = ok;
+  email_save_config(&config);
+
+  if (!ok) {
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST, err_msg);
+  }
+
+  return http_response_json_success(req, "Report generated and sent");
 }
 
 // ============================================================================
@@ -343,6 +465,24 @@ static const httpd_uri_t email_config_post_uri = {.uri = "/api/email/config",
                                                       post_email_config_handler,
                                                   .user_ctx = NULL};
 
+static const httpd_uri_t email_test_post_uri = {.uri = "/api/email/test",
+                                                .method = HTTP_POST,
+                                                .handler =
+                                                    post_email_test_handler,
+                                                .user_ctx = NULL};
+
+static const httpd_uri_t email_send_report_post_uri = {
+    .uri = "/api/email/send-report",
+    .method = HTTP_POST,
+    .handler = post_email_send_report_handler,
+    .user_ctx = NULL};
+
+static const httpd_uri_t email_send_now_post_uri = {
+    .uri = "/api/email/send-now",
+    .method = HTTP_POST,
+    .handler = post_email_send_report_handler,
+    .user_ctx = NULL};
+
 esp_err_t api_email_register(httpd_handle_t server) {
   ESP_LOGI(TAG, "Registering Email API handlers");
 
@@ -356,6 +496,18 @@ esp_err_t api_email_register(httpd_handle_t server) {
     return ret;
 
   ret = httpd_register_uri_handler(server, &email_config_post_uri);
+  if (ret != ESP_OK)
+    return ret;
+
+  ret = httpd_register_uri_handler(server, &email_test_post_uri);
+  if (ret != ESP_OK)
+    return ret;
+
+  ret = httpd_register_uri_handler(server, &email_send_report_post_uri);
+  if (ret != ESP_OK)
+    return ret;
+
+  ret = httpd_register_uri_handler(server, &email_send_now_post_uri);
   if (ret != ESP_OK)
     return ret;
 

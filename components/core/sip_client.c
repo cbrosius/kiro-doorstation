@@ -5,6 +5,7 @@
 #include "esp_netif.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "led_handler.h"
 #include "lwip/netdb.h"
@@ -79,6 +80,29 @@ static int initial_invite_branch = 0;
 static int auth_invite_branch = 0;
 static int initial_invite_cseq = 1;
 static char invite_call_id_str[128] = {0};
+static char active_call_target_uri[128] = {0};
+static char active_call_remote_tag[64] = {0};
+static char active_call_local_tag[64] = {0};
+static int active_dialog_cseq = 2;
+
+typedef enum {
+  SIP_CMD_MAKE_CALL = 1,
+  SIP_CMD_HANGUP = 2,
+  SIP_CMD_SEND_DTMF = 3,
+} sip_cmd_type_t;
+
+typedef struct {
+  sip_cmd_type_t type;
+  char uri[128];
+  char dtmf_digit;
+} sip_cmd_t;
+
+static QueueHandle_t sip_cmd_queue = NULL;
+
+// Forward declarations for internal task-only implementations
+static void sip_client_make_call_internal(const char *uri);
+static void sip_client_hangup_internal(void);
+static void sip_client_send_dtmf_internal(char dtmf_digit);
 
 // Track authentication state to prevent infinite loops
 static int auth_attempt_count = 0;
@@ -237,13 +261,34 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
   sip_add_log_entry("info", "SIP task started on Core 1");
 
   while (1) {
-    // 100ms polling interval balances responsiveness with CPU usage.
-    // SIP retransmission timers (Timer A = 500ms) and RTP packet handling
-    // require faster than 1 Hz processing.
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // Use 20ms cadence during active calls to match G.711 160-sample (20ms @ 8kHz) RTP frames;
+    // use 100ms polling interval when idle to minimize CPU usage.
+    uint32_t loop_delay_ms =
+        (current_state == SIP_STATE_CONNECTED && rtp_is_active()) ? 20 : 100;
+    vTaskDelay(pdMS_TO_TICKS(loop_delay_ms));
 
     // Yield to WiFi and other high-priority tasks
     taskYIELD();
+
+    // Process queued commands from other tasks (GPIO doorbell, HTTP API, etc.)
+    if (sip_cmd_queue != NULL) {
+      sip_cmd_t cmd;
+      while (xQueueReceive(sip_cmd_queue, &cmd, 0) == pdTRUE) {
+        switch (cmd.type) {
+        case SIP_CMD_MAKE_CALL:
+          sip_client_make_call_internal(cmd.uri);
+          break;
+        case SIP_CMD_HANGUP:
+          sip_client_hangup_internal();
+          break;
+        case SIP_CMD_SEND_DTMF:
+          sip_client_send_dtmf_internal(cmd.dtmf_digit);
+          break;
+        default:
+          break;
+        }
+      }
+    }
 
     // Handle reinitialization request (from web interface)
     if (reinit_requested) {
@@ -337,7 +382,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
         sip_add_log_entry(
             "error",
             "RTP timeout - no audio received for 5 seconds. Hanging up.");
-        sip_client_hangup();
+        sip_client_hangup_internal();
         last_rtp_received_timestamp = 0; // Reset timestamp
       }
     }
@@ -624,7 +669,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
             }
 
             // Send ACK to complete call setup
-            char ack_msg[768]; // Local buffer for ACK message
+            static char ack_msg[1280]; // Buffer for ACK message
             if (!get_local_ip(local_ip, sizeof(local_ip))) {
               strcpy(local_ip, "192.168.1.100");
             }
@@ -647,20 +692,47 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
               }
             }
 
-            // Build ACK message
+            // Store remote To tag and Call-ID for dialog requests (BYE / INFO)
+            strncpy(active_call_remote_tag, to_tag,
+                    sizeof(active_call_remote_tag) - 1);
+            active_call_remote_tag[sizeof(active_call_remote_tag) - 1] = '\0';
+            snprintf(active_call_local_tag, sizeof(active_call_local_tag), "%d",
+                     initial_invite_from_tag);
+            if (call_id[0] != '\0') {
+              strncpy(invite_call_id_str, call_id,
+                      sizeof(invite_call_id_str) - 1);
+              invite_call_id_str[sizeof(invite_call_id_str) - 1] = '\0';
+            }
+            active_dialog_cseq = initial_invite_cseq + 1;
+
+            const char *ack_target_uri =
+                (active_call_target_uri[0] != '\0') ? active_call_target_uri
+                                                    : sip_config.username;
+            char formatted_ack_uri[256];
+            if (strncmp(ack_target_uri, "sip:", 4) == 0) {
+              strncpy(formatted_ack_uri, ack_target_uri,
+                      sizeof(formatted_ack_uri) - 1);
+              formatted_ack_uri[sizeof(formatted_ack_uri) - 1] = '\0';
+            } else {
+              snprintf(formatted_ack_uri, sizeof(formatted_ack_uri),
+                       "sip:%s@%s", ack_target_uri, sip_config.server);
+            }
+
+            // Build ACK message using the target URI and dialog tags
             snprintf(ack_msg, sizeof(ack_msg),
-                     "ACK sip:%s@%s SIP/2.0\r\n"
+                     "ACK %s SIP/2.0\r\n"
                      "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%lu\r\n"
-                     "From: <sip:%s@%s>;tag=%d\r\n"
-                     "To: <sip:%s@%s>;tag=%s\r\n"
+                     "From: <sip:%s@%s>;tag=%s\r\n"
+                     "To: <%s>%s%s\r\n"
                      "Call-ID: %s\r\n"
                      "CSeq: %d ACK\r\n"
                      "Max-Forwards: 70\r\n"
                      "Content-Length: 0\r\n\r\n",
-                     sip_config.username, sip_config.server, local_ip, (unsigned long)esp_random(),
+                     formatted_ack_uri, local_ip, (unsigned long)esp_random(),
                      sip_config.username, sip_config.server,
-                     initial_invite_from_tag, sip_config.username,
-                     sip_config.server, to_tag, call_id, initial_invite_cseq);
+                     active_call_local_tag, formatted_ack_uri,
+                     to_tag[0] ? ";tag=" : "", to_tag, call_id,
+                     initial_invite_cseq);
 
             // Send ACK
             struct sockaddr_in server_addr;
@@ -933,7 +1005,7 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
                           invite_auth_attempt_count + 1,
                           MAX_INVITE_AUTH_ATTEMPTS, retry_uri);
                       sip_add_log_entry("info", retry_log);
-                      sip_client_make_call(retry_uri);
+                      sip_client_make_call_internal(retry_uri);
                     }
                   }
                 }
@@ -1806,12 +1878,50 @@ static void sip_task(void *pvParameters __attribute__((unused))) {
 
           // Add tag to To header if not present
           char to_with_tag[300];
+          unsigned long local_tag_val = (unsigned long)esp_random();
           if (strstr(to_header, "tag=") == NULL) {
             snprintf(to_with_tag, sizeof(to_with_tag), "%s;tag=%lu", to_header,
-                     (unsigned long)esp_random());
+                     local_tag_val);
+            snprintf(active_call_local_tag, sizeof(active_call_local_tag), "%lu",
+                     local_tag_val);
           } else {
             strncpy(to_with_tag, to_header, sizeof(to_with_tag) - 1);
             to_with_tag[sizeof(to_with_tag) - 1] = '\0';
+            const char *existing_tag = strstr(to_header, "tag=");
+            if (existing_tag) {
+              existing_tag += 4;
+              size_t tlen = strcspn(existing_tag, ";>\r\n ");
+              if (tlen >= sizeof(active_call_local_tag)) {
+                tlen = sizeof(active_call_local_tag) - 1;
+              }
+              memcpy(active_call_local_tag, existing_tag, tlen);
+              active_call_local_tag[tlen] = '\0';
+            }
+          }
+
+          // Store dialog state for incoming call so BYE/INFO use valid headers
+          strncpy(invite_call_id_str, call_id, sizeof(invite_call_id_str) - 1);
+          invite_call_id_str[sizeof(invite_call_id_str) - 1] = '\0';
+          active_dialog_cseq = cseq_num + 1;
+          active_call_remote_tag[0] = '\0';
+          const char *from_tag_ptr = strstr(from_header, "tag=");
+          if (from_tag_ptr) {
+            from_tag_ptr += 4;
+            size_t ftlen = strcspn(from_tag_ptr, ";>\r\n ");
+            if (ftlen >= sizeof(active_call_remote_tag)) {
+              ftlen = sizeof(active_call_remote_tag) - 1;
+            }
+            memcpy(active_call_remote_tag, from_tag_ptr, ftlen);
+            active_call_remote_tag[ftlen] = '\0';
+          }
+          const char *from_uri_start = strstr(from_header, "sip:");
+          if (from_uri_start) {
+            size_t ulen = strcspn(from_uri_start, ">;\r\n ");
+            if (ulen >= sizeof(active_call_target_uri)) {
+              ulen = sizeof(active_call_target_uri) - 1;
+            }
+            memcpy(active_call_target_uri, from_uri_start, ulen);
+            active_call_target_uri[ulen] = '\0';
           }
 
           // Build 200 OK response
@@ -2083,6 +2193,9 @@ static bool sip_validate_config(const sip_config_t *config) {
 void sip_client_init(void) {
   // Create log mutex before any logging can occur
   sip_log_mutex = xSemaphoreCreateMutex();
+  if (!sip_cmd_queue) {
+    sip_cmd_queue = xQueueCreate(8, sizeof(sip_cmd_t));
+  }
   sip_add_log_entry("info", "Initializing SIP client");
 
   // Initialize RTP handler
@@ -2450,7 +2563,10 @@ static bool sip_client_register_auth(sip_auth_challenge_t *challenge) {
 #pragma GCC diagnostic pop
 }
 
-void sip_client_make_call(const char *uri) {
+static void sip_client_make_call_internal(const char *uri) {
+  if (!uri || uri[0] == '\0') {
+    return;
+  }
   // Allow calls only when IDLE or REGISTERED, or when retrying with
   // authentication
   if (current_state != SIP_STATE_IDLE &&
@@ -2495,6 +2611,9 @@ void sip_client_make_call(const char *uri) {
     }
     uri = formatted_uri;
   }
+
+  strncpy(active_call_target_uri, uri, sizeof(active_call_target_uri) - 1);
+  active_call_target_uri[sizeof(active_call_target_uri) - 1] = '\0';
 
   char log_msg[256]; // Increased buffer size to accommodate full URI
   snprintf(log_msg, sizeof(log_msg), "Initiating call to %s", uri);
@@ -2768,7 +2887,23 @@ void sip_client_make_call(const char *uri) {
 #pragma GCC diagnostic pop
 }
 
-void sip_client_hangup(void) {
+void sip_client_make_call(const char *uri) {
+  if (!uri || uri[0] == '\0') {
+    return;
+  }
+  if (sip_cmd_queue && sip_task_handle &&
+      xTaskGetCurrentTaskHandle() != sip_task_handle) {
+    sip_cmd_t cmd = {0};
+    cmd.type = SIP_CMD_MAKE_CALL;
+    strncpy(cmd.uri, uri, sizeof(cmd.uri) - 1);
+    cmd.uri[sizeof(cmd.uri) - 1] = '\0';
+    xQueueSend(sip_cmd_queue, &cmd, pdMS_TO_TICKS(50));
+  } else {
+    sip_client_make_call_internal(uri);
+  }
+}
+
+static void sip_client_hangup_internal(void) {
   if (current_state == SIP_STATE_CONNECTED ||
       current_state == SIP_STATE_CALLING ||
       current_state == SIP_STATE_RINGING) {
@@ -2798,26 +2933,57 @@ void sip_client_hangup(void) {
 
       // Use public IP for Contact header if available (for NAT traversal)
       const char *contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
-
-      int call_id = esp_random();
-      int tag = esp_random();
       int branch = esp_random();
 
+      char bye_target[128];
+      if (active_call_target_uri[0] != '\0') {
+        strncpy(bye_target, active_call_target_uri, sizeof(bye_target) - 1);
+        bye_target[sizeof(bye_target) - 1] = '\0';
+      } else {
+        snprintf(bye_target, sizeof(bye_target), "sip:%s@%s",
+                 sip_config.username, sip_config.server);
+      }
+
+      char call_id_hdr[128];
+      if (invite_call_id_str[0] != '\0') {
+        strncpy(call_id_hdr, invite_call_id_str, sizeof(call_id_hdr) - 1);
+        call_id_hdr[sizeof(call_id_hdr) - 1] = '\0';
+      } else {
+        snprintf(call_id_hdr, sizeof(call_id_hdr), "%d@%s",
+                 initial_invite_call_id, local_ip);
+      }
+
+      char from_tag_hdr[64];
+      if (active_call_local_tag[0] != '\0') {
+        strncpy(from_tag_hdr, active_call_local_tag, sizeof(from_tag_hdr) - 1);
+        from_tag_hdr[sizeof(from_tag_hdr) - 1] = '\0';
+      } else {
+        snprintf(from_tag_hdr, sizeof(from_tag_hdr), "%d",
+                 initial_invite_from_tag);
+      }
+
+      char to_tag_suffix[80] = {0};
+      if (active_call_remote_tag[0] != '\0') {
+        snprintf(to_tag_suffix, sizeof(to_tag_suffix), ";tag=%s",
+                 active_call_remote_tag);
+      }
+
+      int cseq = active_dialog_cseq++;
+
       snprintf(bye_msg, sizeof(bye_msg),
-               "BYE sip:%s@%s SIP/2.0\r\n"
+               "BYE %s SIP/2.0\r\n"
                "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
                "Max-Forwards: 70\r\n"
-               "From: <sip:%s@%s>;tag=%d\r\n"
-               "To: <sip:%s@%s>\r\n"
-               "Call-ID: %d@%s\r\n"
-               "CSeq: 2 BYE\r\n"
+               "From: <sip:%s@%s>;tag=%s\r\n"
+               "To: <%s>%s\r\n"
+               "Call-ID: %s\r\n"
+               "CSeq: %d BYE\r\n"
                "Contact: <sip:%s@%s:5060>\r\n"
                "User-Agent: ESP32-Doorbell/1.0\r\n"
                "Content-Length: 0\r\n\r\n",
-               sip_config.username, sip_config.server, contact_ip, branch,
-               sip_config.username, sip_config.server, tag, sip_config.username,
-               sip_config.server, call_id, local_ip, sip_config.username,
-               contact_ip);
+               bye_target, contact_ip, branch, sip_config.username,
+               sip_config.server, from_tag_hdr, bye_target, to_tag_suffix,
+               call_id_hdr, cseq, sip_config.username, contact_ip);
 
       // Send BYE
       struct sockaddr_in server_addr;
@@ -2835,7 +3001,36 @@ void sip_client_hangup(void) {
                current_state == SIP_STATE_RINGING) {
       // Send CANCEL for calls that haven't been answered yet
       sip_add_log_entry("info", "Canceling outgoing call");
-      // CANCEL message implementation would go here
+      if (sip_socket >= 0) {
+        static char cancel_msg[1024];
+        char local_ip[16];
+        if (!get_local_ip(local_ip, sizeof(local_ip))) {
+          strcpy(local_ip, "192.168.1.100");
+        }
+        const char *contact_ip = (strlen(public_ip) > 0) ? public_ip : local_ip;
+        int branch = auth_invite_branch ? auth_invite_branch : initial_invite_branch;
+        const char *cancel_target = active_call_target_uri[0]
+                                        ? active_call_target_uri
+                                        : sip_config.apartment1_uri;
+        snprintf(cancel_msg, sizeof(cancel_msg),
+                 "CANCEL %s SIP/2.0\r\n"
+                 "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%d;rport\r\n"
+                 "Max-Forwards: 70\r\n"
+                 "From: <sip:%s@%s>;tag=%d\r\n"
+                 "To: <%s>\r\n"
+                 "Call-ID: %d@%s\r\n"
+                 "CSeq: %d CANCEL\r\n"
+                 "Content-Length: 0\r\n\r\n",
+                 cancel_target, contact_ip, branch, sip_config.username,
+                 sip_config.server, initial_invite_from_tag, cancel_target,
+                 initial_invite_call_id, local_ip, initial_invite_cseq);
+        struct sockaddr_in server_addr;
+        if (resolve_hostname(sip_config.server, &server_addr,
+                             (uint16_t)sip_config.port)) {
+          sendto(sip_socket, cancel_msg, strlen(cancel_msg), 0,
+                 (struct sockaddr *)&server_addr, sizeof(server_addr));
+        }
+      }
     }
 
     // Return to registered state
@@ -2850,6 +3045,17 @@ void sip_client_hangup(void) {
   }
 }
 
+void sip_client_hangup(void) {
+  if (sip_cmd_queue && sip_task_handle &&
+      xTaskGetCurrentTaskHandle() != sip_task_handle) {
+    sip_cmd_t cmd = {0};
+    cmd.type = SIP_CMD_HANGUP;
+    xQueueSend(sip_cmd_queue, &cmd, pdMS_TO_TICKS(50));
+  } else {
+    sip_client_hangup_internal();
+  }
+}
+
 void sip_client_answer_call(void) {
   // This function is now a placeholder - incoming calls are answered
   // automatically in the SIP task when INVITE is received
@@ -2861,7 +3067,7 @@ void sip_client_answer_call(void) {
   }
 }
 
-void sip_client_send_dtmf(char dtmf_digit) {
+static void sip_client_send_dtmf_internal(char dtmf_digit) {
   if (current_state == SIP_STATE_CONNECTED) {
     ESP_LOGI(TAG, "Sending DTMF: %c", dtmf_digit);
     sip_add_log_entry("info", "Sending DTMF - State: DTMF_SENDING");
@@ -2892,7 +3098,7 @@ void sip_client_send_dtmf(char dtmf_digit) {
       ESP_LOGW(TAG, "RTP not active, cannot send DTMF via RFC 4733");
     }
 
-    // Method 2: Try RFC 2976 INFO method via SIP (backup)
+    // Method 2: Try RFC 2976 INFO method via SIP (backup) within active dialog
     char local_ip[16];
     if (!get_local_ip(local_ip, sizeof(local_ip))) {
       strcpy(local_ip, "192.168.1.100"); // Fallback
@@ -2902,22 +3108,55 @@ void sip_client_send_dtmf(char dtmf_digit) {
     snprintf(info_body, sizeof(info_body), "Signal=%c\r\nDuration=100\r\n",
              dtmf_digit);
 
-    static char info_msg[512];
+    char info_target[128];
+    if (active_call_target_uri[0] != '\0') {
+      strncpy(info_target, active_call_target_uri, sizeof(info_target) - 1);
+      info_target[sizeof(info_target) - 1] = '\0';
+    } else {
+      snprintf(info_target, sizeof(info_target), "sip:%s@%s",
+               sip_config.username, sip_config.server);
+    }
+
+    char call_id_hdr[128];
+    if (invite_call_id_str[0] != '\0') {
+      strncpy(call_id_hdr, invite_call_id_str, sizeof(call_id_hdr) - 1);
+      call_id_hdr[sizeof(call_id_hdr) - 1] = '\0';
+    } else {
+      snprintf(call_id_hdr, sizeof(call_id_hdr), "%d@%s",
+               initial_invite_call_id, local_ip);
+    }
+
+    char from_tag_hdr[64];
+    if (active_call_local_tag[0] != '\0') {
+      strncpy(from_tag_hdr, active_call_local_tag, sizeof(from_tag_hdr) - 1);
+      from_tag_hdr[sizeof(from_tag_hdr) - 1] = '\0';
+    } else {
+      snprintf(from_tag_hdr, sizeof(from_tag_hdr), "%d",
+               initial_invite_from_tag);
+    }
+
+    char to_tag_suffix[80] = {0};
+    if (active_call_remote_tag[0] != '\0') {
+      snprintf(to_tag_suffix, sizeof(to_tag_suffix), ";tag=%s",
+               active_call_remote_tag);
+    }
+
+    static char info_msg[1024];
     int info_len = strlen(info_body);
-    int cseq = 1; // Sequence number for INFO request
+    int cseq = active_dialog_cseq++;
     int len = snprintf(info_msg, sizeof(info_msg),
-                       "INFO sip:%s@%s SIP/2.0\r\n"
+                       "INFO %s SIP/2.0\r\n"
                        "Via: SIP/2.0/UDP %s:5060;branch=z9hG4bK%lu;rport\r\n"
                        "Max-Forwards: 70\r\n"
-                       "From: <sip:%s@%s>;tag=%lu\r\n"
-                       "To: <sip:%s@%s>\r\n"
-                       "Call-ID: %lu@%s\r\n"
+                       "From: <sip:%s@%s>;tag=%s\r\n"
+                       "To: <%s>%s\r\n"
+                       "Call-ID: %s\r\n"
                        "CSeq: %d INFO\r\n"
                        "Content-Type: application/dtmf-relay\r\n"
                        "Content-Length: %d\r\n\r\n%s",
-                       sip_config.username, sip_config.server, local_ip, (unsigned long)esp_random(),
-                       sip_config.username, sip_config.server, (unsigned long)esp_random(),
-                       sip_config.username, sip_config.server, (unsigned long)esp_random(), local_ip,
+                       info_target, local_ip, (unsigned long)esp_random(),
+                       sip_config.username, sip_config.server, from_tag_hdr,
+                       info_target, to_tag_suffix, call_id_hdr,
                        cseq, info_len, info_body);
 
     struct sockaddr_in server_addr;
@@ -2950,6 +3189,18 @@ void sip_client_send_dtmf(char dtmf_digit) {
     ESP_LOGW(TAG, "Cannot send DTMF - Not in connected state (%d)",
              current_state);
     sip_add_log_entry("error", "Cannot send DTMF - not in connected state");
+  }
+}
+
+void sip_client_send_dtmf(char dtmf_digit) {
+  if (sip_cmd_queue && sip_task_handle &&
+      xTaskGetCurrentTaskHandle() != sip_task_handle) {
+    sip_cmd_t cmd = {0};
+    cmd.type = SIP_CMD_SEND_DTMF;
+    cmd.dtmf_digit = dtmf_digit;
+    xQueueSend(sip_cmd_queue, &cmd, pdMS_TO_TICKS(50));
+  } else {
+    sip_client_send_dtmf_internal(dtmf_digit);
   }
 }
 
@@ -3204,6 +3455,10 @@ void sip_reinit(void) {
   // Set flag to trigger reinit from SIP task context (has more stack)
   // Don't do heavy operations from HTTP handler context
   reinit_requested = true;
+  if (sip_task_handle == NULL) {
+    xTaskCreatePinnedToCore(sip_task, "sip_task", 16384, NULL, 3,
+                            &sip_task_handle, 1);
+  }
 }
 
 bool sip_test_configuration(void) {

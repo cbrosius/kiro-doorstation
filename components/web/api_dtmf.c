@@ -30,7 +30,8 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req) {
   dtmf_get_security_config(&config);
 
   cJSON_AddBoolToObject(root, "pin_enabled", config.pin_enabled);
-  cJSON_AddStringToObject(root, "pin_code", config.pin_code);
+  cJSON_AddBoolToObject(root, "pin_configured", config.pin_code[0] != '\0');
+  cJSON_AddStringToObject(root, "pin_code", "");
   cJSON_AddNumberToObject(root, "timeout_ms", config.timeout_ms);
   cJSON_AddNumberToObject(root, "max_attempts", config.max_attempts);
 
@@ -38,7 +39,7 @@ static esp_err_t get_dtmf_security_handler(httpd_req_t *req) {
 }
 
 static esp_err_t post_dtmf_security_handler(httpd_req_t *req) {
-  if (auth_filter(req, false) != ESP_OK) {
+  if (auth_filter(req, true) != ESP_OK) {
     return ESP_FAIL;
   }
 
@@ -60,9 +61,11 @@ static esp_err_t post_dtmf_security_handler(httpd_req_t *req) {
     config.pin_enabled = cJSON_IsTrue(pin_enabled);
   }
 
-  if (cJSON_IsString(pin_code) && (pin_code->valuestring != NULL)) {
+  if (cJSON_IsString(pin_code) && (pin_code->valuestring != NULL) &&
+      (pin_code->valuestring[0] != '\0')) {
     strncpy(config.pin_code, pin_code->valuestring,
             sizeof(config.pin_code) - 1);
+    config.pin_code[sizeof(config.pin_code) - 1] = '\0';
   }
 
   if (cJSON_IsNumber(timeout_ms)) {

@@ -28,13 +28,23 @@ static esp_err_t get_network_ip_handler(httpd_req_t *req) {
                                     "Failed to create JSON");
 
   wifi_connection_info_t info = wifi_get_connection_info();
+  wifi_config_data_t cfg;
+  wifi_manager_get_config(&cfg);
 
-  cJSON_AddStringToObject(root, "mode", "dhcp");
-  cJSON_AddStringToObject(root, "ip", info.ip_address);
-  cJSON_AddStringToObject(root, "subnet", info.netmask);
-  cJSON_AddStringToObject(root, "gateway", info.gateway);
-  cJSON_AddStringToObject(root, "dns1", info.dns1);
-  cJSON_AddStringToObject(root, "dns2", info.dns2);
+  cJSON_AddStringToObject(root, "mode", cfg.dhcp ? "dhcp" : "static");
+  cJSON_AddStringToObject(root, "ip",
+                          (!cfg.dhcp && cfg.static_ip[0]) ? cfg.static_ip
+                                                          : info.ip_address);
+  cJSON_AddStringToObject(root, "subnet",
+                          (!cfg.dhcp && cfg.netmask[0]) ? cfg.netmask
+                                                        : info.netmask);
+  cJSON_AddStringToObject(root, "gateway",
+                          (!cfg.dhcp && cfg.gateway[0]) ? cfg.gateway
+                                                        : info.gateway);
+  cJSON_AddStringToObject(root, "dns1",
+                          (!cfg.dhcp && cfg.dns1[0]) ? cfg.dns1 : info.dns1);
+  cJSON_AddStringToObject(root, "dns2",
+                          (!cfg.dhcp && cfg.dns2[0]) ? cfg.dns2 : info.dns2);
 
   return http_response_json_data(req, root);
 }
@@ -44,9 +54,66 @@ static esp_err_t post_network_ip_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
 
-  return http_response_json_success(
-      req, "Static IP configuration is not yet implemented via this endpoint. "
-           "Please use WiFi config.");
+  cJSON *root = http_parse_json_body(req);
+  if (root == NULL) {
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST,
+                                    "Invalid or missing JSON");
+  }
+
+  wifi_config_data_t cfg;
+  wifi_manager_get_config(&cfg);
+
+  const cJSON *mode = cJSON_GetObjectItem(root, "mode");
+  const cJSON *ip = cJSON_GetObjectItem(root, "ip");
+  const cJSON *subnet = cJSON_GetObjectItem(root, "subnet");
+  const cJSON *gateway = cJSON_GetObjectItem(root, "gateway");
+  const cJSON *dns1 = cJSON_GetObjectItem(root, "dns1");
+  const cJSON *dns2 = cJSON_GetObjectItem(root, "dns2");
+
+  if (cJSON_IsString(mode) && mode->valuestring != NULL) {
+    cfg.dhcp = (strcmp(mode->valuestring, "static") != 0);
+  }
+  if (cJSON_IsString(ip) && ip->valuestring != NULL) {
+    strncpy(cfg.static_ip, ip->valuestring, sizeof(cfg.static_ip) - 1);
+    cfg.static_ip[sizeof(cfg.static_ip) - 1] = '\0';
+  }
+  if (cJSON_IsString(subnet) && subnet->valuestring != NULL) {
+    strncpy(cfg.netmask, subnet->valuestring, sizeof(cfg.netmask) - 1);
+    cfg.netmask[sizeof(cfg.netmask) - 1] = '\0';
+  }
+  if (cJSON_IsString(gateway) && gateway->valuestring != NULL) {
+    strncpy(cfg.gateway, gateway->valuestring, sizeof(cfg.gateway) - 1);
+    cfg.gateway[sizeof(cfg.gateway) - 1] = '\0';
+  }
+  if (cJSON_IsString(dns1) && dns1->valuestring != NULL) {
+    strncpy(cfg.dns1, dns1->valuestring, sizeof(cfg.dns1) - 1);
+    cfg.dns1[sizeof(cfg.dns1) - 1] = '\0';
+  }
+  if (cJSON_IsString(dns2) && dns2->valuestring != NULL) {
+    strncpy(cfg.dns2, dns2->valuestring, sizeof(cfg.dns2) - 1);
+    cfg.dns2[sizeof(cfg.dns2) - 1] = '\0';
+  }
+
+  cJSON_Delete(root);
+
+  if (!cfg.dhcp &&
+      (cfg.static_ip[0] == '\0' || cfg.netmask[0] == '\0' ||
+       cfg.gateway[0] == '\0')) {
+    return http_response_json_error(
+        req, HTTPD_400_BAD_REQUEST,
+        "Static IP mode requires IP address, subnet mask, and gateway");
+  }
+
+  wifi_manager_set_config(&cfg);
+  wifi_manager_save_config();
+
+  esp_err_t err = wifi_manager_apply_ip_config();
+  if (err != ESP_OK) {
+    return http_response_json_error(req, HTTPD_400_BAD_REQUEST,
+                                    "Failed to apply IP configuration");
+  }
+
+  return http_response_json_success(req, "IP configuration updated");
 }
 
 // ============================================================================

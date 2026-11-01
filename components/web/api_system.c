@@ -1,5 +1,7 @@
 #include "api_system.h"
 #include "cJSON.h"
+#include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_partition.h"
@@ -54,8 +56,10 @@ static esp_err_t get_system_state_handler(httpd_req_t *req) {
   cJSON_AddStringToObject(root, "free_heap", heap_str);
 
   wifi_connection_info_t wifi_info = wifi_get_connection_info();
+  const esp_app_desc_t *app_desc = esp_app_get_description();
   cJSON_AddStringToObject(root, "ip_address", wifi_info.ip_address);
-  cJSON_AddStringToObject(root, "firmware_version", "v1.1.0");
+  cJSON_AddStringToObject(root, "firmware_version",
+                          app_desc ? app_desc->version : "1.0.0");
   cJSON_AddNumberToObject(root, "free_heap_bytes", free_heap);
   cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
 
@@ -185,12 +189,14 @@ static esp_err_t get_system_info_handler(httpd_req_t *req) {
            mac[1], mac[2], mac[3], mac[4], mac[5]);
   cJSON_AddStringToObject(root, "mac_address", mac_str);
 
+  const esp_app_desc_t *app_desc = esp_app_get_description();
   cJSON_AddNumberToObject(root, "free_heap_bytes",
                           (double)esp_get_free_heap_size());
   cJSON_AddNumberToObject(
       root, "uptime_seconds",
       (double)((xTaskGetTickCount() * portTICK_PERIOD_MS) / 1000));
-  cJSON_AddStringToObject(root, "firmware_version", "v1.1.0");
+  cJSON_AddStringToObject(root, "firmware_version",
+                          app_desc ? app_desc->version : "1.0.0");
 
   return http_response_json_data(req, root);
 }
@@ -219,10 +225,14 @@ static esp_err_t get_system_health_handler(httpd_req_t *req) {
   // Memory
   uint32_t free_heap = esp_get_free_heap_size();
   uint32_t min_heap = esp_get_minimum_free_heap_size();
+  size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+  double heap_usage_percent =
+      (total_heap > 0)
+          ? ((1.0 - (double)free_heap / (double)total_heap) * 100.0)
+          : 0.0;
   cJSON_AddNumberToObject(root, "free_heap_bytes", (double)free_heap);
   cJSON_AddNumberToObject(root, "min_free_heap_bytes", (double)min_heap);
-  cJSON_AddNumberToObject(root, "heap_usage_percent",
-                          (double)((1.0 - (double)free_heap / (double)esp_get_free_heap_size()) * 100.0));
+  cJSON_AddNumberToObject(root, "heap_usage_percent", heap_usage_percent);
 
   // WiFi
   wifi_connection_info_t wifi_info = wifi_get_connection_info();

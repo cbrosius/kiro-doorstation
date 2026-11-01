@@ -15,6 +15,7 @@ esp_err_t http_response_json_success(httpd_req_t *req, const char *message) {
   cJSON *root = cJSON_CreateObject();
   if (!root)
     return ESP_FAIL;
+  cJSON_AddBoolToObject(root, "success", true);
   cJSON_AddStringToObject(root, "status", "success");
   if (message) {
     cJSON_AddStringToObject(root, "message", message);
@@ -29,6 +30,7 @@ esp_err_t http_response_json_error(httpd_req_t *req, httpd_err_code_t code,
     httpd_resp_send_err(req, code, message);
     return ESP_FAIL;
   }
+  cJSON_AddBoolToObject(root, "success", false);
   cJSON_AddStringToObject(root, "status", "error");
   if (message) {
     cJSON_AddStringToObject(root, "message", message);
@@ -76,9 +78,18 @@ esp_err_t http_response_json_data(httpd_req_t *req, cJSON *root) {
   return ret;
 }
 
+#define MAX_HTTP_JSON_BODY_LEN 16384
+
 cJSON *http_parse_json_body(httpd_req_t *req) {
   if (req->content_len == 0) {
     ESP_LOGW(TAG, "Request body is empty");
+    return NULL;
+  }
+
+  if (req->content_len > MAX_HTTP_JSON_BODY_LEN) {
+    ESP_LOGE(TAG, "Request body too large (%u bytes, max %u)",
+             (unsigned int)req->content_len,
+             (unsigned int)MAX_HTTP_JSON_BODY_LEN);
     return NULL;
   }
 
@@ -88,12 +99,19 @@ cJSON *http_parse_json_body(httpd_req_t *req) {
     return NULL;
   }
 
-  int ret = httpd_req_recv(req, buf, req->content_len);
-  if (ret <= 0) {
-    free(buf);
-    return NULL;
+  size_t received = 0;
+  while (received < req->content_len) {
+    int ret = httpd_req_recv(req, buf + received, req->content_len - received);
+    if (ret <= 0) {
+      if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+        continue;
+      }
+      free(buf);
+      return NULL;
+    }
+    received += (size_t)ret;
   }
-  buf[ret] = '\0';
+  buf[received] = '\0';
 
   cJSON *root = cJSON_Parse(buf);
   free(buf);

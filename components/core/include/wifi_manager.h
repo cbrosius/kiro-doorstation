@@ -41,6 +41,8 @@ typedef struct {
   char static_ip[16];
   char gateway[16];
   char netmask[16];
+  char dns1[16];
+  char dns2[16];
 } wifi_config_data_t;
 
 void wifi_manager_init(void);
@@ -53,6 +55,7 @@ wifi_manager_config_t wifi_load_config(void);
 void wifi_manager_get_config(wifi_config_data_t *config);
 void wifi_manager_set_config(const wifi_config_data_t *config);
 void wifi_manager_save_config(void);
+esp_err_t wifi_manager_apply_ip_config(void);
 wifi_connection_info_t wifi_get_connection_info(void);
 void wifi_start_background_scan(void);
 int wifi_get_scan_results(wifi_scan_result_t *results, int max_results);

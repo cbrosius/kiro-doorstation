@@ -2,6 +2,9 @@
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "ota_handler.h"
 #include "web_server.h"
 #include "web_utils.h"
@@ -11,6 +14,14 @@
 #include <string.h>
 
 static const char *TAG = "API_OTA";
+
+static void ota_delayed_restart_task(void *pvParameter) {
+  (void)pvParameter;
+  vTaskDelay(pdMS_TO_TICKS(1500));
+  ESP_LOGI(TAG, "Rebooting after OTA operation...");
+  esp_restart();
+  vTaskDelete(NULL);
+}
 
 // ============================================================================
 // OTA API Handlers
@@ -97,7 +108,10 @@ static esp_err_t post_ota_upload_handler(httpd_req_t *req) {
                                     "OTA finalization error");
   }
 
-  return http_response_json_success(req, "OTA update complete, rebooting...");
+  esp_err_t resp_err =
+      http_response_json_success(req, "OTA update complete, rebooting...");
+  xTaskCreate(ota_delayed_restart_task, "ota_restart", 2048, NULL, 5, NULL);
+  return resp_err;
 }
 
 static esp_err_t post_ota_rollback_handler(httpd_req_t *req) {
@@ -107,7 +121,11 @@ static esp_err_t post_ota_rollback_handler(httpd_req_t *req) {
 
   esp_err_t err = ota_rollback();
   if (err == ESP_OK) {
-    return http_response_json_success(req, "Rollback successful, rebooting...");
+    esp_err_t resp_err =
+        http_response_json_success(req, "Rollback successful, rebooting...");
+    xTaskCreate(ota_delayed_restart_task, "ota_rb_restart", 2048, NULL, 5,
+                NULL);
+    return resp_err;
   } else {
     return http_response_json_error(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "Rollback failed");

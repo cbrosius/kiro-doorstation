@@ -69,7 +69,8 @@ static esp_err_t post_auth_login_handler(httpd_req_t *req) {
   if (result.authenticated) {
     char cookie[256];
     snprintf(cookie, sizeof(cookie),
-             "session_id=%s; Secure; SameSite=Strict; Max-Age=%d; Path=/",
+             "session_id=%s; HttpOnly; Secure; SameSite=Strict; Max-Age=%d; "
+             "Path=/",
              result.session_id, AUTH_SESSION_TIMEOUT_SECONDS);
     httpd_resp_set_hdr(req, "Set-Cookie", cookie);
     return http_response_json_success(req, "Login successful");
@@ -94,7 +95,9 @@ static esp_err_t post_auth_logout_handler(httpd_req_t *req) {
     }
   }
 
-  httpd_resp_set_hdr(req, "Set-Cookie", "session_id=; Max-Age=0; Path=/");
+  httpd_resp_set_hdr(req, "Set-Cookie",
+                     "session_id=; HttpOnly; Secure; SameSite=Strict; "
+                     "Max-Age=0; Path=/");
   return http_response_json_success(req, "Logout successful");
 }
 

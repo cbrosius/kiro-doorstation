@@ -77,7 +77,6 @@ size_t audio_read(int16_t *buffer, size_t length)
         }
         return bytes_read / sizeof(int16_t);
     } else {
-        ESP_LOGW(TAG, "Audio read (dummy - hardware not connected) - returning silence");
         memset(buffer, 0, length * sizeof(int16_t));
         return length;
     }
@@ -96,7 +95,7 @@ size_t audio_write(const int16_t *buffer, size_t length)
         }
         return bytes_written / sizeof(int16_t);
     } else {
-        ESP_LOGW(TAG, "Audio write (dummy - hardware not connected) - ignoring data");
+        (void)buffer;
         return length;
     }
 }

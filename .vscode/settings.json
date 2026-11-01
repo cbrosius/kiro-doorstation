@@ -5,7 +5,7 @@
   "idf.buildPathWin": "${workspaceFolder}\\firmware",
   "idf.pythonBinPath": "/opt/esp/python_env/idf5.1_py3.8_env/bin/python",
   "idf.customExtraPaths": "/opt/esp/tools/xtensa-esp32-elf/esp-12.2.0_20230208/xtensa-esp32-elf/bin:/opt/esp/tools/cmake/3.24.0/bin",
-  "idf.port": "/dev/ttyUSB0",
+  "idf.port": "COM4",
   "idf.flashBaudRate": "460800",
   "C_Cpp.intelliSenseEngine": "disabled",
   "files.associations": {
@@ -17,23 +17,19 @@
     "board/esp32s3-builtin.cfg"
   ],
   "idf.customExtraVars": {
-    "OPENOCD_SCRIPTS": "C:\\Espressif\\tools\\openocd-esp32\\v0.12.0-esp32-20230921/openocd-esp32/share/openocd/scripts",
     "IDF_CCACHE_ENABLE": "1",
-    "ESP_ROM_ELF_DIR": "C:\\Espressif\\tools\\esp-rom-elfs\\20230320/",
     "IDF_TARGET": "esp32s3"
   },
   "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
   "clangd.arguments": [
     "--background-index",
-    "--query-driver=C:\\Users\\Christian\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
-    "--compile-commands-dir=c:\\Projekte\\Github\\OpenDoorstation\\kiro-doorstation\\build",
-    "--header-insertion=never",
-    "--clang-tidy=false"
+    "--query-driver=**",
+    "--compile-commands-dir=c:\\Projekte\\Github\\OpenDoorstation\\kiro-doorstation/firmware"
   ],
   "idf.flashType": "UART",
   "sonarlint.pathToCompileCommands": "${workspaceFolder}\\build\\compile_commands.json",
-  "idf.espIdfPathWin": "c:\\ESP-IDF\\v5.5.1\\esp-idf",
+  "idf.espIdfPathWin": "C:\\ESP-IDF\\.espressif\\v5.5.6\\esp-idf",
   "idf.toolsPathWin": "C:\\Espressif",
   "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe",
-  "idf.currentSetup": "c:\\ESP-IDF\\v5.5.1\\esp-idf"
+  "idf.currentSetup": "C:\\ESP-IDF\\.espressif\\v5.5.6\\esp-idf"
 }
